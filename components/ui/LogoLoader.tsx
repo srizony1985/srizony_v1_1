@@ -61,7 +61,7 @@ export default function LogoLoader({
         <Image
           className={s.logo}
           src="/images/Logo-SF.png"
-          alt="SF"
+          alt=""
           width={144}
           height={144}
           sizes={`${mark}px`}

@@ -88,16 +88,21 @@ function ThemeView({ role }: { role: Role }) {
   const [palette, setPalette] = useState<Theme>({})
   const [saving, setSaving] = useState(false)
   useEffect(() => { if (themes) { const key = name in themes ? name : Object.keys(themes)[0] || ''; setName(key); setPalette(themes[key] || {}) } }, [themes, name])
-  const entries = useMemo(() => Object.entries(palette).filter(([k, v]) => /^#[0-9a-fA-F]{6}$/.test(v) && !k.toLowerCase().includes('logo')), [palette])
+  const entries = useMemo<Array<[string, string]>>(() => Object.entries(palette).filter((entry): entry is [string, string] => { const [key, value] = entry; return typeof value === 'string' && /^#[0-9a-fA-F]{6}$/.test(value) && !key.toLowerCase().includes('logo') }), [palette])
   async function save() {
     if (role !== 'admin') return toast.error('Administrator permission required.')
+    // Do not submit nested label/typography metadata to the color editor API.
+    // The server merges these color changes into the existing palette so theme
+    // labels, font settings and corner-radius settings remain untouched.
+    const colorTokens = Object.fromEntries(entries) as Theme
+    if (!Object.keys(colorTokens).length) return toast.error('There are no editable color tokens to save.')
     setSaving(true)
-    try { await saveTheme(name, palette); toast.success('Theme palette saved.'); window.location.reload() } catch (e) { toast.error(e instanceof Error ? e.message : 'Unable to save theme.') } finally { setSaving(false) }
+    try { await saveTheme(name, colorTokens); toast.success('Theme palette saved.'); window.location.reload() } catch (e) { toast.error(e instanceof Error ? e.message : 'Unable to save theme.') } finally { setSaving(false) }
   }
   if (loading && !themes) return <PageLoading rows={2} />
   if (error) return <AdminErrorState message={error} onRetry={() => void reload()} />
-  return <Card><CardHeader><CardTitle>Theme palette</CardTitle><CardDescription>Palette values must be six-digit hexadecimal colors. Only administrators can save.</CardDescription></CardHeader><CardContent>
-    <div className="admin-editor-toolbar"><select className="ui-select" value={name} onChange={(e) => { setName(e.target.value); setPalette(themes?.[e.target.value] || {}) }}>{Object.keys(themes || {}).map((n) => <option key={n} value={n}>{n}</option>)}</select><Button onClick={() => void save()} disabled={saving || role !== 'admin'}><Save size={14} />{saving ? 'Saving…' : 'Save palette'}</Button></div>
+  return <Card><CardHeader><CardTitle>Theme palette</CardTitle><CardDescription>Edit the color tokens below. Theme labels, typography and other settings are preserved automatically. Only administrators can save.</CardDescription></CardHeader><CardContent>
+    <div className="admin-editor-toolbar"><select className="ui-select" value={name} onChange={(e) => { setName(e.target.value); setPalette(themes?.[e.target.value] || {}) }} aria-label="Theme palette">{Object.keys(themes || {}).map((n) => <option key={n} value={n}>{n}</option>)}</select><Button onClick={() => void save()} disabled={saving || role !== 'admin' || !name || !entries.length}><Save size={14} />{saving ? 'Saving…' : 'Save palette'}</Button></div>
     <div className="palette-grid">{entries.map(([key, value]) => <label className="palette-field" key={key}><span>{key}</span><Input type="color" value={value} onChange={(e) => setPalette((c) => ({ ...c, [key]: e.target.value }))} /><code>{value}</code></label>)}</div>
   </CardContent></Card>
 }

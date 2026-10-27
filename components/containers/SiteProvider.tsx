@@ -1,11 +1,11 @@
 'use client'
 
-import { createContext, useContext, useEffect, useMemo, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import type { ColorMode, Lang, ShapeName, ThemeName } from '@/types/entityType'
 import type { PublicSiteSnapshot } from '@/types/site'
-import { buildThemeCssVariables, type RuntimeThemeMap } from '@/lib/themeRuntime'
-import { getPageSnapshot, getSessionProfile } from '@/lib/api/public'
+import { buildThemeCssVariables, parseThemeTokenOverrides, THEME_COLOR_TOKEN_KEYS, type RuntimeThemeMap } from '@/lib/themeRuntime'
+import { getNavigationSnapshot, getPageSnapshot, getSessionProfile, getSiteSnapshot } from '@/lib/api/public'
 
 type SiteProfile = {
   id: number
@@ -17,7 +17,9 @@ type SiteProfile = {
 }
 
 type SiteContextValue = {
-  tokens: any
+  tokens: Record<string, string>
+  setToken: (key: string, value: string) => void
+  resetTokens: () => void
   lang: Lang
   setLang: (v: Lang) => void
   theme: ThemeName
@@ -47,6 +49,7 @@ export default function SiteProvider({
     theme: ThemeName
     mode: ColorMode
     shape: ShapeName
+    tokens?: Record<string, string>
   }
   initialSite?: PublicSiteSnapshot | null
   initialLang?: Lang
@@ -57,15 +60,19 @@ export default function SiteProvider({
   const [lang, setLang] = useState<Lang>(initialLang)
 
   const [theme, setThemeState] = useState<ThemeName>(
-    initialPreferences?.theme || 'forest',
+    initialPreferences?.theme || 'midnight',
   )
 
   const [shape, setShapeState] = useState<ShapeName>(
-    initialPreferences?.shape || 'rounded',
+    initialPreferences?.shape || 'soft',
   )
 
   const [mode, setModeState] = useState<ColorMode>(
-    initialPreferences?.mode || 'light',
+    initialPreferences?.mode || 'dark',
+  )
+
+  const [tokens, setTokensState] = useState<Record<string, string>>(
+    () => parseThemeTokenOverrides(initialPreferences?.tokens || {}),
   )
 
   const [profile, setProfile] = useState<SiteProfile | null>(null)
@@ -79,47 +86,27 @@ export default function SiteProvider({
   const [error, setError] = useState<string | null>(null)
 
   /**
-   * Legacy localStorage -> cookie migration.
+   * Keep the public site's default palette consistent. The appearance
+   * customizer has been removed, so legacy per-browser palette overrides are
+   * discarded while the user's explicit light/dark preference is retained.
    */
   useEffect(() => {
-    const storedTheme = window.localStorage.getItem(
-      'sf-theme',
-    ) as ThemeName | null
+    const storedMode = window.localStorage.getItem('sf-mode') as ColorMode | null
 
-    const storedShape = window.localStorage.getItem(
-      'sf-shape',
-    ) as ShapeName | null
-
-    const storedMode = window.localStorage.getItem(
-      'sf-mode',
-    ) as ColorMode | null
-
-    if (storedTheme && storedTheme !== theme) {
-      setThemeState(storedTheme)
-
-      document.cookie = `sf-theme=${encodeURIComponent(
-        storedTheme,
-      )};path=/;max-age=31536000;samesite=lax`
+    try {
+      window.localStorage.setItem('sf-theme', 'midnight')
+      window.localStorage.setItem('sf-shape', 'soft')
+      window.localStorage.removeItem('sf-theme-tokens')
+    } catch {
+      // Storage can be unavailable in privacy modes; the active session still works.
     }
 
-    if (
-      storedShape &&
-      ['rounded', 'soft', 'square'].includes(storedShape) &&
-      storedShape !== shape
-    ) {
-      setShapeState(storedShape)
+    document.cookie = 'sf-theme=midnight;path=/;max-age=31536000;samesite=lax'
+    document.cookie = 'sf-shape=soft;path=/;max-age=31536000;samesite=lax'
+    document.cookie = 'sf-theme-tokens=;path=/;max-age=0;samesite=lax'
 
-      document.cookie = `sf-shape=${encodeURIComponent(
-        storedShape,
-      )};path=/;max-age=31536000;samesite=lax`
-    }
-
-    if (
-      (storedMode === 'light' || storedMode === 'dark') &&
-      storedMode !== mode
-    ) {
+    if ((storedMode === 'light' || storedMode === 'dark') && storedMode !== mode) {
       setModeState(storedMode)
-
       document.cookie = `sf-mode=${storedMode};path=/;max-age=31536000;samesite=lax`
     }
 
@@ -150,6 +137,81 @@ export default function SiteProvider({
       : pathname.startsWith('/bn/')
         ? pathname.slice(3) || '/'
         : pathname
+
+  const hasSite = site !== null
+
+  /**
+   * When Next.js navigates from /admin back into the public site, the root layout
+   * can be preserved from the CMS route where initialSite was intentionally null.
+   * Hydrate the complete snapshot instead of leaving the shared header/footer empty.
+   */
+  useEffect(() => {
+    if (hasSite) return
+
+    const controller = new AbortController()
+    setLoading(true)
+    setError(null)
+
+    getSiteSnapshot(canonicalPath, controller.signal)
+      .then((response) => {
+        if (!response.ok || !response.data?.global) {
+          throw new Error('Unable to load the public site.')
+        }
+        setSite(response.data as PublicSiteSnapshot)
+      })
+      .catch((err) => {
+        if (err?.name !== 'AbortError') {
+          setError(err instanceof Error ? err.message : 'Unable to load the public site.')
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false)
+      })
+
+    return () => controller.abort()
+  }, [canonicalPath, hasSite])
+
+  /**
+   * Fetch current CMS navigation on public-route entry and when the user returns
+   * to the site tab. This prevents stale links in desktop nav, mobile nav and footer.
+   */
+  useEffect(() => {
+    if (!hasSite) return
+
+    const controller = new AbortController()
+    const syncNavigation = () => {
+      getNavigationSnapshot(controller.signal)
+        .then((response) => {
+          if (!response.ok || !Array.isArray(response.data?.primaryNav) || !Array.isArray(response.data?.navGroups)) return
+          setSite((current) => current ? {
+            ...current,
+            global: {
+              ...current.global,
+              primaryNav: response.data.primaryNav,
+              navGroups: response.data.navGroups,
+              ...(response.data.ui ? { ui: response.data.ui } : {}),
+            },
+          } : current)
+        })
+        .catch((err) => {
+          if (err?.name !== 'AbortError') console.error('Unable to refresh CMS navigation', err)
+        })
+    }
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') syncNavigation()
+    }
+
+    syncNavigation()
+    window.addEventListener('focus', syncNavigation)
+    document.addEventListener('visibilitychange', onVisibilityChange)
+
+    return () => {
+      controller.abort()
+      window.removeEventListener('focus', syncNavigation)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+    }
+  }, [pathname, hasSite])
 
   /**
    * Explicit content refresh.
@@ -207,6 +269,10 @@ export default function SiteProvider({
    * where the old page content previously remained in state.
    */
   useEffect(() => {
+    // The full-snapshot hydration effect above owns initialization when the provider
+    // was mounted with initialSite=null (for example, after leaving the CMS).
+    if (!site) return
+
     const currentCanonicalSlug = site?.canonicalSlug
 
     // The current state already represents this route.
@@ -339,6 +405,25 @@ export default function SiteProvider({
   }
 
   /**
+   * Persist customization tokens in localStorage for client navigation and in
+   * a small cookie so the next server render can start with the same palette.
+   */
+  const setToken = useCallback((key: string, value: string) => {
+    if (!THEME_COLOR_TOKEN_KEYS.includes(key as (typeof THEME_COLOR_TOKEN_KEYS)[number]) || !/^#[0-9a-fA-F]{6}$/.test(value)) return
+    const next = { ...tokens, [key]: value }
+    setTokensState(next)
+    const serialized = JSON.stringify(next)
+    try { window.localStorage.setItem('sf-theme-tokens', serialized) } catch { /* Persistence may be disabled; keep the active session responsive. */ }
+    document.cookie = `sf-theme-tokens=${encodeURIComponent(serialized)};path=/;max-age=31536000;samesite=lax`
+  }, [tokens])
+
+  const resetTokens = useCallback(() => {
+    setTokensState({})
+    try { window.localStorage.removeItem('sf-theme-tokens') } catch { /* The in-memory reset still applies. */ }
+    document.cookie = 'sf-theme-tokens=;path=/;max-age=0;samesite=lax'
+  }, [])
+
+  /**
    * Keep HTML dataset attributes synchronized.
    */
   useEffect(() => {
@@ -359,7 +444,7 @@ export default function SiteProvider({
       themeMap,
       theme,
       mode,
-      {},
+      tokens,
       shape,
     )
 
@@ -368,11 +453,13 @@ export default function SiteProvider({
         document.documentElement.style.setProperty(key, value)
       },
     )
-  }, [site, theme, mode, shape])
+  }, [site, theme, mode, shape, tokens])
 
   const value = useMemo<SiteContextValue>(
     () => ({
-      tokens: {},
+      tokens,
+      setToken,
+      resetTokens,
       lang,
       setLang: setLanguage,
       theme,
@@ -389,6 +476,9 @@ export default function SiteProvider({
       refresh,
     }),
     [
+      tokens,
+      setToken,
+      resetTokens,
       lang,
       theme,
       shape,

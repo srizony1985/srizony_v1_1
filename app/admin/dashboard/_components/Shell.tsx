@@ -80,6 +80,9 @@ export default function Shell({ userEmail, children }: { userEmail?: string; chi
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [loggingOut, setLoggingOut] = useState(false)
+  const [dataProvider, setDataProvider] = useState<'neon' | 'google-drive'>('neon')
+  const [providerBusy, setProviderBusy] = useState(false)
+  const [providerMessage, setProviderMessage] = useState('')
   const [expanded, setExpanded] = useState<Record<string, boolean>>({ settings: true })
 
   useEffect(() => {
@@ -101,6 +104,38 @@ export default function Shell({ userEmail, children }: { userEmail?: string; chi
     }
   }, [collapsed, expanded])
 
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/admin/data-provider', { cache: 'no-store' })
+      .then(async (response) => {
+        const payload = await response.json()
+        if (!response.ok) throw new Error(payload.error || 'Unable to load data provider.')
+        if (!cancelled) setDataProvider(payload.selected === 'google-drive' ? 'google-drive' : 'neon')
+      })
+      .catch(() => { if (!cancelled) setProviderMessage('Provider status unavailable') })
+    return () => { cancelled = true }
+  }, [])
+
+  async function changeDataProvider(provider: 'neon' | 'google-drive') {
+    if (provider === dataProvider || providerBusy) return
+    setProviderBusy(true)
+    setProviderMessage('')
+    try {
+      const response = await fetch('/api/admin/data-provider', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider, verifyDrive: provider === 'google-drive' }),
+      })
+      const payload = await response.json()
+      if (!response.ok) throw new Error(payload.error || 'Unable to switch data provider.')
+      setDataProvider(provider)
+      setProviderMessage(provider === 'google-drive' ? 'Drive selected for document-store operations' : 'Neon selected for document-store operations')
+    } catch (error) {
+      setProviderMessage(error instanceof Error ? error.message : 'Unable to switch data provider.')
+    } finally {
+      setProviderBusy(false)
+    }
+  }
   useEffect(() => {
     setMobileOpen(false)
   }, [pathname, searchParams])
@@ -269,9 +304,25 @@ export default function Shell({ userEmail, children }: { userEmail?: string; chi
                 <small>CMS management</small>
               </div>
           </div>
-          <div className="admin-header-user">
-            <span className="admin-header-user-icon"><ShieldCheck size={15} /></span>
-            <span>{userEmail || 'CMS administrator'}</span>
+          <div className="admin-header-tools">
+            <label className="admin-provider-select" title="Choose the CMS document-store preference">
+              <Database size={15} aria-hidden="true" />
+              <span className="admin-provider-label">Data store</span>
+              <select
+                aria-label="CMS data store"
+                value={dataProvider}
+                disabled={providerBusy}
+                onChange={(event) => void changeDataProvider(event.target.value as 'neon' | 'google-drive')}
+              >
+                <option value="neon">Neon PostgreSQL</option>
+                <option value="google-drive">Google Drive JSON</option>
+              </select>
+            </label>
+            <div className="admin-header-user">
+              <span className="admin-header-user-icon"><ShieldCheck size={15} /></span>
+              <span>{userEmail || 'CMS administrator'}</span>
+            </div>
+            {providerMessage && <span className="admin-provider-status" role="status">{providerMessage}</span>}
           </div>
         </header>
 

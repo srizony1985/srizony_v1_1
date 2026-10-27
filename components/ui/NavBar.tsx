@@ -4,36 +4,24 @@ import SafeImage from '@/components/ui/SafeImage'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { ChevronDown, Heart, Menu, Moon, RotateCcw, Settings2, Sun, X } from 'lucide-react'
+import { ChevronDown, Heart, Menu, Moon, Sun, X } from 'lucide-react'
 import NavMenuTree from '@/components/ui/NavMenuTree'
 import { FALLBACK_HOME_LABEL, FALLBACK_LOGO } from '@/lib/siteFallback'
 import LanguageFlag from '@/components/ui/LanguageFlag'
 import { useSite } from '@/components/containers/SiteProvider'
 import type { NavItem } from '@/types/entityType'
-import s from '@/app/css_extra/NavigationCustomizer.module.css'
 
 /** Shared responsive navigation for desktop, tablet, and mobile layouts. */
 
-const TOKEN_KEYS = [
-  'primary', 'secondary', 'accent', 'background', 'surface', 'surfaceAlt', 'surfaceRaised', 'border',
-  'ink', 'muted', 'headerBg', 'headerInk', 'footerBg', 'footerInk', 'success', 'warning', 'danger', 'focus',
-  'darkBackground', 'darkSurface', 'darkSurfaceAlt', 'darkSurfaceRaised', 'darkBorder', 'darkInk',
-  'darkMuted', 'darkHeaderBg', 'darkHeaderInk', 'darkFooterBg', 'darkFooterInk',
-] as const
-
-
 export default function NavBar() {
   const siteContext = useSite()
-  const { lang, setLang, theme, setTheme, shape, setShape, mode, setMode, site } = siteContext
-  const tokens = (siteContext as { tokens?: Record<string, string> }).tokens
-  const setToken = (siteContext as { setToken?: (key: string, value: string) => void }).setToken ?? (() => undefined)
+  const { lang, setLang, mode, setMode, site } = siteContext
 
   const pathname = usePathname() ?? '/'
   const [openGroup, setOpenGroup] = useState<string | null>(null)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [mobileOpenGroup, setMobileOpenGroup] = useState<string | null>(null)
   const [mobileExpandedItems, setMobileExpandedItems] = useState<Record<string, boolean>>({})
-  const [customizeOpen, setCustomizeOpen] = useState(false)
   const [stuck, setStuck] = useState(false)
   const closeTimer = useRef<number | null>(null)
   const panelRef = useRef<HTMLDivElement | null>(null)
@@ -44,7 +32,6 @@ export default function NavBar() {
     setMobileOpen(false)
     setMobileOpenGroup(null)
     setMobileExpandedItems({})
-    setCustomizeOpen(false)
   }, [])
 
   useEffect(() => closeAll(), [pathname, closeAll])
@@ -128,7 +115,6 @@ export default function NavBar() {
   const brandName = brandText(portfolioBrand.name, tr('Srizony', 'সৃজনী'))
   const brandDescriptor = brandText(portfolioBrand.descriptor, tr('Foundation', 'ফাউন্ডেশন'))
   const brandLabel = `${brandName} ${brandDescriptor}`.trim()
-  const themes = (data.themes ?? {}) as Record<string, { label: { en: string; bn: string }; primary: string } & Record<string, unknown>>
   const primaryNav = data.primaryNav ?? []
   const navGroups = data.navGroups ?? []
   const logo = data.images?.logo?.trim() || FALLBACK_LOGO
@@ -141,22 +127,11 @@ export default function NavBar() {
   const hoverOpen = (key: string) => {
     if (closeTimer.current) window.clearTimeout(closeTimer.current)
     setOpenGroup(key)
-    setCustomizeOpen(false)
   }
   const hoverClose = () => {
     if (closeTimer.current) window.clearTimeout(closeTimer.current)
     closeTimer.current = window.setTimeout(() => setOpenGroup(null), 160)
   }
-
-  const resetTokens =
-    (siteContext as { resetTokens?: () => void }).resetTokens ??
-    (() => {
-      const current = themes[theme] as Record<string, unknown> | undefined
-      TOKEN_KEYS.forEach((key) => {
-        const value = current?.[key]
-        if (typeof value === 'string') setToken(key, value)
-      })
-    })
 
   const brand = brandLabel
 
@@ -215,7 +190,7 @@ export default function NavBar() {
                     className={`sf-nav-link ${group.items.some(itemActive) || open ? 'is-active' : ''}`}
                     aria-haspopup="true"
                     aria-expanded={open}
-                    onClick={() => { setOpenGroup(open ? null : key); setCustomizeOpen(false) }}
+                    onClick={() => { setOpenGroup(open ? null : key) }}
                   >
                     <span className="sf-nav-label">{group.label[lang]}</span>
                     <ChevronDown size={14} className={open ? 'is-rot' : ''} aria-hidden="true" />
@@ -240,7 +215,7 @@ export default function NavBar() {
             {/* Language toggle: flag only */}
             <button
               type="button"
-              className={`${s.ctrl} sf-ctrl`}
+              className="sf-language-toggle sf-ctrl"
               onClick={() => setLang(lang === 'en' ? 'bn' : 'en')}
               aria-label={lang === 'en' ? 'বাংলায় দেখুন' : 'Switch to English'}
               title={lang === 'en' ? 'বাংলা' : 'English'}
@@ -248,84 +223,16 @@ export default function NavBar() {
               {lang === 'en' ? <LanguageFlag country="bd" /> : <LanguageFlag country="gb" />}
             </button>
 
-            {/* Appearance customizer */}
-            <div className={s.customize}>
-              <button
-                type="button"
-                className={`${s.ctrl} sf-ctrl`}
-                onClick={() => { setCustomizeOpen((v) => !v); setOpenGroup(null) }}
-                aria-haspopup="dialog"
-                aria-expanded={customizeOpen}
-                title={tr('Customise appearance', 'অ্যাপের চেহারা কাস্টমাইজ করুন')}
-                aria-label={tr('Customise appearance', 'অ্যাপের চেহারা কাস্টমাইজ করুন')}
-              >
-                <Settings2 size={18} />
-              </button>
-
-              {customizeOpen && (
-                <div className={s.cPanel} role="dialog" aria-label={tr('Customise appearance', 'অ্যাপের চেহারা কাস্টমাইজ করুন')}>
-                  {Object.keys(themes).length > 0 && (
-                    <div className={s.cSection}>
-                      <strong>{tr('Theme family', 'থিম নির্বাচন')}</strong>
-                      <div className={s.dots}>
-                        {Object.keys(themes).map((x) => (
-                          <button
-                            type="button"
-                            key={x}
-                            aria-label={themes[x].label[lang]}
-                            title={themes[x].label[lang]}
-                            style={{ background: themes[x].primary }}
-                            className={`${s.dot} ${theme === x ? s.dotOn : ''}`}
-                            onClick={() => { setTheme(x); resetTokens() }}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  <div className={s.cSection}>
-                    <div className={s.cHead}>
-                      <strong>{tr('Colour tokens', 'রঙের টোকেন')}</strong>
-                      <button type="button" className={s.cReset} onClick={resetTokens}>
-                        <RotateCcw size={13} />{tr('Reset', 'রিসেট')}
-                      </button>
-                    </div>
-                    <div className={s.tokens}>
-                      {TOKEN_KEYS.map((key) => {
-                        const selected = (themes[theme] as Record<string, unknown> | undefined)?.[key]
-                        const value = (tokens?.[key] || selected || '#000000') as string
-                        return (
-                          <label className={s.token} key={key}>
-                            <span>{key.replace(/([A-Z])/g, ' $1')}</span>
-                            <input type="color" value={value} onChange={(e) => setToken(key, e.target.value)} />
-                            <code>{value}</code>
-                          </label>
-                        )
-                      })}
-                    </div>
-                  </div>
-
-                  <div className={s.cSection}>
-                    <strong>{tr('Component shape', 'কম্পোনেন্টের আকৃতি')}</strong>
-                    <div className={s.shapes}>
-                      {(['rounded', 'soft', 'square'] as const).map((x) => (
-                        <button type="button" key={x} className={shape === x ? s.optOn : ''} onClick={() => setShape(x)}>
-                          {lang === 'en' ? { rounded: 'Rounded', soft: 'Soft', square: 'Square' }[x] : { rounded: 'গোল', soft: 'নরম', square: 'চৌকো' }[x]}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className={s.cSection}>
-                    <strong>{tr('Appearance', 'অ্যাপের মোড')}</strong>
-                    <div className={s.modes}>
-                      <button type="button" className={mode === 'light' ? s.optOn : ''} onClick={() => setMode('light')}><Sun size={15} />{tr('Light', 'লাইট')}</button>
-                      <button type="button" className={mode === 'dark' ? s.optOn : ''} onClick={() => setMode('dark')}><Moon size={15} />{tr('Dark', 'ডার্ক')}</button>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
+            {/* Minimal, accessible dark-mode switch: icon only, no visible border or label. */}
+            <button
+              type="button"
+              className="sf-mode-toggle"
+              onClick={() => setMode(mode === 'dark' ? 'light' : 'dark')}
+              aria-label={mode === 'dark' ? tr('Switch to light mode', 'লাইট মোড চালু করুন') : tr('Switch to dark mode', 'ডার্ক মোড চালু করুন')}
+              aria-pressed={mode === 'dark'}
+            >
+              {mode === 'dark' ? <Sun size={18} aria-hidden="true" /> : <Moon size={18} aria-hidden="true" />}
+            </button>
 
             <Link href="/donate" className="sf-btn sf-btn--accent sf-desktop-donate">
               <Heart size={15} aria-hidden="true" /> {ui[lang].donate}
@@ -337,7 +244,7 @@ export default function NavBar() {
               aria-label={mobileOpen ? tr('Close navigation menu', 'মেনু বন্ধ করুন') : tr('Open navigation menu', 'মেনু খুলুন')}
               aria-expanded={mobileOpen}
               aria-controls="sf-mobile-drawer"
-              onClick={() => { setMobileOpen((open) => !open); setOpenGroup(null); setCustomizeOpen(false) }}
+              onClick={() => { setMobileOpen((open) => !open); setOpenGroup(null) }}
             >
               {mobileOpen ? <X size={22} aria-hidden="true" /> : <Menu size={22} aria-hidden="true" />}
             </button>

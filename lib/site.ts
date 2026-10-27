@@ -124,8 +124,13 @@ const cachedPublicDocuments = unstable_cache(
 
 async function getCmsNavigation(): Promise<{ primaryNav: NavItem[]; navGroups: NavGroup[] }> {
   const database = db
-  if (process.env.CMS_STATIC_FALLBACK === 'true' || isProductionBuild()) return filterNavigation(systemData.navGroups, systemData.primaryNav)
-  if (!database) throw new Error('DATABASE_URL is required to render public navigation. Configure the database and run npm run db:bootstrap.')
+  // Navigation remains CMS-controlled at runtime even when the legacy static-content
+  // fallback is enabled. Only build-time rendering uses bundled navigation.
+  if (isProductionBuild()) return filterNavigation(systemData.navGroups, systemData.primaryNav)
+  if (!database) {
+    if (process.env.CMS_STATIC_FALLBACK === 'true') return filterNavigation(systemData.navGroups, systemData.primaryNav)
+    throw new Error('DATABASE_URL is required to render public navigation. Configure the database and run npm run db:bootstrap.')
+  }
   const rows = await withDbRetry(() => database.execute(sql`
     SELECT g.id AS group_id, g.key AS group_key, g.label_en AS group_label_en, g.label_bn AS group_label_bn, g.sort_order AS group_sort_order,
            i.id AS item_id, i.parent_id, i.label_en, i.label_bn, i.href, i.featured, i.sort_order, i.menu_type, i.content_types
@@ -428,7 +433,12 @@ export async function getPublicSiteSnapshot(path = '/') {
   const serializableDonationInfo = donationInfo.map(({ icon: _icon, ...item }) => ({ ...item, icon: item.id }))
   const sdgSteps = useStaticFallback ? SDGsteps.map(({ Icon: _Icon, ...step }) => step) : await getDatabaseSdgSteps()
   const override = globalOverride || {}
-  const navigation = useStaticFallback ? { primaryNav: systemData.primaryNav, navGroups: systemData.navGroups } : await getCmsNavigation()
+  // Load navigation from the CMS database on every runtime snapshot. The general
+  // static fallback may still supply bundled page content, but must never mask CMS
+  // navigation edits after an administrator saves them.
+  const navigation = isProductionBuild()
+    ? { primaryNav: systemData.primaryNav, navGroups: systemData.navGroups }
+    : await getCmsNavigation()
   const overrideUi = override.ui && typeof override.ui === 'object' ? override.ui as Record<string, any> : {}
   const themeOverrides = override.themes && typeof override.themes === 'object' ? override.themes as Record<string, unknown> : {}
   const mergedThemes = Object.fromEntries(Object.entries(systemData.themes).map(([name, base]) => [name, { ...base, ...(themeOverrides[name] && typeof themeOverrides[name] === 'object' ? themeOverrides[name] : {}) }]))

@@ -777,7 +777,7 @@ export default function DonationForm() {
           <span>{t('Protected by SSLCOMMERZ', 'SSLCOMMERZ দ্বারা সুরক্ষিত')}</span>
         </div>
 
-        <button className={s.submit} type="submit" disabled={loading || customTooLow}>
+        <button className={s.submit} type="submit" disabled={loading || customTooLow} aria-busy={loading}>
           {loading ? <LogoLoader size="sm" inline label="" /> : <CreditCard size={18} />}
 
           <span>

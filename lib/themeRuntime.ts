@@ -39,6 +39,14 @@ export type RuntimeThemePalette = Record<string, unknown> & {
 export type RuntimeThemeMap = Record<string, RuntimeThemePalette>
 export type RuntimeShapeName = 'rounded' | 'soft' | 'square'
 
+/** One shared allowlist validates theme token overrides for persisted theme settings. */
+export const THEME_COLOR_TOKEN_KEYS = [
+  'primary', 'secondary', 'accent', 'background', 'surface', 'surfaceAlt', 'surfaceRaised', 'border',
+  'ink', 'muted', 'headerBg', 'headerInk', 'footerBg', 'footerInk', 'success', 'warning', 'danger', 'focus',
+  'darkBackground', 'darkSurface', 'darkSurfaceAlt', 'darkSurfaceRaised', 'darkBorder', 'darkInk',
+  'darkMuted', 'darkHeaderBg', 'darkHeaderInk', 'darkFooterBg', 'darkFooterInk',
+] as const
+
 const HEX = /^#[0-9a-fA-F]{6}$/
 
 function hex(value: unknown, fallback: string) {
@@ -48,15 +56,20 @@ function hex(value: unknown, fallback: string) {
 function contrastInk(value: string) {
   const normalized = value.slice(1)
   const channels = [0, 2, 4].map((offset) => Number.parseInt(normalized.slice(offset, offset + 2), 16) / 255)
-  const linear = channels.map((channel) => (channel <= 0.03928 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4))
+  const linear = channels.map((channel) => (channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4))
   const luminance = 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
-  return luminance > 0.54 ? '#12221a' : '#f5fbf7'
+  const darkInkLuminance = 0.013
+  const lightInkLuminance = 0.96
+  const darkContrast = (luminance + 0.05) / (darkInkLuminance + 0.05)
+  const lightContrast = (lightInkLuminance + 0.05) / (luminance + 0.05)
+  // Choose the foreground with the stronger contrast, especially for the gold donate accent.
+  return darkContrast >= lightContrast ? '#12221a' : '#f5fbf7'
 }
 
 export function parseThemeTokenOverrides(value: unknown): Record<string, string> {
   if (!value || typeof value !== 'object') return {}
   const source = value as Record<string, unknown>
-  const entries = Object.entries(source).filter(([, token]) => typeof token === 'string' && HEX.test(token)) as Array<[string, string]>
+  const entries = Object.entries(source).filter(([key, token]) => THEME_COLOR_TOKEN_KEYS.includes(key as (typeof THEME_COLOR_TOKEN_KEYS)[number]) && typeof token === 'string' && HEX.test(token)) as Array<[string, string]>
   return Object.fromEntries(entries) as Record<string, string>
 }
 
@@ -67,24 +80,24 @@ export function buildThemeCssVariables(
   overrides: Record<string, string> = {},
   shape: RuntimeShapeName = 'rounded',
 ): Record<string, string> {
-  const base = themes[themeName] || themes.forest || Object.values(themes)[0] || {}
+  const base = themes[themeName] || themes.midnight || themes.forest || Object.values(themes)[0] || {}
   const theme = { ...base, ...overrides } as RuntimeThemePalette
   const dark = mode === 'dark'
 
-  const primary = hex(theme.primary, '#137b50')
-  const secondary = hex(theme.secondary, '#e56a3f')
-  const accent = hex(theme.accent, '#f4c94b')
-  const background = hex(dark ? theme.darkBackground : theme.background, '#f7faf8')
-  const surface = hex(dark ? theme.darkSurface : theme.surface, '#ffffff')
-  const surfaceAlt = hex(dark ? theme.darkSurfaceAlt : theme.surfaceAlt, '#eef6f1')
-  const surfaceRaised = hex(dark ? theme.darkSurfaceRaised : theme.surfaceRaised, '#ffffff')
-  const border = hex(dark ? theme.darkBorder : theme.border, '#dbe7e0')
-  const ink = hex(dark ? theme.darkInk : theme.ink, '#17251e')
-  const muted = hex(dark ? theme.darkMuted : theme.muted, '#66756d')
-  const headerBg = hex(dark ? theme.darkHeaderBg : theme.headerBg, '#ffffff')
-  const headerInk = hex(dark ? theme.darkHeaderInk : theme.headerInk, '#22352b')
-  const footerBg = hex(dark ? theme.darkFooterBg : theme.footerBg, '#0f2419')
-  const footerInk = hex(dark ? theme.darkFooterInk : theme.footerInk, '#f2faf5')
+  const primary = hex(theme.primary, '#173d5b')
+  const secondary = hex(theme.secondary, '#b55f5f')
+  const accent = hex(theme.accent, '#d7b45f')
+  const background = hex(dark ? theme.darkBackground : theme.background, dark ? '#0b1117' : '#f4f7fa')
+  const surface = hex(dark ? theme.darkSurface : theme.surface, dark ? '#111c24' : '#ffffff')
+  const surfaceAlt = hex(dark ? theme.darkSurfaceAlt : theme.surfaceAlt, dark ? '#16252f' : '#edf3f7')
+  const surfaceRaised = hex(dark ? theme.darkSurfaceRaised : theme.surfaceRaised, dark ? '#1d303c' : '#ffffff')
+  const border = hex(dark ? theme.darkBorder : theme.border, dark ? '#304452' : '#d8e1e8')
+  const ink = hex(dark ? theme.darkInk : theme.ink, dark ? '#eef5fa' : '#1d2b36')
+  const muted = hex(dark ? theme.darkMuted : theme.muted, dark ? '#a8bbc7' : '#65737c')
+  const headerBg = hex(dark ? theme.darkHeaderBg : theme.headerBg, dark ? '#0d171f' : '#ffffff')
+  const headerInk = hex(dark ? theme.darkHeaderInk : theme.headerInk, dark ? '#f0f6fa' : '#263b4b')
+  const footerBg = hex(dark ? theme.darkFooterBg : theme.footerBg, dark ? '#081018' : '#111f2b')
+  const footerInk = hex(dark ? theme.darkFooterInk : theme.footerInk, dark ? '#eff6fb' : '#f3f8fc')
   const primaryStrong = dark
     ? `color-mix(in srgb, ${primary} 55%, ${footerInk})`
     : `color-mix(in srgb, ${primary} 82%, ${ink})`
@@ -93,7 +106,7 @@ export function buildThemeCssVariables(
   const navActiveBg = dark
     ? `color-mix(in srgb, ${navActive} 13%, ${surface})`
     : `color-mix(in srgb, ${primary} 9%, ${surface})`
-  const activeDarkBackground = hex(theme.darkBackground, '#0b1510')
+  const activeDarkBackground = hex(theme.darkBackground, '#0b1117')
   const onPrimary = contrastInk(primary)
   const onSecondary = contrastInk(secondary)
   const onAccent = contrastInk(accent)
@@ -108,6 +121,7 @@ export function buildThemeCssVariables(
     '--sf-card': surface,
     '--sf-surface': surface,
     '--sf-soft': surfaceAlt,
+    '--sf-surface-alt': surfaceAlt,
     '--sf-surface-muted': surfaceAlt,
     '--sf-raised': surfaceRaised,
     '--sf-panel': surfaceRaised,
@@ -126,10 +140,10 @@ export function buildThemeCssVariables(
     '--sf-footer-text': footerInk,
     '--sf-footer-muted': muted,
     '--sf-footer-border': border,
-    '--sf-success': hex(theme.success, '#2e8b57'),
-    '--sf-warning': hex(theme.warning, '#b97816'),
-    '--sf-danger': hex(theme.danger, '#c54848'),
-    '--sf-focus': hex(theme.focus, '#239b68'),
+    '--sf-success': hex(theme.success, '#5d966f'),
+    '--sf-warning': hex(theme.warning, '#a97622'),
+    '--sf-danger': hex(theme.danger, '#c34f4f'),
+    '--sf-focus': hex(theme.focus, '#4e7799'),
     '--sf-on-primary': onPrimary,
     '--sf-text-on-primary': onPrimary,
     '--sf-on-secondary': onSecondary,

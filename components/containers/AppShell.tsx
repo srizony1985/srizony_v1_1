@@ -10,7 +10,7 @@ import Footer from '@/components/ui/Footer'
 import BackToTop from '@/components/ui/BackToTop'
 import VisitorTracker from '@/components/ui/VisitorTracker'
 
-export default function AppShell({ children, initialPreferences, initialSite, initialLang }: { children: ReactNode; initialPreferences?: { theme: any; mode: any; shape: any }; initialSite?: PublicSiteSnapshot | null; initialLang?: Lang }) {
+export default function AppShell({ children, initialPreferences, initialSite, initialLang }: { children: ReactNode; initialPreferences?: { theme: any; mode: any; shape: any; tokens?: Record<string, string> }; initialSite?: PublicSiteSnapshot | null; initialLang?: Lang }) {
   const pathname = usePathname()
   const isAdmin = pathname.startsWith('/admin')
 

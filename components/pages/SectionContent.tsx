@@ -13,7 +13,7 @@ import SafeImage from '@/components/ui/SafeImage'
 import SectionHeading from '@/components/ui/SectionHeading'
 import Stats from '@/components/ui/Stats'
 import VideoPlayer from '@/components/pages/VideoPlayer'
-import type { IconName, PageSection, Section } from '@/types/entityType'
+import type { IconName, PageData, PageSection, Section } from '@/types/entityType'
 import { localizeDigits } from '@/lib/utils'
 import { fallbackCardImage } from '@/data/landingImages'
 
@@ -23,10 +23,11 @@ const dial = (phone: string) => `tel:${phone.replace(/[^\d+]/g, '')}`
 type Localized = { en: string; bn: string }
 
 /** One prop-driven renderer keeps CMS section behavior in one place and shares the same UI primitives. */
-export default function SectionContent({ section }: { section: Section }) {
+export default function SectionContent({ section, page }: { section: Section; page?: PageData }) {
   const { lang, site } = useSite()
   const readMore = site?.global.ui[lang]?.readMore ?? (lang === 'en' ? 'Read more' : 'আরও পড়ুন')
   const t = (en: string, bn: string) => lang === 'en' ? en : bn
+  const isContactPage = page?.slug ? `/${page.slug.replace(/^\/+|\/+$/g, '')}` === '/contact' : false
 
   switch (section.type) {
     case 'richText':
@@ -145,7 +146,7 @@ export default function SectionContent({ section }: { section: Section }) {
             {section.phones.map((phone) => <li key={phone}><Phone size={18} aria-hidden="true" /><a href={dial(phone)}>{localizeDigits(phone, lang)}</a></li>)}
             {section.emails.map((email) => <li key={email}><Mail size={18} aria-hidden="true" /><a href={`mailto:${email}`}>{email}</a></li>)}
           </ul>{section.phones[0] && <a className="sf-btn sf-btn--primary" href={dial(section.phones[0])}><Phone size={16} aria-hidden="true" /> {t('Call us', 'কল করুন')}</a>}</div>
-          {section.locations?.length ? <ul className="sf-contact-locs">{section.locations.map((location, index) => <li key={`${location.name.en}-${index}`} className="sf-card">
+          {!isContactPage && section.locations?.length ? <ul className="sf-contact-locs">{section.locations.map((location, index) => <li key={`${location.name.en}-${index}`} className="sf-card">
             <strong>{location.name[lang]}</strong><span>{location.address[lang]}</span>
             <div className="sf-contact-loc-actions"><a href={mapUrl(location.mapQuery)} target="_blank" rel="noopener noreferrer"><MapPin size={14} aria-hidden="true" /> {section.mapLabel?.[lang] ?? t('Open in Maps', 'ম্যাপে দেখুন')}</a>
               {location.phone && <a href={dial(location.phone)}><Phone size={14} aria-hidden="true" /> {localizeDigits(location.phone, lang)}</a>}

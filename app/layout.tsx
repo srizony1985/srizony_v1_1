@@ -42,15 +42,16 @@ export default async function RootLayout({children}:{children:ReactNode}){
   const publicPath = pathname.startsWith('/bn') ? (pathname.slice(3) || '/') : pathname
   const initialLang = (pathname === '/bn' || pathname.startsWith('/bn/')) ? 'bn' : (cookieStore.get('sf-lang')?.value === 'bn' ? 'bn' : 'en')
   const initialSite = pathname.startsWith('/admin') || pathname.startsWith('/api') ? null : await getPublicSiteSnapshot(publicPath)
-  const rawTheme = cookieStore.get('sf-theme')?.value
+  // Public design defaults: Midnight palette, dark mode, and soft geometry.
+  // The dark-mode switch can persist an explicit light-mode preference.
   const rawMode = cookieStore.get('sf-mode')?.value
-  const rawShape = cookieStore.get('sf-shape')?.value
-  const theme = ['forest','ocean','plum','sage','terracotta','midnight','sand'].includes(rawTheme || '') ? rawTheme : 'forest'
-  const mode = rawMode === 'dark' ? 'dark' : 'light'
-  const shape = ['rounded','soft','square'].includes(rawShape || '') ? rawShape : 'rounded'
+  const theme = 'midnight'
+  const mode = rawMode === 'light' ? 'light' : 'dark'
+  const shape = 'soft'
+  const tokenOverrides: Record<string, string> = {}
 
   const organizationLd = {
     '@context':'https://schema.org', '@type':'Organization', name:'Srizony Foundation', alternateName:'সৃজনী ফাউন্ডেশন', url:siteUrl, logo:`${siteUrl}${images.logo}`, foundingDate:'1985', email:'info@srizonyfoundation.org.bd', telephone:systemData.contactInfo?.primaryPhone || '+8802477747270', sameAs:[systemData.contactInfo?.socials?.linkedin].filter(Boolean)
   }
-  return <html lang={initialLang} className={`${bodyFont.variable} ${displayFont.variable} ${banglaFont.variable}`} data-scroll-behavior="smooth" data-theme={theme} data-mode={mode} data-shape={shape}><body><ToastProvider/><Link className="skip-link" href="#main-content">Skip to content</Link><AppShell initialPreferences={{theme: theme as any, mode: mode as any, shape: shape as any}} initialSite={initialSite} initialLang={initialLang}>{children}</AppShell><script type="application/ld+json" dangerouslySetInnerHTML={{__html:JSON.stringify(organizationLd)}}/></body></html>
+  return <html lang={initialLang} className={`${bodyFont.variable} ${displayFont.variable} ${banglaFont.variable}`} data-scroll-behavior="smooth" data-theme={theme} data-mode={mode} data-shape={shape}><body><ToastProvider/><Link className="skip-link" href="#main-content">Skip to content</Link><AppShell initialPreferences={{theme: theme as any, mode: mode as any, shape: shape as any, tokens: tokenOverrides}} initialSite={initialSite} initialLang={initialLang}>{children}</AppShell><script type="application/ld+json" dangerouslySetInnerHTML={{__html:JSON.stringify(organizationLd)}}/></body></html>
 }

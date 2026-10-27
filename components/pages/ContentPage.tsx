@@ -22,6 +22,7 @@ export default function ContentPage({ slug }: { slug: string }) {
     return (
       <LogoLoader
         fullScreen
+        size="lg"
         label={
           lang === 'en'
             ? 'Loading content'

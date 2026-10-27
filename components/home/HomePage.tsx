@@ -75,7 +75,7 @@ export default function HomePage({ page }: { page: PageData }) {
         }
         // All other section types (including legacy rich text, timeline, diagrams and cards)
         // use the generic renderer so Page Builder controls always affect the public homepage.
-        return <SectionRenderer key={key} sections={[section]} />
+        return <SectionRenderer key={key} sections={[section]} page={page} />
       })}
     </Container>
   )

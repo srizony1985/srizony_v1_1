@@ -19,7 +19,12 @@ const SECTION_TYPES: Section['type'][] = ['richText', 'stats', 'cards', 'gallery
 const BUTTON_TYPES: SectionButtonType[] = ['none', 'primary', 'secondary', 'both']
 const database = () => { if (!db) throw new NavError('DATABASE_URL is not configured', 503); return db }
 const run = (q: ReturnType<typeof sql>) => withDbRetry(() => database().execute(q))
-const refresh = () => { revalidatePath('/', 'layout'); revalidateTag('site-content', 'max') }
+const refresh = () => {
+  revalidatePath('/', 'layout')
+  revalidatePath('/api/navigation')
+  revalidatePath('/api/site')
+  revalidateTag('site-content', 'max')
+}
 
 export const RENDERED_COMPONENT_TYPES: Section['type'][] = ['richText', 'stats', 'cards', 'gallery', 'timeline', 'diagram', 'table', 'video', 'cta', 'noticeList', 'contact', 'donation', 'carousel', 'contentFeed', 'reports']
 

@@ -179,7 +179,7 @@ export default function AdminThemeShell({
       const shape = detail.shape || (root.dataset.shape === 'soft' || root.dataset.shape === 'square' ? root.dataset.shape : 'rounded')
       const vars = buildThemeCssVariables(themeConfig, themeName, mode, detail.tokens || {}, shape)
 
-      root.dataset.theme = mode
+      root.dataset.theme = themeName
       root.dataset.mode = mode
       root.dataset.shape = shape
       apply(vars)

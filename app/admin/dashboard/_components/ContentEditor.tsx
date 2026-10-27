@@ -14,8 +14,8 @@ type SlugState = 'idle' | 'checking' | 'ok' | 'taken' | 'invalid'
 const slugify = (v: string) => v.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 120)
 const blank = (component: ContentComponent): ContentValues => ({ date: new Date().toISOString().slice(0, 10), ...(component === 'team' ? {} : {}) })
 
-function Input({ field, name, value, disabled, onChange, label }: { field: FieldDef; name: string; value: string; disabled: boolean; onChange: (v: string) => void; label: string }) {
-  const common = { id: `f-${name}`, disabled, value, 'aria-label': label, onChange: (e: React.ChangeEvent<HTMLInputElement & HTMLTextAreaElement & HTMLSelectElement>) => onChange(e.target.value) }
+function Input({ field, name, value, disabled, onChange, label, error }: { field: FieldDef; name: string; value: string; disabled: boolean; onChange: (v: string) => void; label: string; error?: string }) {
+  const common = { id: `f-${name}`, disabled, value, 'aria-label': label, 'aria-invalid': Boolean(error) || undefined, 'aria-describedby': error ? `f-${name}-error` : undefined, onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => onChange(e.target.value) }
   if (field.type === 'textarea') return <textarea className="ui-textarea" rows={field.key === 'body' ? 7 : 3} {...common} />
   if (field.type === 'select') return <select className="ui-select" {...common}><option value="">— Select —</option>{field.options!.map((o) => <option key={o} value={o}>{o}</option>)}</select>
   const type = field.type === 'date' ? 'date' : field.type === 'number' ? 'number' : field.type === 'email' ? 'email' : field.type === 'url' ? 'url' : 'text'
@@ -41,9 +41,10 @@ export function ContentEditor({ component, record, onSaved, onDeleted, onClose }
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [saveError, setSaveError] = useState('')
   const [saveFieldError, setSaveFieldError] = useState('')
+  const [validationErrors, setValidationErrors] = useState<Record<string, string>>({})
   const checkId = useRef(0)
 
-  useEffect(() => { setValues(record?.values ?? blank(component)); setSlug(record?.slug ?? ''); setSlugTouched(!!record); setEditing(true); setSlugState('idle'); setSaveError(''); setSaveFieldError('') }, [record, component])
+  useEffect(() => { setValues(record?.values ?? blank(component)); setSlug(record?.slug ?? ''); setSlugTouched(!!record); setEditing(true); setSlugState('idle'); setSaveError(''); setSaveFieldError(''); setValidationErrors({}) }, [record, component])
 
   // Live slug validation (format + uniqueness) while editing.
   useEffect(() => {
@@ -57,7 +58,7 @@ export function ContentEditor({ component, record, onSaved, onDeleted, onClose }
     return () => clearTimeout(t)
   }, [slug, editing, component, record])
 
-  const set = (key: string, v: string) => { setSaveError(''); setSaveFieldError(''); setValues((cur) => {
+  const set = (key: string, v: string) => { setSaveError(''); setSaveFieldError(''); setValidationErrors((current) => { const next = { ...current }; delete next[key]; return next }); setValues((cur) => {
     const next = { ...cur, [key]: v }
     if (isNew && !slugTouched && key === 'title_en') setSlug(slugify(v))
     return next
@@ -66,10 +67,32 @@ export function ContentEditor({ component, record, onSaved, onDeleted, onClose }
   const title = values.title_en || (isNew ? `New ${def.label.toLowerCase()}` : slug)
   const status = record?.status ?? 'draft'
 
+  function validateFields(): Record<string, string> {
+    const next: Record<string, string> = {}
+    for (const field of def.fields) {
+      const fieldKeys = field.bilingual ? [`${field.key}_en`, `${field.key}_bn`] : [field.key]
+      for (const key of fieldKeys) {
+        const value = String(values[key] ?? '').trim()
+        const requiredForThisLocale = Boolean(field.required && (!field.bilingual || key.endsWith('_en')))
+        if (requiredForThisLocale && !value) { next[key] = `${field.label} is required.`; continue }
+        if (!value) continue
+        if (field.max && value.length > field.max) { next[key] = `${field.label} must be ${field.max} characters or fewer.`; continue }
+        if (field.type === 'email' && (value.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(value))) { next[key] = 'Enter a valid email address.'; continue }
+        if (field.type === 'url' && !value.startsWith('/') && (() => { try { const parsed = new URL(value); return parsed.protocol !== 'https:' && parsed.protocol !== 'http:' } catch { return true } })()) { next[key] = 'Enter a valid https:// URL or a site-relative path beginning with /.'}
+        if (field.type === 'number' && (!Number.isFinite(Number(value)) || Number(value) < 0)) { next[key] = 'Enter a non-negative number.'; continue }
+        if (field.type === 'select' && field.options && !field.options.includes(value)) { next[key] = 'Choose one of the listed options.' }
+      }
+    }
+    return next
+  }
+
   async function save() {
-    if (!SLUG_PATTERN.test(slug)) return toast.error('Enter a valid slug (lowercase letters, numbers and hyphens).')
+    if (!SLUG_PATTERN.test(slug)) { setSaveError('Enter a valid slug using lowercase letters, numbers and hyphens.'); return }
+    const nextValidationErrors = validateFields()
+    setValidationErrors(nextValidationErrors)
+    if (Object.keys(nextValidationErrors).length) { setSaveFieldError(''); setSaveError('Please correct the highlighted fields before saving.'); return }
     setBusy(true)
-    setSaveError(''); setSaveFieldError('')
+    setSaveError(''); setSaveFieldError(''); setValidationErrors({})
     try {
       // Slug validation is always re-run immediately before saving.
       if ((!record || slug !== record.slug) && (await isSlugTaken(component, slug, record?.id))) { setSlugState('taken'); throw new Error(`The slug “${slug}” is already in use.`) }
@@ -118,15 +141,15 @@ export function ContentEditor({ component, record, onSaved, onDeleted, onClose }
       <CardContent>
         <div className="cms-form-grid">
           <label className="cms-field cms-span-2" htmlFor="f-slug"><span>Slug <b>*</b></span>
-            <input id="f-slug" className="ui-input" value={slug} disabled={!editing} onChange={(e) => { setSlug(e.target.value.toLowerCase()); setSlugTouched(true); setSaveError(''); setSaveFieldError('') }} placeholder="unique-url-name" />
-            {editing && slugHint && <small className={`cms-slug cms-slug-${slugState}`}>{slugHint}</small>}
+            <input id="f-slug" className="ui-input" value={slug} disabled={!editing} onChange={(e) => { setSlug(e.target.value.toLowerCase()); setSlugTouched(true); setSaveError(''); setSaveFieldError('') }} placeholder="unique-url-name" aria-invalid={slugState === 'invalid' || slugState === 'taken'} aria-describedby={editing && slugHint ? 'f-slug-help' : undefined} />
+            {editing && slugHint && <small id="f-slug-help" className={`cms-slug cms-slug-${slugState}`} role="status">{slugHint}</small>}
           </label>
           {def.fields.map((field) => field.type === 'image'
             ? <div key={field.key} className="cms-span-2"><MediaField label={field.label} value={values[field.key] ?? ''} onChange={(v) => set(field.key, v)} disabled={!editing} alt={values.title_en ?? ''} helper={field.help} />{saveFieldError === field.key && <small className="cms-field-error">Please check this image field.</small>}</div>
             : field.bilingual
               ? (['en', 'bn'] as const).map((lng) => { const name = `${field.key}_${lng}`; const label = `${field.label} (${lng === 'en' ? 'English' : 'বাংলা'})`; return (
-                  <label key={name} className={`cms-field ${field.type === 'textarea' ? 'cms-span-2' : ''}`} htmlFor={`f-${name}`}><span>{label}{field.required && lng === 'en' && <b> *</b>}</span><Input field={field} name={name} label={label} value={values[name] ?? ''} disabled={!editing} onChange={(v) => set(name, v)} />{field.help && editing && <small className="admin-small-note">{field.help}</small>}{saveFieldError === name && <small className="cms-field-error">Please check this value.</small>}</label>) })
-              : <label key={field.key} className={`cms-field ${field.type === 'textarea' ? 'cms-span-2' : ''}`} htmlFor={`f-${field.key}`}><span>{field.label}{field.required && <b> *</b>}</span><Input field={field} name={field.key} label={field.label} value={values[field.key] ?? ''} disabled={!editing} onChange={(v) => set(field.key, v)} />{field.help && editing && <small className="admin-small-note">{field.help}</small>}{saveFieldError === field.key && <small className="cms-field-error">Please check this value.</small>}</label>)}
+                  <label key={name} className={`cms-field ${field.type === 'textarea' ? 'cms-span-2' : ''}`} htmlFor={`f-${name}`}><span>{label}{field.required && lng === 'en' && <b> *</b>}</span><Input field={field} name={name} label={label} value={values[name] ?? ''} disabled={!editing} onChange={(v) => set(name, v)} error={validationErrors[name] || (saveFieldError === name ? 'Please check this value.' : undefined)} />{field.help && editing && <small className="admin-small-note">{field.help}</small>}{(validationErrors[name] || saveFieldError === name) && <small id={`f-${name}-error`} className="cms-field-error" role="alert">{validationErrors[name] || 'Please check this value.'}</small>}</label>) })
+              : <label key={field.key} className={`cms-field ${field.type === 'textarea' ? 'cms-span-2' : ''}`} htmlFor={`f-${field.key}`}><span>{field.label}{field.required && <b> *</b>}</span><Input field={field} name={field.key} label={field.label} value={values[field.key] ?? ''} disabled={!editing} onChange={(v) => set(field.key, v)} error={validationErrors[field.key] || (saveFieldError === field.key ? 'Please check this value.' : undefined)} />{field.help && editing && <small className="admin-small-note">{field.help}</small>}{(validationErrors[field.key] || saveFieldError === field.key) && <small id={`f-${field.key}-error`} className="cms-field-error" role="alert">{validationErrors[field.key] || 'Please check this value.'}</small>}</label>)}
         </div>
         {saveError && <div className="cms-save-error" role="alert"><strong>Changes were not saved.</strong><span>{saveError}</span><small>Your edits are still in this form. Correct the highlighted field or retry after resolving the issue.</small></div>}
         {editing && <div className="cms-form-footer">

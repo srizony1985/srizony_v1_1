@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server'
 import { getPublicSiteSnapshot } from '@/lib/site'
 
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
@@ -12,7 +15,7 @@ export async function GET(request: Request) {
       : { ok: true, ...snapshot }
     return NextResponse.json(payload, {
       headers: {
-        'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300',
+        'Cache-Control': 'private, no-store, max-age=0, must-revalidate',
       },
     })
   } catch (error) {

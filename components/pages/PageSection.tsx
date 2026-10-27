@@ -1,12 +1,12 @@
 'use client'
 
-import type { PageSection as ManagedPageSection, Section } from '@/types/entityType'
+import type { PageData, PageSection as ManagedPageSection, Section } from '@/types/entityType'
 import { useSite } from '@/components/containers/SiteProvider'
 import ConfiguredLink from '@/components/ui/ConfiguredLink'
 import SectionContent from '@/components/pages/SectionContent'
 
 /** Renders a section with its CMS-managed visibility and optional buttons. */
-export default function PageSection({ section }: { section: Section }) {
+export default function PageSection({ section, page }: { section: Section; page?: PageData }) {
   const { lang } = useSite()
   const managed = section as ManagedPageSection
   if (managed.visible === false) return null
@@ -18,7 +18,7 @@ export default function PageSection({ section }: { section: Section }) {
 
   return (
     <>
-      <SectionContent section={section} />
+      <SectionContent section={section} page={page} />
       {hasButtons && (
         <section className="sf-block sf-section-button-row">
           <div className="sf-cta-actions">

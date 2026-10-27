@@ -8,6 +8,7 @@ import { MAP_H, MAP_W, OUTLINE_COORDS, OUTLINE_PATH, project } from '@/lib/bangl
 import { localizeDigits } from '@/lib/utils'
 import type { Lang, PageData } from '@/types/entityType'
 import { useSite } from '@/components/containers/SiteProvider'
+import LogoLoader from '@/components/ui/LogoLoader'
 import Reveal from '@/components/containers/Reveal'
 import HomeSectionActions from '@/components/home/HomeSectionActions'
 
@@ -263,19 +264,25 @@ function BranchDetail({ r, lang, onClose }: { r: Resolved; lang: Lang; onClose?:
 type FootprintCopySection = Extract<PageData['sections'][number], { type: 'richText' }>
 const normalizeFootprintHeading = (value?: string) => (value ?? '').trim().toLocaleLowerCase().replace(/[\s_-]+/g, ' ')
 
-export default function LocationMaps({ page }: { page: PageData }) {
+export default function LocationMaps({ page, variant = 'default' }: { page: PageData; variant?: 'default' | 'contact' }) {
   const { lang, site, mode: colorMode, theme } = useSite()
   const tr = (en: string, bn: string) => (lang === 'en' ? en : bn)
   const contact: ContactLite = site?.global?.contactInfo ?? {}
   const footprintCopy = page.sections.find((section): section is FootprintCopySection => section.type === 'richText' && (section.homeComponent === 'locations' || normalizeFootprintHeading(section.heading?.en) === 'our offices across bangladesh'))
-  const footprintEyebrow = footprintCopy?.eyebrow ?? FOOTPRINT_INTRO.eyebrow
-  const footprintTitle = footprintCopy?.heading ?? FOOTPRINT_INTRO.title
+  const footprintEyebrow = variant === 'contact'
+    ? { en: 'Contact & locations', bn: 'যোগাযোগ ও অবস্থান' }
+    : footprintCopy?.eyebrow ?? FOOTPRINT_INTRO.eyebrow
+  const footprintTitle = variant === 'contact'
+    ? { en: 'Find a Srizony office', bn: 'সৃজনীর অফিস খুঁজুন' }
+    : footprintCopy?.heading ?? FOOTPRINT_INTRO.title
   const footprintParagraphs = footprintCopy?.body?.filter((paragraph) => paragraph.en?.trim() || paragraph.bn?.trim()) ?? []
   // An explicitly saved empty body is a valid CMS choice; only use defaults when no
   // section document is present, not when the editor intentionally clears the copy.
-  const footprintLead = footprintCopy
-    ? { en: footprintParagraphs.map((paragraph) => paragraph.en).filter(Boolean).join(' '), bn: footprintParagraphs.map((paragraph) => paragraph.bn).filter(Boolean).join(' ') }
-    : FOOTPRINT_INTRO.lead
+  const footprintLead = variant === 'contact'
+    ? { en: 'Search offices by district or branch, select a location to view contact details, and open directions in Maps.', bn: 'জেলা বা শাখা দিয়ে অফিস খুঁজুন, যোগাযোগের তথ্য দেখতে একটি অবস্থান নির্বাচন করুন এবং ম্যাপে যাওয়ার নির্দেশনা খুলুন।' }
+    : footprintCopy
+      ? { en: footprintParagraphs.map((paragraph) => paragraph.en).filter(Boolean).join(' '), bn: footprintParagraphs.map((paragraph) => paragraph.bn).filter(Boolean).join(' ') }
+      : FOOTPRINT_INTRO.lead
 
   const [query, setQuery] = useState('')
   const [hoverId, setHoverId] = useState<string | null>(null)
@@ -618,9 +625,9 @@ export default function LocationMaps({ page }: { page: PageData }) {
     const group = circlesRef.current
     if (!L || !group || mode !== 'map') return
     group.clearLayers()
-    const primary = cssVar('--sf-primary', '#137b50')
-    const accent = cssVar('--sf-secondary', '#e56a3f')
-    const districtFill = colorMode === 'dark' ? '#263b31' : '#e4eee8'
+    const primary = cssVar('--sf-primary', '#173d5b')
+    const accent = cssVar('--sf-accent', '#d7b45f')
+    const districtFill = colorMode === 'dark' ? cssVar('--sf-bg', '#0b1117') : cssVar('--sf-soft', '#edf3f7')
     const selectedName = normalizeDistrictName(active?.branch.district.en)
 
     if (districtFeatures.length) {
@@ -630,7 +637,7 @@ export default function LocationMaps({ page }: { page: PageData }) {
         style: (feature: MapFeature | undefined) => {
           const selected = Boolean(feature && normalizeDistrictName(featureDistrictName(feature)) === selectedName && selectedName)
           return {
-            color: selected ? accent : '#72877e',
+            color: selected ? accent : cssVar('--sf-muted', '#a8bbc7'),
             weight: selected ? 3.25 : 1.05,
             opacity: 1,
             fillColor: selected ? accent : districtFill,
@@ -643,7 +650,7 @@ export default function LocationMaps({ page }: { page: PageData }) {
       if (countryFeature) {
         L.geoJSON(countryFeature, {
           interactive: false,
-          style: { color: '#355549', weight: 3, opacity: 1, fillOpacity: 0, interactive: false, lineJoin: 'round' },
+          style: { color: cssVar('--sf-ink', '#eef5fa'), weight: 3, opacity: 0.88, fillOpacity: 0, interactive: false, lineJoin: 'round' },
         }).addTo(group)
       }
     } else {
@@ -651,11 +658,11 @@ export default function LocationMaps({ page }: { page: PageData }) {
       if (countryFeature) {
         L.geoJSON(countryFeature, {
           interactive: false,
-          style: { color: '#294d3e', weight: 3, opacity: 1, fillColor: districtFill, fillOpacity: 0.68, interactive: false, lineJoin: 'round' },
+          style: { color: cssVar('--sf-ink', '#eef5fa'), weight: 3, opacity: 0.92, fillColor: districtFill, fillOpacity: 0.68, interactive: false, lineJoin: 'round' },
         }).addTo(group)
       } else {
         L.polygon(OUTLINE_COORDS.map(([lng, lat]) => [lat, lng]), {
-          color: '#294d3e', weight: 3, opacity: 1, fillColor: '#e4eee8', fillOpacity: 0.78,
+          color: cssVar('--sf-ink', '#eef5fa'), weight: 3, opacity: 0.92, fillColor: cssVar('--sf-soft', '#16252f'), fillOpacity: 0.78,
           lineJoin: 'round', interactive: false,
         }).addTo(group)
       }
@@ -698,15 +705,17 @@ export default function LocationMaps({ page }: { page: PageData }) {
     }
   }
 
-  if (footprintCopy?.visible === false) return null
+  if (variant !== 'contact' && footprintCopy?.visible === false) return null
+  const sectionId = variant === 'contact' ? 'contact-locations' : 'national-footprint'
+  const titleId = variant === 'contact' ? 'sf-contact-map-title' : 'sf-fp-title'
 
   return (
-    <section id="national-footprint" ref={sectionRef} className="sf-section sf-footprint" aria-labelledby="sf-fp-title">
+    <section id={sectionId} ref={sectionRef} className={`sf-section sf-footprint${variant === 'contact' ? ' sf-footprint--contact' : ''}`} aria-labelledby={titleId}>
       <div className="sf-container">
         <Reveal>
           <header className="sf-sec-head sf-sec-head--center">
             <span className="sf-eyebrow">{footprintEyebrow[lang]}</span>
-            <h2 id="sf-fp-title" className="sf-h2">{footprintTitle[lang]}</h2>
+            <h2 id={titleId} className="sf-h2">{footprintTitle[lang]}</h2>
             <p className="sf-lead">{footprintLead[lang]}</p>
           </header>
         </Reveal>
@@ -745,7 +754,12 @@ export default function LocationMaps({ page }: { page: PageData }) {
                 </svg>
               )}
 
-              {mode === 'loading' && <div className="sf-fp-loading" aria-hidden="true"><i /><i /><i /></div>}
+              {mode === 'loading' && (
+                <div className="sf-fp-loading" role="status" aria-live="polite">
+                  <LogoLoader size="sm" inline label="" />
+                  <span className="sf-sr">{tr('Loading map', 'মানচিত্র লোড হচ্ছে')}</span>
+                </div>
+              )}
 
               {mode !== 'map' && active && !districtFeatures.length && (() => {
                 const point = pixel(active)

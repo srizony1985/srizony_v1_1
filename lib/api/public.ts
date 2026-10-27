@@ -4,6 +4,12 @@ import { request } from './http'
 export const getSessionProfile = () => request<{ user?: any }>('/api/auth/me', { cache: 'no-store' })
 export const getPageSnapshot = (slug: string, signal?: AbortSignal) => request<any>(`/api/site?slug=${encodeURIComponent(slug)}&view=page`, { cache: 'no-store', signal })
 
+/** Full public snapshot used to hydrate the site shell after navigating out of the CMS. */
+export const getSiteSnapshot = (slug: string, signal?: AbortSignal) => request<any>(`/api/site?slug=${encodeURIComponent(slug)}`, { cache: 'no-store', signal })
+
+/** Live CMS navigation; this endpoint intentionally bypasses browser and CDN caches. */
+export const getNavigationSnapshot = (signal?: AbortSignal) => request<{ primaryNav: any[]; navGroups: any[]; ui?: any }>('/api/navigation', { cache: 'no-store', signal })
+
 export const startGoogleAuth = (payload: unknown) => request<any>('/api/auth/start', { method: 'POST', json: payload })
 export const requestEmailCode = (email: string) => request<any>('/api/auth/email', { method: 'POST', json: { action: 'request', purpose: 'enquiry', email } })
 export const verifyEmailCode = (payload: unknown) => request<any>('/api/auth/email', { method: 'POST', json: { action: 'verify', purpose: 'enquiry', ...(payload as object) } })

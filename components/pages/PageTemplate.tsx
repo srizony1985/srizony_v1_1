@@ -8,6 +8,7 @@ import type { Bilingual, NavGroup, NavItem, PageData, Section } from '@/types/en
 import SafeImage from '@/components/ui/SafeImage'
 import { useSite } from '@/components/containers/SiteProvider'
 import SectionRenderer from '@/components/pages/SectionRenderer'
+import LocationMaps from '@/components/home/LocationMaps'
 import Container from '@/components/containers/Container'
 
 type Crumb = { label: Bilingual; href?: string }
@@ -78,6 +79,7 @@ function findPageMenu(items: NavItem[], path: string): NavItem | null {
 
 export default function PageTemplate({ page, canonicalPath }: { page: PageData; canonicalPath: string }) {
   const { lang, site } = useSite()
+  const isContactPage = `/${page.slug.replace(/^\/+|\/+$/g, '')}` === '/contact'
   const navGroups = site?.global.navGroups ?? []
   const ui = site?.global.ui
 
@@ -145,7 +147,8 @@ export default function PageTemplate({ page, canonicalPath }: { page: PageData; 
 
       <Container className="sf-page-grid">
         <div className="sf-page-main">
-          <SectionRenderer sections={sections} />
+          <SectionRenderer sections={sections} page={page} />
+          {isContactPage && <LocationMaps page={page} variant="contact" />}
         </div>
       </Container>
     </Container>

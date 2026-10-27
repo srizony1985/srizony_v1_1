@@ -2,7 +2,7 @@ import { adminRequest } from './http'
 
 export type Role = 'admin' | 'editor' | 'analyst'
 export type CmsUser = { id: number | null; email: string; role: Role; status: 'active' | 'disabled'; source: 'environment' | 'database'; lastLoginAt?: string | null; createdAt?: string | null }
-export type Theme = Record<string, string>
+export type Theme = Record<string, unknown>
 export type DatabaseInfo = { tables: { name: string; label: string; count: number | null }[]; apis: { method: string; path: string; access: string; description: string }[]; connected: boolean }
 
 export const getUsers = async () => (await adminRequest<{ users: CmsUser[] }>('/api/admin/users', {}, 'Unable to load users.')).users
