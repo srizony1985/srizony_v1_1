@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { completeEnquiry, requestEmailVerification, upsertFormUser, verifyEmailCode } from '@/lib/formFlow'
 import { AUTH_COOKIE, cookieBase, sign } from '@/lib/authSession'
+import { enforcePublicRequestLimits } from '@/lib/publicRateLimit'
+import { readBoundedRequestText } from '@/lib/securityPrimitives.mjs'
 
 const baseSchema = z.object({
   email: z.email().max(254),
@@ -21,15 +23,22 @@ const verifySchema = baseSchema.extend({
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json().catch(() => null)
+    const raw = await readBoundedRequestText(req, 16_384)
+    if (raw === null) return NextResponse.json({ ok: false, error: { code: 'REQUEST_TOO_LARGE', message: 'Request body is too large.' } }, { status: 413 })
+    let body: unknown = null
+    try { body = JSON.parse(raw) } catch { /* schema validation returns a generic input error */ }
     const request = requestSchema.safeParse(body)
     if (request.success) {
+      const limits = await enforcePublicRequestLimits({ request: req, scope: 'auth-email-request', subject: request.data.email.toLowerCase(), subjectLimit: 3, subjectWindowSeconds: 900, ipLimit: 15, ipWindowSeconds: 900, globalLimit: 250, globalWindowSeconds: 3600 })
+      if (!limits.allowed) return NextResponse.json({ ok: false, error: { code: 'RATE_LIMITED', message: 'Too many verification requests. Please try again later.' } }, { status: 429, headers: { 'Retry-After': String(limits.retryAfter), 'Cache-Control': 'no-store' } })
       await requestEmailVerification(request.data.email, request.data.purpose)
       return NextResponse.json({ ok: true, status: 'verification_sent' }, { status: 202 })
     }
 
     const parsed = verifySchema.safeParse(body)
     if (!parsed.success) return NextResponse.json({ ok: false, error: { code: 'INVALID_INPUT', message: 'Please check the verification details.' } }, { status: 400 })
+    const limits = await enforcePublicRequestLimits({ request: req, scope: 'auth-email-verify', subject: parsed.data.email.toLowerCase(), subjectLimit: 10, subjectWindowSeconds: 900, ipLimit: 30, ipWindowSeconds: 900, globalLimit: 1200, globalWindowSeconds: 3600 })
+    if (!limits.allowed) return NextResponse.json({ ok: false, error: { code: 'RATE_LIMITED', message: 'Too many verification attempts. Please try again later.' } }, { status: 429, headers: { 'Retry-After': String(limits.retryAfter), 'Cache-Control': 'no-store' } })
     await verifyEmailCode(parsed.data.email, parsed.data.purpose, parsed.data.code)
 
     if (!parsed.data.name || !parsed.data.message || !parsed.data.consentAt) return NextResponse.json({ ok: false, error: { code: 'MISSING_ENQUIRY_DATA', message: 'The enquiry details are incomplete.' } }, { status: 400 })
@@ -51,6 +60,7 @@ export async function POST(req: Request) {
     if (error instanceof Error && error.message === 'DAILY_LIMIT') return NextResponse.json({ ok: false, error: { code: 'DAILY_LIMIT', message: 'You have already sent an enquiry today. Please try again tomorrow.' } }, { status: 429 })
     if (error instanceof Error && error.message === 'CODE_COOLDOWN') return NextResponse.json({ ok: false, error: { code: 'CODE_COOLDOWN', message: 'A verification code was already sent recently. Please check your email.' } }, { status: 429 })
     if (error instanceof Error && (error.message === 'CODE_INVALID' || error.message === 'CODE_LOCKED')) return NextResponse.json({ ok: false, error: { code: error.message, message: error.message === 'CODE_LOCKED' ? 'Too many incorrect codes. Request a new code later.' : 'The verification code is invalid or expired.' } }, { status: 400 })
-    return NextResponse.json({ ok: false, error: { code: 'AUTH_SERVICE_UNAVAILABLE', message: error instanceof Error ? error.message : 'The verification service is temporarily unavailable.' } }, { status: 503 })
+    console.error('Public email verification flow failed', error)
+    return NextResponse.json({ ok: false, error: { code: 'AUTH_SERVICE_UNAVAILABLE', message: 'The verification service is temporarily unavailable. Please try again later.' } }, { status: 503 })
   }
 }

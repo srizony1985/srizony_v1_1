@@ -60,6 +60,11 @@ export const donations = pgTable('donations', {
   status: varchar('status', { length: 24 }).notNull().default('pending'),
   donor: jsonb('donor'),
   receiptSentAt: timestamp('receipt_sent_at', { withTimezone: true }),
+  idempotencyKey: varchar('idempotency_key', { length: 64 }),
+  idempotencyFingerprint: varchar('idempotency_fingerprint', { length: 64 }),
+  gatewayPageUrl: text('gateway_page_url'),
+  gatewayRiskLevel: smallint('gateway_risk_level'),
+  gatewayRiskTitle: varchar('gateway_risk_title', { length: 50 }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 })
 

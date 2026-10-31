@@ -11,6 +11,7 @@ import { cookies } from 'next/headers'
 import AppShell from '@/components/containers/AppShell'
 import { headers } from 'next/headers'
 import { getPublicSiteSnapshot } from '@/lib/site'
+import { serializeJsonForHtmlScript } from '@/lib/securityPrimitives.mjs'
 
 const defaultIdentity = SITE_FALLBACKS.systemData.siteIdentity
 
@@ -75,5 +76,5 @@ export default async function RootLayout({children}:{children:ReactNode}){
   const organizationLd = {
     '@context':'https://schema.org', '@type':'Organization', name: identity.name, alternateName: identity.alternateName, url: identity.canonicalUrl, logo: identity.logo, foundingDate: identity.foundingDate, email: initialSite?.global.contactInfo?.email || undefined, telephone: initialSite?.global.contactInfo?.primaryPhone || undefined, sameAs:[initialSite?.global.contactInfo?.socials?.linkedin].filter(Boolean)
   }
-  return <html lang={initialLang} className={`${bodyFont.variable} ${displayFont.variable} ${banglaFont.variable}`} data-scroll-behavior="smooth" data-theme={theme} data-mode={mode} data-shape={shape}><body><ToastProvider/><Link className="skip-link" href="#main-content">Skip to content</Link><AppShell initialPreferences={{theme: theme as any, mode: mode as any, shape: shape as any, tokens: tokenOverrides}} initialSite={initialSite} initialLang={initialLang}>{children}</AppShell><script type="application/ld+json" dangerouslySetInnerHTML={{__html:JSON.stringify(organizationLd)}}/></body></html>
+  return <html lang={initialLang} className={`${bodyFont.variable} ${displayFont.variable} ${banglaFont.variable}`} data-scroll-behavior="smooth" data-theme={theme} data-mode={mode} data-shape={shape}><body><ToastProvider/><Link className="skip-link" href="#main-content">Skip to content</Link><AppShell initialPreferences={{theme: theme as any, mode: mode as any, shape: shape as any, tokens: tokenOverrides}} initialSite={initialSite} initialLang={initialLang}>{children}</AppShell><script type="application/ld+json" dangerouslySetInnerHTML={{__html: serializeJsonForHtmlScript(organizationLd)}}/></body></html>
 }

@@ -1,5 +1,17 @@
--- Neon reset for the structural entity database.
--- WARNING: this deletes ALL CMS/content and operational records.
+-- DESTRUCTIVE MAINTENANCE ONLY. This deletes all CMS/content and operational records.
+-- Run only in an isolated maintenance session after verifying the target database:
+--   SET srizony.allow_destructive_reset = 'YES';
+--   SET srizony.expected_database = 'the-exact-database-name';
+--   \i neon-reset.sql
+-- Do not place either SET command in deployment automation.
+DO $$
+BEGIN
+  IF current_setting('srizony.allow_destructive_reset', true) IS DISTINCT FROM 'YES'
+     OR current_setting('srizony.expected_database', true) IS DISTINCT FROM current_database() THEN
+    RAISE EXCEPTION 'Blocked: set srizony.allow_destructive_reset=YES and srizony.expected_database to the exact current database name in this session.';
+  END IF;
+END
+$$;
 BEGIN;
 TRUNCATE TABLE
   payment_info,

@@ -1095,7 +1095,7 @@ html[data-mode='dark'] .sf-fp-svg .sf-fp-country-fill { fill: color-mix(in srgb,
 .sf-job-application-footer p { max-width: 65ch; font-size: .83rem; line-height: 1.5; }
 @media (max-width: 640px) {
   .sf-job-modal-backdrop { align-items: end; padding: 0; }
-  .sf-job-modal { width: 100%; max-height: 94dvh; max-height: calc(100dvh - env(safe-area-inset-top)); border-radius: 18px 18px 0 0; }
+  .sf-job-modal { width: 100%; max-height: 94dvh; max-height: calc(100dvh - env(safe-area-inset-top)); border-radius: var(--sf-radius-panel) var(--sf-radius-panel) 0 0; }
   .sf-job-modal-header, .sf-job-modal-progress { padding-inline: 17px; }
   .sf-job-modal-body { padding: 15px 17px calc(22px + env(safe-area-inset-bottom)); }
   .sf-job-modal-progress { gap: 7px; font-size: .72rem; }
@@ -1113,7 +1113,7 @@ html[data-mode='dark'] .sf-fp-svg .sf-fp-country-fill { fill: color-mix(in srgb,
 
 /* A more legible CMS rhythm without changing the public landing-page design. */
 .admin-main { padding: clamp(14px, 1.8vw, 22px) clamp(14px, 2vw, 26px) 28px; }
-.admin-main :is(.admin-data-card, .cms-list-item, .cms-form-card) { border-radius: 12px; }
+.admin-main :is(.admin-data-card, .cms-list-item, .cms-form-card) { border-radius: var(--sf-radius-card); }
 .admin-main :is(.admin-data-card, .cms-list-item) { padding: 14px 16px; }
 .admin-main :is(p, small, .admin-muted) { line-height: 1.5; }
 .admin-main small { font-size: 12px; }
@@ -1130,7 +1130,7 @@ html[data-mode='dark'] .sf-fp-svg .sf-fp-country-fill { fill: color-mix(in srgb,
 .sf-page-main .sf-feed-card { min-width: 0; height: 100%; }
 .sf-page-main .sf-feed-project-media { position: relative; display: grid; place-items: center; min-height: 176px; overflow: hidden; background: var(--sf-soft); }
 .sf-page-main .sf-feed-media-placeholder { color: var(--sf-primary); background: linear-gradient(135deg, color-mix(in srgb, var(--sf-primary) 13%, var(--sf-card)), color-mix(in srgb, var(--sf-accent) 18%, var(--sf-card))); }
-.sf-page-main .sf-feed-media-placeholder > span { display: grid; place-items: center; width: 58px; height: 58px; border-radius: 18px; background: color-mix(in srgb, var(--sf-card) 78%, transparent); }
+.sf-page-main .sf-feed-media-placeholder > span { display: grid; place-items: center; width: 58px; height: 58px; border-radius: var(--sf-radius-shape); background: color-mix(in srgb, var(--sf-card) 78%, transparent); }
 .sf-page-main .sf-feed-project-media img { object-fit: cover; }
 .sf-page-main .sf-feed-generic-media { position: relative; width: 100%; height: 156px; overflow: hidden; border-radius: var(--sf-radius-shape); background: var(--sf-soft); }
 .sf-page-main .sf-feed-generic-media img { object-fit: cover; }

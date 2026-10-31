@@ -49,5 +49,6 @@ export const CMS_DDL: string[] = [
   "ALTER TABLE cms_users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ",
   "ALTER TABLE cms_users ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now()",
   "ALTER TABLE cms_users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now()",
+  "ALTER TABLE cms_users ADD COLUMN IF NOT EXISTS session_version INTEGER NOT NULL DEFAULT 1",
   "INSERT INTO cms_content_items (component, slug, title_en, title_bn, summary_en, summary_bn, body_en, body_bn, image_src, published_at, status)\nSELECT CASE ce.category WHEN 'project' THEN 'project' WHEN 'notice' THEN 'notice' WHEN 'career' THEN 'job' WHEN 'enterprise' THEN 'product' END,\n  ce.slug, ce.title_en, ce.title_bn, ce.excerpt_en, ce.excerpt_bn,\n  COALESCE((SELECT string_agg(b.body_en, E'\\n\\n' ORDER BY b.sort_order) FROM content_entry_bodies b WHERE b.content_entry_id = ce.id), ''),\n  COALESCE((SELECT string_agg(b.body_bn, E'\\n\\n' ORDER BY b.sort_order) FROM content_entry_bodies b WHERE b.content_entry_id = ce.id), ''),\n  m.src,\n  CASE WHEN ce.date_value ~ '^\\d{4}-\\d{2}-\\d{2}' THEN LEFT(ce.date_value, 10)::date ELSE CURRENT_DATE END,\n  'published'\nFROM content_entries ce LEFT JOIN media_items m ON m.id = ce.image_id\nWHERE ce.category = 'career'\n  AND NOT EXISTS (SELECT 1 FROM cms_content_items)\nON CONFLICT DO NOTHING"
 ]

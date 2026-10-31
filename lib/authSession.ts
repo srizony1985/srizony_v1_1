@@ -62,6 +62,7 @@ export function verify<T>(value: string | undefined): T | null {
 export const AUTH_COOKIE = 'sf-auth'
 export const PENDING_COOKIE = 'sf-pending-enquiry'
 export const OAUTH_STATE_COOKIE = 'sf-oauth-state'
+export const OAUTH_VERIFIER_COOKIE = 'sf-oauth-verifier'
 export const VISITOR_COOKIE = 'sf-visitor-id'
 
 export function getSiteOrigin(requestUrl: string) {

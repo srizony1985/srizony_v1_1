@@ -33,7 +33,10 @@ test('CMS user list has search, role and status filters with labelled account ac
 
 test('Password reset dialog manages focus, Escape, keyboard tab order and background scrolling', () => {
   assert.match(client, /aria-modal="true"/)
-  assert.match(client, /document\.body\.style\.overflow = 'hidden'/)
+  assert.match(client, /acquireModalScrollLock\(/)
+  assert.match(client, /root\.style\.overflow = 'hidden'/)
+  assert.match(client, /body\.style\.overflow = 'hidden'/)
+  assert.match(client, /restoreDocumentScroll\?\.\(\)/)
   assert.match(client, /event\.key === 'Escape'/)
   assert.match(client, /event\.key !== 'Tab'/)
   assert.match(client, /previousFocus\.focus\(\)/)

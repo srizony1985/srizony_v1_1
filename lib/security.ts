@@ -1,4 +1,5 @@
 import { createHash, timingSafeEqual } from 'node:crypto'
+import { isIP } from 'node:net'
 import { sql } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { adminAuditLog } from '@/lib/db/schema'
@@ -16,8 +17,13 @@ export function safeEqual(left: string, right: string) {
 }
 
 export function requestIp(request: Request) {
-  const forwarded = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
-  return forwarded || request.headers.get('x-real-ip') || 'unknown'
+  // Never trust an arbitrary client-supplied X-Forwarded-For chain. Configure
+  // exactly one ingress header that the hosting proxy strips and overwrites.
+  const configuredHeader = process.env.TRUSTED_CLIENT_IP_HEADER?.trim().toLowerCase()
+  const allowedHeaders = new Set(['x-vercel-forwarded-for', 'cf-connecting-ip', 'x-real-ip'])
+  if (!configuredHeader || !allowedHeaders.has(configuredHeader)) return 'unknown'
+  const raw = request.headers.get(configuredHeader)?.split(',')[0]?.trim() || ''
+  return isIP(raw) ? raw : 'unknown'
 }
 
 export async function auditAdminAction(input: { actorEmail: string; action: string; entity?: string; entityId?: string; metadata?: unknown; request?: Request }) {
@@ -72,7 +78,8 @@ export async function enforceLoginRateLimit(key: string) {
   return true
 }
 
-export async function recordLoginFailure(key: string) {
+export async function recordLoginFailure(key: string, lockAfter = 5) {
+  const threshold = Math.max(3, Math.min(30, Math.floor(lockAfter)))
   if (!db) return
   await ensureLoginRateLimitTable()
   await db.execute(sql`
@@ -81,7 +88,7 @@ export async function recordLoginFailure(key: string) {
     ON CONFLICT (key) DO UPDATE SET
       attempts = CASE WHEN now() - admin_login_attempts.first_attempt_at > interval '15 minutes' THEN 1 ELSE admin_login_attempts.attempts + 1 END,
       first_attempt_at = CASE WHEN now() - admin_login_attempts.first_attempt_at > interval '15 minutes' THEN now() ELSE admin_login_attempts.first_attempt_at END,
-      locked_until = CASE WHEN (CASE WHEN now() - admin_login_attempts.first_attempt_at > interval '15 minutes' THEN 1 ELSE admin_login_attempts.attempts + 1 END) >= 5 THEN now() + interval '15 minutes' ELSE NULL END,
+      locked_until = CASE WHEN (CASE WHEN now() - admin_login_attempts.first_attempt_at > interval '15 minutes' THEN 1 ELSE admin_login_attempts.attempts + 1 END) >= ${threshold} THEN now() + interval '15 minutes' ELSE NULL END,
       updated_at = now()
   `)
 }

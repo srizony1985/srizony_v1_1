@@ -18,7 +18,7 @@ export const submitQuery = (payload: unknown) => request<any>('/api/queries', { 
 
 export const trackVisit = (visitorId: string, path: string, referrer?: string) =>
   request('/api/visitors', { method: 'POST', json: { visitorId, path, referrer }, keepalive: true }).catch(() => undefined)
-export const initiateDonation = (payload: unknown) => request<any>('/api/donations/initiate', { method: 'POST', json: payload })
+export const initiateDonation = (payload: unknown, idempotencyKey: string) => request<any>('/api/donations/initiate', { method: 'POST', headers: { 'Idempotency-Key': idempotencyKey }, json: payload })
 
 export const getNews = (limit = 30) => request<{ items: any[] }>(`/api/news?limit=${limit}`)
 export const uploadJobResume = (file: File, website = '') => {

@@ -56,7 +56,9 @@ export async function updateUser(id: number, patch: { role?: AdminRole; status?:
   if (patch.role && !ROLES.includes(patch.role)) throw new UserError('Unsupported role.')
   if (patch.password) checkPassword(patch.password)
   const r = await run(sql`UPDATE cms_users SET role = ${patch.role ?? current.role}, status = ${patch.status ?? current.status},
-    password_hash = ${patch.password ? hashPassword(patch.password) : current.password_hash}, updated_at = now() WHERE id = ${id} RETURNING *`)
+    password_hash = ${patch.password ? hashPassword(patch.password) : current.password_hash},
+    session_version = COALESCE(session_version, 1) + CASE WHEN ${Boolean(patch.password || patch.role || patch.status)} THEN 1 ELSE 0 END,
+    updated_at = now() WHERE id = ${id} RETURNING *`)
   return toUser(r.rows[0] as Row)
 }
 
@@ -69,11 +71,11 @@ export async function deleteUser(id: number, actorEmail: string) {
 }
 
 /** Credential check against database users (environment users are handled by the login route). */
-export async function authenticateDatabaseUser(email: string, password: string): Promise<{ email: string; role: AdminRole } | null> {
+export async function authenticateDatabaseUser(email: string, password: string): Promise<{ email: string; role: AdminRole; sessionVersion: number } | null> {
   if (!db) return null
   await ensureCmsSchema()
   const row = (await run(sql`SELECT * FROM cms_users WHERE email = ${email.toLowerCase()} LIMIT 1`)).rows[0] as Row | undefined
   if (!row || row.status !== 'active' || !verifyPassword(password, row.password_hash)) return null
   await run(sql`UPDATE cms_users SET last_login_at = now() WHERE id = ${Number(row.id)}`)
-  return { email: row.email, role: row.role }
+  return { email: row.email, role: row.role, sessionVersion: Number(row.session_version ?? 1) }
 }

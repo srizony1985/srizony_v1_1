@@ -1,11 +1,14 @@
 import { NextResponse } from 'next/server'
 import { revalidatePath, revalidateTag } from 'next/cache'
 import { sql } from 'drizzle-orm'
+import { Pool } from '@neondatabase/serverless'
+import { drizzle as drizzleNeonWs } from 'drizzle-orm/neon-serverless'
 import { db, withDbRetry } from '@/lib/db'
 import { requireAdmin, failure } from '@/lib/cms/guard'
 import { ensureCmsSchema } from '@/lib/cms/ensureSchema'
 import { CMS_TRANSFER_FORMAT, CMS_TRANSFER_MAX_BYTES, CMS_TRANSFER_MAX_ROWS_PER_TABLE, CMS_TRANSFER_TABLES, CMS_TRANSFER_VERSION, quoteIdentifier } from '@/lib/cms/dataTransfer'
 import { auditAdminAction } from '@/lib/security'
+import { readBoundedRequestText } from '@/lib/securityPrimitives.mjs'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -19,8 +22,8 @@ export async function POST(req: Request) {
   if (guard.denied) return guard.denied
   const database = db
   if (database === null) return NextResponse.json({ error: 'DATABASE_URL is not configured.' }, { status: 503 })
-  const raw = await req.text()
-  if (new TextEncoder().encode(raw).byteLength > CMS_TRANSFER_MAX_BYTES) return NextResponse.json({ error: 'JSON file exceeds the 20 MB import limit.' }, { status: 413 })
+  const raw = await readBoundedRequestText(req, CMS_TRANSFER_MAX_BYTES)
+  if (raw === null) return NextResponse.json({ error: 'JSON file exceeds the 20 MB import limit or is not valid UTF-8.' }, { status: 413 })
   let payload: any
   try { payload = JSON.parse(raw) } catch { return NextResponse.json({ error: 'The selected file is not valid JSON.' }, { status: 400 }) }
   if (!isPlainObject(payload) || payload.format !== CMS_TRANSFER_FORMAT || payload.version !== CMS_TRANSFER_VERSION || !isPlainObject(payload.data)) {
@@ -106,68 +109,79 @@ export async function POST(req: Request) {
     }
 
     const imported: Record<string, number> = {}
-    // Import parents before children. Existing records are updated by primary key;
-    // records absent from the file are deliberately left untouched.
-    for (const table of CMS_TRANSFER_TABLES) {
-      const plan = tablePlans.get(table)
-      if (!plan) continue
-      if (!plan.rows.length) { imported[table] = 0; continue }
-      const quotedTable = quoteIdentifier(table)
-      const pkSet = new Set(plan.primaryKeys)
-      let count = 0
+    // The regular application client uses Neon HTTP, whose Drizzle driver does
+    // not implement interactive transactions. Use the Neon WebSocket driver for
+    // this multi-table mutation so the import is all-or-nothing.
+    const connectionString = process.env.DATABASE_URL?.trim()
+    if (!connectionString) return NextResponse.json({ error: 'DATABASE_URL is not configured.' }, { status: 503 })
+    const transactionPool = new Pool({ connectionString })
+    const transactionalDb = drizzleNeonWs({ client: transactionPool })
+    try {
+      await transactionalDb.transaction(async (tx) => {
+        // Import parents before children. Existing records are updated by primary
+        // key; records absent from the file are deliberately left untouched.
+        for (const table of CMS_TRANSFER_TABLES) {
+          const plan = tablePlans.get(table)
+          if (!plan) continue
+          if (!plan.rows.length) { imported[table] = 0; continue }
+          const quotedTable = quoteIdentifier(table)
+          const pkSet = new Set(plan.primaryKeys)
+          let count = 0
 
-      for (const group of plan.groups.values()) {
-        const { keys, rows } = group
-        const quotedColumns = keys.map(quoteIdentifier).join(', ')
-        const conflictSql = plan.primaryKeys.map(quoteIdentifier).join(', ')
-        const updates = keys.filter((key) => !pkSet.has(key))
-        const updateSql = updates.length
-          ? sql`DO UPDATE SET ${sql.join(updates.map((key) => sql`${sql.raw(quoteIdentifier(key))} = EXCLUDED.${sql.raw(quoteIdentifier(key))}`), sql`, `)}`
-          : sql`DO NOTHING`
+          for (const group of plan.groups.values()) {
+            const { keys, rows } = group
+            const quotedColumns = keys.map(quoteIdentifier).join(', ')
+            const conflictSql = plan.primaryKeys.map(quoteIdentifier).join(', ')
+            const updates = keys.filter((key) => !pkSet.has(key))
+            const updateSql = updates.length
+              ? sql`DO UPDATE SET ${sql.join(updates.map((key) => sql`${sql.raw(quoteIdentifier(key))} = EXCLUDED.${sql.raw(quoteIdentifier(key))}`), sql`, `)}`
+              : sql`DO NOTHING`
 
-        // Batch records with an identical column set to avoid one database round-trip
-        // per row while still allowing hand-edited JSON to omit optional columns.
-        for (let offset = 0; offset < rows.length; offset += 100) {
-          const chunk = rows.slice(offset, offset + 100)
-          const tuples = chunk.map((row) => sql`(${sql.join(keys.map((key) => {
-            const info = plan.columns.get(key)!
-            const value = row[key]
-            return info.data_type === 'json' || info.data_type === 'jsonb'
-              ? sql`${JSON.stringify(value ?? null)}::${sql.raw(info.data_type)}`
-              : sql`${value === undefined ? null : value}`
-          }), sql`, `)})`)
-          const valuesSql = sql.join(tuples, sql`, `)
-          const identityOverride = group.hasPrimaryKey && plan.identityPrimaryKey ? sql`OVERRIDING SYSTEM VALUE` : sql``
-          const query = group.hasPrimaryKey
-            ? sql`INSERT INTO ${sql.raw(quotedTable)} (${sql.raw(quotedColumns)}) ${identityOverride} VALUES ${valuesSql} ON CONFLICT (${sql.raw(conflictSql)}) ${updateSql}`
-            : sql`INSERT INTO ${sql.raw(quotedTable)} (${sql.raw(quotedColumns)}) VALUES ${valuesSql}`
-          await withDbRetry(() => database.execute(query))
-          count += chunk.length
+            // Batch rows of an identical shape while retaining one DB transaction
+            // across all tables and all chunks.
+            for (let offset = 0; offset < rows.length; offset += 100) {
+              const chunk = rows.slice(offset, offset + 100)
+              const tuples = chunk.map((row) => sql`(${sql.join(keys.map((key) => {
+                const info = plan.columns.get(key)!
+                const value = row[key]
+                return info.data_type === 'json' || info.data_type === 'jsonb'
+                  ? sql`${JSON.stringify(value ?? null)}::${sql.raw(info.data_type)}`
+                  : sql`${value === undefined ? null : value}`
+              }), sql`, `)})`)
+              const valuesSql = sql.join(tuples, sql`, `)
+              const identityOverride = group.hasPrimaryKey && plan.identityPrimaryKey ? sql`OVERRIDING SYSTEM VALUE` : sql``
+              const query = group.hasPrimaryKey
+                ? sql`INSERT INTO ${sql.raw(quotedTable)} (${sql.raw(quotedColumns)}) ${identityOverride} VALUES ${valuesSql} ON CONFLICT (${sql.raw(conflictSql)}) ${updateSql}`
+                : sql`INSERT INTO ${sql.raw(quotedTable)} (${sql.raw(quotedColumns)}) VALUES ${valuesSql}`
+              await tx.execute(query)
+              count += chunk.length
+            }
+          }
+          imported[table] = count
         }
-      }
-      imported[table] = count
-    }
 
-    // Keep serial/identity counters above imported IDs. Discover sequences from
-    // the destination schema rather than maintaining a second hand-written list.
-    for (const table of Object.keys(imported)) {
-      if (!imported[table]) continue
-      const idColumn = await withDbRetry(() => database.execute(sql`
-        SELECT column_name FROM information_schema.columns
-        WHERE table_schema = 'public' AND table_name = ${table} AND column_name = 'id' LIMIT 1`))
-      if (!idColumn.rows.length) continue
-      const qualifiedTable = quoteIdentifier(table)
-      const relationName = `public.${table}`
-      await withDbRetry(() => database.execute(sql`
-        SELECT CASE
-          WHEN pg_get_serial_sequence(${relationName}, 'id') IS NOT NULL THEN
-            setval(
-              pg_get_serial_sequence(${relationName}, 'id'),
-              GREATEST(COALESCE((SELECT MAX(id)::bigint FROM ${sql.raw(qualifiedTable)}), 1), 1),
-              EXISTS(SELECT 1 FROM ${sql.raw(qualifiedTable)})
-            )
-          ELSE NULL
-        END`))
+        // Keep serial/identity counters above imported IDs within the same commit.
+        for (const table of Object.keys(imported)) {
+          if (!imported[table]) continue
+          const plan = tablePlans.get(table)
+          const idType = plan?.columns.get('id')?.data_type
+          if (!plan || !['integer', 'bigint', 'smallint'].includes(idType || '')) continue
+          const qualifiedTable = quoteIdentifier(table)
+          const relationName = `public.${table}`
+          await tx.execute(sql`
+            SELECT CASE
+              WHEN pg_get_serial_sequence(${relationName}, 'id') IS NOT NULL THEN
+                setval(
+                  pg_get_serial_sequence(${relationName}, 'id'),
+                  GREATEST(COALESCE((SELECT MAX(id)::bigint FROM ${sql.raw(qualifiedTable)}), 1), 1),
+                  EXISTS(SELECT 1 FROM ${sql.raw(qualifiedTable)})
+                )
+              ELSE NULL
+            END`)
+        }
+      })
+    } finally {
+      await transactionPool.end()
     }
 
     // Make updated pages and content visible without waiting for the regular cache TTL.

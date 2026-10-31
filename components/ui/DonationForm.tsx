@@ -44,7 +44,7 @@ const iconMap: Record<string, ComponentType<{ size?: number }>> = {
   internet: Landmark,
 }
 
-type ResultKind = 'success' | 'cancelled' | 'failed'
+type ResultKind = 'success' | 'cancelled' | 'failed' | 'review'
 
 type FieldErrors = {
   name?: string
@@ -191,6 +191,7 @@ export default function DonationForm() {
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
 
   const methodRefs = useRef<Array<HTMLButtonElement | null>>([])
+  const idempotencyRef = useRef<{ fingerprint: string; key: string } | null>(null)
 
   const countryCode =
     COUNTRY_CODES.find((c) => c.country === countryIso)?.code ?? DEFAULT_COUNTRY_CODE
@@ -212,17 +213,12 @@ export default function DonationForm() {
     }
   }, [profile, anonymous, phone])
 
-  /**
-   * Switching to anonymous erases every donor field so personal
-   * information can never be retained or sent by accident.
-   */
+  /** Keep payment contact fields available in either mode: the gateway requires
+   * an email and phone number, while anonymous mode suppresses the donor name
+   * and message from the foundation's donor record/public presentation. */
   useEffect(() => {
     if (!anonymous) return
-
     setName('')
-    setEmail('')
-    setPhone('')
-    setCountryIso(DEFAULT_COUNTRY_ISO)
     setMessage('')
     setFieldErrors({})
   }, [anonymous])
@@ -264,16 +260,11 @@ export default function DonationForm() {
     })
   }
 
-  /** Donor/contact validation applies ONLY to identified donations. */
+  /** The gateway requires email and phone for every donation; name is optional in anonymous mode. */
   function validateForm(): boolean {
-    if (anonymous) {
-      setFieldErrors({})
-      return true
-    }
-
     const next: FieldErrors = {}
 
-    if (!isValidName(name)) {
+    if (!anonymous && !isValidName(name)) {
       next.name = t('Please enter your full name.', 'আপনার পূর্ণ নাম লিখুন।')
     }
     if (!isValidEmail(email)) {
@@ -313,28 +304,23 @@ export default function DonationForm() {
       return
     }
 
-    /**
-     * Anonymous: no name/email/phone/message is sent at all.
-     * Identified: validated donor information is included.
-     */
+    // Email and phone are required by the payment gateway in both modes.
+    // Anonymous mode omits the donor's name and message from the donation record.
     const payload = anonymous
-      ? { amount: value, method, anonymous: true }
-      : {
-          amount: value,
-          method,
-          anonymous: false,
-          name: name.trim(),
-          email: email.trim(),
-          phone: `${countryCode}${phone}`,
-          message: message.trim(),
-        }
+      ? { amount: value, method, anonymous: true, email: email.trim(), phone: `${countryCode}${phone}` }
+      : { amount: value, method, anonymous: false, name: name.trim(), email: email.trim(), phone: `${countryCode}${phone}`, message: message.trim() }
+    const fingerprint = JSON.stringify(payload)
+    if (!idempotencyRef.current || idempotencyRef.current.fingerprint !== fingerprint) {
+      idempotencyRef.current = { fingerprint, key: crypto.randomUUID() }
+    }
 
     setLoading(true)
 
     try {
-      const { ok, data } = await initiateDonation(payload)
+      const { ok, data, status: responseStatus } = await initiateDonation(payload, idempotencyRef.current.key)
 
       if (!ok || !data.url) {
+        if (responseStatus >= 500) idempotencyRef.current = null
         throw new Error(data.error || 'Unable to start payment')
       }
 
@@ -348,6 +334,7 @@ export default function DonationForm() {
   function resetStatus() {
     const url = new URL(window.location.href)
     url.searchParams.delete('donation')
+    idempotencyRef.current = null
     window.history.replaceState(null, '', url.toString())
     setStatus(null)
   }
@@ -366,7 +353,7 @@ export default function DonationForm() {
     methodRefs.current[next]?.focus()
   }
 
-  if (status === 'success' || status === 'cancelled' || status === 'failed') {
+  if (status === 'success' || status === 'cancelled' || status === 'failed' || status === 'review') {
     const kind = status as ResultKind
 
     const cfg = {
@@ -389,6 +376,16 @@ export default function DonationForm() {
           'কোনো পেমেন্ট গ্রহণ করা হয়নি। আবার চেষ্টা করতে পারেন।',
         ),
         btn: t('Try again', 'আবার চেষ্টা করুন'),
+      },
+      review: {
+        Icon: AlertCircle,
+        tone: 'var(--sf-warning)',
+        title: t('Payment under review', 'পেমেন্ট যাচাইাধীন'),
+        text: t(
+          'The payment gateway flagged this transaction for additional verification. Please do not submit another donation for this payment. The foundation will review the transaction.',
+          'পেমেন্ট গেটওয়ে এই লেনদেনটি অতিরিক্ত যাচাইয়ের জন্য চিহ্নিত করেছে। একই পেমেন্টের জন্য আবার দান জমা দেবেন না। ফাউন্ডেশন লেনদেনটি পর্যালোচনা করবে।',
+        ),
+        btn: t('Return to donation form', 'দান ফর্মে ফিরে যান'),
       },
       failed: {
         Icon: XCircle,
@@ -596,7 +593,7 @@ export default function DonationForm() {
                 </strong>
                 <span className={s.sub}>
                   {anonymous
-                    ? t('No donor information is required.', 'কোনো দাতা তথ্য প্রয়োজন নেই।')
+                    ? t('Email and phone are required for secure payment processing; your donor name remains private.', 'নিরাপদ পেমেন্টের জন্য ইমেইল ও ফোন দরকার; আপনার দাতার নাম গোপন থাকবে।')
                     : t(
                         'Provide your contact details for the donation receipt.',
                         'দান রসিদের জন্য আপনার যোগাযোগের তথ্য দিন।',
@@ -617,17 +614,16 @@ export default function DonationForm() {
                 <strong>{t('Donate anonymously', 'বেনামে দান করুন')}</strong>
                 <small>
                   {t(
-                    'No donor information is required. Your donation will be recorded anonymously.',
-                    'কোনো দাতা তথ্য প্রয়োজন নেই। আপনার দান বেনামীভাবে সংরক্ষণ করা হবে।',
+                    'Your name and message will not be recorded. Email and phone are still required by the payment gateway.',
+                    'আপনার নাম ও বার্তা সংরক্ষণ করা হবে না। পেমেন্ট গেটওয়ের জন্য ইমেইল ও ফোন প্রয়োজন।',
                   )}
                 </small>
               </span>
             </label>
 
-            {!anonymous && (
-              <div className={s.fields}>
+            <div className={s.fields}>
                 {/* Name */}
-                <label className={`${s.field} ${s.fullRow}`}>
+                {!anonymous && <label className={`${s.field} ${s.fullRow}`}>
                   <span>{ui[lang].name}</span>
                   <input
                     type="text"
@@ -645,7 +641,7 @@ export default function DonationForm() {
                       {fieldErrors.name}
                     </small>
                   )}
-                </label>
+                </label>}
 
                 {/* Email */}
                 <label className={s.field}>
@@ -717,16 +713,15 @@ export default function DonationForm() {
                 </div>
 
                 {/* Message */}
-                <label className={`${s.field} ${s.fullRow}`}>
+                {!anonymous && <label className={`${s.field} ${s.fullRow}`}>
                   <span>{ui[lang].message}</span>
                   <input
                     type="text"
                     value={message}
                     onChange={(e) => setMessage(e.target.value)}
                   />
-                </label>
+                </label>}
               </div>
-            )}
           </section>
         </div>
 

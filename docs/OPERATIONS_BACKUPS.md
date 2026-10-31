@@ -15,7 +15,7 @@ The repository includes a scheduled GitHub Actions workflow (`.github/workflows/
    - `BACKUP_S3_PREFIX` (optional; defaults to `srizony-production`)
    - `NEON_OBJECT_STORAGE_BUCKET` (optional; defaults to `uploads`)
    - `NEON_PUBLIC_ASSETS_BUCKET` (optional; defaults to `public-assets`)
-   - `PG_DUMP_MAJOR` (optional; defaults to `17`; use a PostgreSQL client major version compatible with the server)
+   - `PG_DUMP_MAJOR` (optional; defaults to `17`; the workflow image, installed `pg_dump`, and compatibility check all use this value)
 4. Run **Actions → Scheduled production backup → Run workflow** once. Verify a timestamped backup contains `database.dump`, its SHA-256 file, a manifest, and copies of both storage buckets. The workflow runs daily at 20:35 UTC (02:35 Bangladesh time the following day).
 5. Configure alerts for failed workflow runs and apply a retention lifecycle policy to the backup bucket. A successful upload is not a restore test.
 
@@ -32,3 +32,8 @@ At least quarterly, restore into an isolated staging project, never over product
 5. Record the restore date, backup timestamp, duration and any issues. Keep this procedure and credentials in the organization's approved secret manager.
 
 The project archive cannot configure GitHub repository secrets, provision the backup bucket, or prove that a backup/restore completed in the user's hosting account. Those are deployment operations and must be verified after upload.
+
+
+## Trusted client IP configuration
+
+Public API rate limits use PostgreSQL counters so limits are shared across serverless instances. The application does not trust arbitrary `X-Forwarded-For` values. Set `TRUSTED_CLIENT_IP_HEADER` to exactly one of `x-vercel-forwarded-for`, `cf-connecting-ip`, or `x-real-ip` only after confirming that the production ingress strips any client-supplied value and writes the authoritative client IP. If no trusted header is configured, IP-specific counters are intentionally skipped; subject and global budgets still apply. Verify this behavior through the deployed ingress before launch.
