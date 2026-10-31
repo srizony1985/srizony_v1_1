@@ -5,27 +5,25 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   Activity,
   BarChart3,
-  CheckCircle2,
   ChevronRight,
   CircleDollarSign,
   Eye,
   FileText,
-  Mail,
   Megaphone,
-  RefreshCw,
   Send,
+  BriefcaseBusiness,
   Users,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { SectionToolbar, PageLoading } from '../_components/AdminCommon'
-import { getDashboard, getRecentDonations, getRecentSubmissions, setSubmissionStatus } from '@/lib/api/dashboard'
+import { getDashboard, getRecentDonations } from '@/lib/api/dashboard'
 
 type TrendPoint = {
   date: string
   label: string
   visitors: number
-  enquiries: number
+  applications: number
   donations: number
   donationAmount: number
 }
@@ -34,32 +32,19 @@ type DashboardResponse = {
   range: number
   stats: {
     pages: number
-    enquiries: number
-    newEnquiries: number
-    users: number
+    postedJobs: number
+    openJobs: number
+    applicants: number
     visitors: number
     visits: number
     returningVisitors: number
     donations: number
-    completedDonations: number
     donationTotal: number
     rangeDonationTotal: number
-    conversionRate: number
-    activeVisitors: number
   }
   trends: TrendPoint[]
   topPages: Array<{ path: string; visits: number }>
   referrers: Array<{ referrer: string; visits: number }>
-}
-
-type Submission = {
-  id: number
-  type: string
-  name: string | null
-  email: string | null
-  message: string | null
-  status: 'new' | 'read' | 'resolved' | 'archived'
-  createdAt: string
 }
 
 type Donation = {
@@ -69,8 +54,6 @@ type Donation = {
   status: string
   createdAt: string
 }
-
-const STATUS_OPTIONS: Submission['status'][] = ['new', 'read', 'resolved', 'archived']
 
 function formatDate(value: string) {
   const date = new Date(value)
@@ -93,7 +76,7 @@ function MiniChart({
   title: string
   subtitle: string
   points: TrendPoint[]
-  valueKey: keyof Pick<TrendPoint, 'visitors' | 'enquiries' | 'donations'>
+  valueKey: keyof Pick<TrendPoint, 'visitors' | 'applications' | 'donations'>
   total: number
 }) {
   const width = 720
@@ -186,12 +169,10 @@ function Metric({
 export default function OverviewPage() {
   const [days, setDays] = useState<7 | 30 | 90>(30)
   const [data, setData] = useState<DashboardResponse | null>(null)
-  const [submissions, setSubmissions] = useState<Submission[]>([])
   const [donations, setDonations] = useState<Donation[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState('')
-  const [contactError, setContactError] = useState('')
   const [donationError, setDonationError] = useState('')
   const [actualExecutionMs, setActualExecutionMs] = useState<number | null>(null)
 
@@ -199,20 +180,16 @@ export default function OverviewPage() {
     if (showRefresh) setRefreshing(true)
     else setLoading(true)
     setError('')
-    setContactError('')
     setDonationError('')
     const startedAt = performance.now()
 
     try {
-      const [dashboardResult, contactsResult, donationsResult] = await Promise.allSettled([
+      const [dashboardResult, donationsResult] = await Promise.allSettled([
         getDashboard<DashboardResponse>(days),
-        getRecentSubmissions(),
         getRecentDonations(),
       ])
       if (dashboardResult.status === 'rejected') throw dashboardResult.reason
       setData(dashboardResult.value)
-      if (contactsResult.status === 'fulfilled') setSubmissions(contactsResult.value.slice(0, 6))
-      else { setSubmissions([]); setContactError(contactsResult.reason instanceof Error ? contactsResult.reason.message : 'Unable to load contact requests.') }
       if (donationsResult.status === 'fulfilled') setDonations(donationsResult.value.slice(0, 6))
       else { setDonations([]); setDonationError(donationsResult.reason instanceof Error ? donationsResult.reason.message : 'Unable to load donations.') }
     } catch (cause) {
@@ -228,22 +205,12 @@ export default function OverviewPage() {
     void loadDashboard()
   }, [days])
 
-  async function updateSubmission(id: number, status: Submission['status']) {
-    try {
-      await setSubmissionStatus(id, status)
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Unable to update contact request.')
-      return
-    }
-    setSubmissions((current) => current.map((item) => item.id === id ? { ...item, status } : item))
-  }
 
   const stats = data?.stats ?? {
-    pages: 0, enquiries: 0, newEnquiries: 0, users: 0, visitors: 0, visits: 0,
-    returningVisitors: 0, donations: 0, completedDonations: 0,
-    donationTotal: 0, rangeDonationTotal: 0, conversionRate: 0, activeVisitors: 0,
+    pages: 0, postedJobs: 0, openJobs: 0, applicants: 0, visitors: 0, visits: 0,
+    returningVisitors: 0, donations: 0,
+    donationTotal: 0, rangeDonationTotal: 0,
   }
-  const recentSubmissions = useMemo(() => submissions.slice(0, 6), [submissions])
   const recentDonations = useMemo(() => donations.slice(0, 6), [donations])
 
   if (loading && !data) return <PageLoading rows={4} />
@@ -267,11 +234,11 @@ export default function OverviewPage() {
   const metricGroups = [
     { label: 'Unique visitors', value: stats.visitors, icon: Eye, href: '/admin/dashboard/reports/visitors', note: `${stats.returningVisitors.toLocaleString()} returning` },
     { label: 'Visits', value: stats.visits, icon: BarChart3, href: '/admin/dashboard/reports/visitors', note: `${days} day activity` },
-    { label: 'Enquiries', value: stats.enquiries, icon: Mail, href: '/admin/dashboard/reports/submissions', note: `${stats.newEnquiries.toLocaleString()} new` },
-    { label: 'Form users', value: stats.users, icon: Users, href: '/admin/dashboard/reports/submissions', note: 'Known identities' },
-    { label: 'Donations', value: stats.donations, icon: CircleDollarSign, href: '/admin/dashboard/reports/donations', note: `${stats.completedDonations.toLocaleString()} completed` },
+    { label: 'Donations', value: stats.donations, icon: CircleDollarSign, href: '/admin/dashboard/reports/donations', note: 'Gateway records' },
     { label: 'Published pages', value: stats.pages, icon: FileText, href: '/admin/dashboard/navigation', note: 'Public CMS pages' },
-    { label: 'Completed donations', value: stats.completedDonations, icon: CheckCircle2, href: '/admin/dashboard/reports/donations', note: `৳ ${stats.donationTotal.toLocaleString('en-BD', { maximumFractionDigits: 0 })} lifetime` },
+    { label: 'Total posted jobs', value: stats.postedJobs, icon: BriefcaseBusiness, href: '/admin/dashboard/jobs', note: 'Published vacancies' },
+    { label: 'Total open jobs', value: stats.openJobs, icon: BriefcaseBusiness, href: '/admin/dashboard/jobs', note: 'Accepting applications' },
+    { label: 'Total applicants', value: stats.applicants, icon: Users, href: '/admin/dashboard/jobs', note: 'All job applications' },
   ]
 
   return (
@@ -302,45 +269,17 @@ export default function OverviewPage() {
 
       <section className="dashboard-charts" aria-label="Activity analytics">
         <MiniChart title="Visitor frequency" subtitle="Visitor events recorded over time." points={data.trends} valueKey="visitors" total={data.trends.reduce((sum, point) => sum + point.visitors, 0)} />
-        <MiniChart title="Enquiry frequency" subtitle="Incoming contact requests over time." points={data.trends} valueKey="enquiries" total={data.trends.reduce((sum, point) => sum + point.enquiries, 0)} />
+        <MiniChart title="Job application frequency" subtitle="Applications received over time." points={data.trends} valueKey="applications" total={data.trends.reduce((sum, point) => sum + point.applications, 0)} />
         <MiniChart title="Donation frequency" subtitle="Donation records created over time." points={data.trends} valueKey="donations" total={data.trends.reduce((sum, point) => sum + point.donations, 0)} />
       </section>
 
       <section className="dashboard-insight-grid" aria-label="Dashboard insights">
-        <section className="dashboard-data-panel"><div className="dashboard-panel-heading"><div><h2>Donation value</h2><p>Successful gateway value in BDT.</p></div><strong className="dashboard-insight-number">৳ {stats.rangeDonationTotal.toLocaleString('en-BD', { maximumFractionDigits: 0 })}</strong></div><div className="dashboard-insight-copy"><span>{days}-day completed donations</span><span>{`৳ ${stats.donationTotal.toLocaleString('en-BD', { maximumFractionDigits: 0 })} lifetime`}</span></div></section>
-        <section className="dashboard-data-panel"><div className="dashboard-panel-heading"><div><h2>Enquiry conversion</h2><p>Enquiries divided by active visitors.</p></div><strong className="dashboard-insight-number">{stats.conversionRate.toFixed(2)}%</strong></div><div className="dashboard-insight-copy"><span>{stats.activeVisitors.toLocaleString()} active visitors</span><span>{stats.enquiries.toLocaleString()} total enquiries</span></div></section>
+        <section className="dashboard-data-panel"><div className="dashboard-panel-heading"><div><h2>Donation value</h2><p>Successful gateway value in BDT.</p></div><strong className="dashboard-insight-number">৳ {stats.rangeDonationTotal.toLocaleString('en-BD', { maximumFractionDigits: 0 })}</strong></div><div className="dashboard-insight-copy"><span>{days}-day successful donations</span><span>{`৳ ${stats.donationTotal.toLocaleString('en-BD', { maximumFractionDigits: 0 })} lifetime`}</span></div></section>
         <section className="dashboard-data-panel"><div className="dashboard-panel-heading"><div><h2>Top pages</h2><p>Most visited paths in this range.</p></div></div><div className="dashboard-mini-list">{data.topPages.map((item) => <div key={item.path}><span>{item.path}</span><strong>{item.visits.toLocaleString()}</strong></div>)}{!data.topPages.length && <span className="dashboard-empty">No page activity recorded.</span>}</div></section>
         <section className="dashboard-data-panel"><div className="dashboard-panel-heading"><div><h2>Referrers</h2><p>Top traffic sources recorded.</p></div></div><div className="dashboard-mini-list">{data.referrers.map((item) => <div key={item.referrer}><span title={item.referrer}>{item.referrer}</span><strong>{item.visits.toLocaleString()}</strong></div>)}{!data.referrers.length && <span className="dashboard-empty">No referrer data recorded.</span>}</div></section>
       </section>
 
       <section className="dashboard-data-grid">
-        <section className="dashboard-data-panel">
-          <div className="dashboard-panel-heading">
-            <div><h2>Recent contact requests</h2><p>Update request status without leaving the dashboard.</p></div>
-            <Link href="/admin/dashboard/reports/submissions">View all <ChevronRight size={13} /></Link>
-          </div>
-          {contactError && <div className="dashboard-error-strip dashboard-panel-error" role="alert"><Activity size={14} />{contactError}</div>}
-          <div className="dashboard-table-scroll">
-            <table className="dashboard-table">
-              <thead><tr><th>Contact</th><th>Type</th><th>Created</th><th>Status</th></tr></thead>
-              <tbody>
-                {recentSubmissions.map((item) => (
-                  <tr key={item.id}>
-                    <td><strong>{item.name || 'Unnamed'}</strong><small>{item.email || 'No email'}</small></td>
-                    <td>{item.type}</td>
-                    <td>{formatDate(item.createdAt)}</td>
-                    <td>
-                      <select className={`dashboard-status status-${item.status}`} value={item.status} onChange={(event) => void updateSubmission(item.id, event.target.value as Submission['status'])} aria-label={`Status for request ${item.id}`}>
-                        {STATUS_OPTIONS.map((status) => <option key={status} value={status}>{status}</option>)}
-                      </select>
-                    </td>
-                  </tr>
-                ))}
-                {!recentSubmissions.length && <tr><td colSpan={4} className="dashboard-empty-cell">No contact requests yet.</td></tr>}
-              </tbody>
-            </table>
-          </div>
-        </section>
 
         <section className="dashboard-data-panel">
           <div className="dashboard-panel-heading">
@@ -377,7 +316,6 @@ export default function OverviewPage() {
             ['/admin/dashboard/site-content', 'Site Content', Send],
             ['/admin/dashboard/jobs', 'Jobs', Megaphone],
             ['/admin/dashboard/reports/visitors', 'Visitors', Eye],
-            ['/admin/dashboard/reports/submissions', 'Contact Requests', Mail],
             ['/admin/dashboard/reports/donations', 'Donations', CircleDollarSign],
           ].map(([href, label, Icon]) => (
             <Link key={String(href)} href={String(href)} className="dashboard-quick-link">

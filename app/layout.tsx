@@ -44,14 +44,24 @@ export async function generateMetadata(): Promise<Metadata> {
   }
 }
 
-export const viewport: Viewport = { themeColor: 'transparent', colorScheme: 'light dark', width: 'device-width', initialScale: 1 }
+// Browser chrome follows the saved mode (dark by default) using the --sf-bg tokens, instead of an invalid 'transparent' theme colour.
+export async function generateViewport(): Promise<Viewport> {
+  const light = (await cookies()).get('sf-mode')?.value === 'light'
+  return { themeColor: light ? '#f4f7fa' : '#0b1117', colorScheme: light ? 'light' : 'dark', width: 'device-width', initialScale: 1 }
+}
 
 export default async function RootLayout({children}:{children:ReactNode}){
   const cookieStore = await cookies()
   const requestHeaders = await headers()
   const pathname = requestHeaders.get('x-srizony-pathname') || '/'
-  const publicPath = pathname.startsWith('/bn') ? (pathname.slice(3) || '/') : pathname
-  const initialLang = (pathname === '/bn' || pathname.startsWith('/bn/')) ? 'bn' : (cookieStore.get('sf-lang')?.value === 'bn' ? 'bn' : 'en')
+  const isBanglaRoute = pathname === '/bn' || pathname.startsWith('/bn/')
+  const publicPath = isBanglaRoute ? (pathname.slice(3) || '/') : pathname
+  // The saved user preference takes precedence over the optional `/bn` alias.
+  // This lets the language switcher keep the current URL stable in both directions.
+  const savedLang = cookieStore.get('sf-lang')?.value
+  const initialLang = savedLang === 'bn' || savedLang === 'en'
+    ? savedLang
+    : isBanglaRoute ? 'bn' : 'en'
   const initialSite = pathname.startsWith('/admin') || pathname.startsWith('/api') ? null : await getPublicSiteSnapshot(publicPath)
   // Public design defaults: Midnight palette, dark mode, and soft geometry.
   // The dark-mode switch can persist an explicit light-mode preference.

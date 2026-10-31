@@ -95,9 +95,9 @@ test('functional test commands and migrations are registered', () => {
 test('location map loads CMS locations and retains responsive, colorful markers', () => {
   const map = read('components/home/LocationMaps.tsx')
   const css = read('app/site-components.css')
-  assert.match(map, /fetch\('\/api\/website-essentials'/)
-  assert.match(map, /configuredLocations/)
-  assert.match(map, /setConfiguredLocations/)
+  assert.match(map, /useWebsiteEssentials/)
+  assert.match(read('components/hooks/useWebsiteEssentials.ts'), /fetch\('\/api\/website-essentials'/)
+  assert.match(map, /essentials\.locations/)
   assert.match(css, /\.sf-fp-pin\.is-head \.sf-fp-dot-core[^}]*background:\s*var\(--sf-accent\)/)
   assert.match(css, /@media \(max-width: 700px\)/)
 })
@@ -126,10 +126,11 @@ test('CMS content routes are scoped to a selected parent and the landing page ca
   assert.match(routeApi, /p\.get\('routeParent'\)/)
 })
 
-test('detail resolver supports the required single, menu, and submenu content depths', () => {
+test('detail resolver supports content routes at arbitrary nested depths', () => {
   const service = read('lib/cms/content.ts')
   const site = read('lib/site.ts')
-  assert.match(service, /segments\.length >= 1 && segments\.length <= 3/)
+  assert.match(service, /segments\.length >= 1/)
+  assert.doesNotMatch(service, /segments\.length <= 3/)
   assert.match(service, /getContentRouteParent\(normalized\)/)
   assert.match(service, /COALESCE\(NULLIF\(attributes->>'routeParent'/)
   const routes = read('lib/cms/routes.ts')
@@ -172,7 +173,8 @@ test('navigation endpoints and service support authenticated CRUD and reorder; c
   assert.match(service, /saveDocument\(`page:\$\{slug\}`/)
   assert.match(service, /defaultSection\(/)
   assert.match(service, /export async function saveNavigationOrder/)
-  assert.match(service, /MAX_DEPTH = 2/)
+  assert.match(service, /export async function saveNavigationOrder/ )
+  assert.doesNotMatch(service, /MAX_DEPTH|MENU_LEVELS_BELOW_LANDING/)
 })
 
 test('public PDF uploads require an authorized editor and verify the PDF signature', () => {
@@ -188,7 +190,7 @@ test('social links are displayed in the top navigation and editable in Website E
   const nav = read('components/ui/NavBar.tsx')
   const admin = read('app/admin/dashboard/website-essentials/page.tsx')
   assert.match(nav, /sf-social-topbar/)
-  assert.match(nav, /fetch\('\/api\/website-essentials'/)
+  assert.match(nav, /useWebsiteEssentials/)
   assert.match(admin, /facebook/)
   assert.match(admin, /instagram/)
   assert.match(admin, /youtube/)
@@ -238,10 +240,14 @@ test('canonical route helper builds landing, menu and submenu detail URLs', () =
   assert.match(read('lib/cms/ddl.ts'), /DROP INDEX IF EXISTS cms_content_items_component_slug_uq/)
 })
 
-test('content destination page depth is capped at landing, main-menu, and submenu routes', () => {
+test('content destinations and navigation menus allow unlimited nested levels', () => {
   const service = read('lib/cms/content.ts')
   const navigation = read('lib/cms/navigation.ts')
-  assert.match(service, /routeParent\.split\('\/'\)\.filter\(Boolean\)\.length > 2/)
+  const editor = read('app/admin/dashboard/navigation/page.tsx')
+  assert.match(service, /intentionally no submenu-depth cap/)
+  assert.doesNotMatch(service, /routeParent\.split\('\/'\)\.filter\(Boolean\)\.length > 2/)
+  assert.doesNotMatch(navigation, /MAX_DEPTH|MENU_LEVELS_BELOW_LANDING|at most .*editable levels/)
+  assert.doesNotMatch(editor, /MAX_TREE_DEPTH|at most three editable levels/)
   assert.match(navigation, /A published or draft content item already owns/)
   assert.match(navigation, /allowedExistingPageSlug/)
 })
@@ -249,22 +255,17 @@ test('content destination page depth is capped at landing, main-menu, and submen
 
 test('updated pages have safe shared CSS-token aliases and theme preview defaults', () => {
   const globals = read('app/globals.css')
-  const adminCss = read('app/admin/Admin.css')
   const adminTheme = read('app/admin/AdminThemeShell.tsx')
   assert.match(globals, /--sf-display:\s*var\(--sf-font-display/)
   assert.match(globals, /--sf-body:\s*var\(--sf-font-body/)
   assert.match(globals, /--sf-radius:\s*var\(--sf-radius-shape/)
   assert.match(globals, /--sf-container:\s*var\(--sf-container-wide/)
-  assert.match(globals, /--preview-primary:\s*var\(--sf-primary/)
-  assert.match(adminCss, /--preview-primary:var\(--primary,var\(--admin-primary\)\)/)
-  assert.match(adminCss, /var\(--preview-primary,var\(--primary,var\(--admin-primary\)\)\)/)
   assert.match(adminTheme, /'--primary': `rgb\(\$\{primary\}\)`/)
 })
 
 test('new public staff/resources and social/map labels use contrast-aware semantic link tokens', () => {
   const polish = read('app/site-polish.css')
   const components = read('app/site-components.css')
-  assert.match(polish, /\.sf-essentials-back[^}]*color:var\(--sf-link,var\(--sf-primary\)\)/)
   assert.match(polish, /\.sf-staff-designation[^}]*color:var\(--sf-link,var\(--sf-primary\)\)/)
   assert.match(polish, /\.sf-resource-download[^}]*color:var\(--sf-link,var\(--sf-primary\)\)/)
   assert.match(polish, /\.sf-social-topbar-links a[^}]*color:var\(--sf-link,var\(--sf-primary\)\)/)

@@ -68,9 +68,9 @@ export default function ContentFeedCard({ item, lang, index = 0 }: Props) {
 
   if (item.component === 'project') {
     return <FeedLink href={href} delay={index * 35} className="carousel-card sf-feed-card--project">
-      {item.image && <figure className="media-image sf-feed-project-media">
-        <SafeImage src={item.image} alt={title} fill sizes="(max-width: 640px) 100vw, (max-width: 1000px) 50vw, 33vw" className="sf-feed-project-image" />
-      </figure>}
+      <figure className={`media-image sf-feed-project-media ${item.image ? '' : 'sf-feed-media-placeholder'}`}>
+        {item.image ? <SafeImage src={item.image} alt={title} fill sizes="(max-width: 640px) 100vw, (max-width: 1000px) 50vw, 33vw" className="sf-feed-project-image" /> : <span aria-hidden="true"><FileText size={30}/></span>}
+      </figure>
       <div className="carousel-card-body">
         <h3>{title}</h3>
         {summary && <p className="sf-feed-summary sf-clamp-2">{summary}</p>}
@@ -128,7 +128,7 @@ export default function ContentFeedCard({ item, lang, index = 0 }: Props) {
   }
 
   return <FeedLink href={href} delay={index * 25} className="content-card sf-feed-card--generic">
-    <span className="card-icon sf-feed-card-icon" aria-hidden="true"><FileText size={18} /></span>
+    {item.image ? <figure className="sf-feed-generic-media"><SafeImage src={item.image} alt={title} fill sizes="(max-width: 640px) 100vw, (max-width: 1000px) 50vw, 33vw" /></figure> : <span className="card-icon sf-feed-card-icon" aria-hidden="true"><FileText size={18} /></span>}
     <span className="card-tag sf-feed-card-kicker">{item.category?.[lang] || item.component.replaceAll('-', ' ')}</span>
     <div className="content-card-copy">
       <h3>{title}</h3>

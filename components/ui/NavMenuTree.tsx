@@ -1,6 +1,6 @@
 'use client'
 
-import Link from 'next/link'
+import AppLink from '@/components/ui/AppLink'
 import { useState } from 'react'
 import { ChevronRight } from 'lucide-react'
 import type { Lang, NavItem } from '@/types/entityType'
@@ -40,14 +40,10 @@ export default function NavMenuTree({ items, lang, isActive, onNavigate, depth =
               <button type="button" className="sf-menu-link sf-menu-folder" aria-haspopup={hasSub ? 'true' : undefined} aria-expanded={hasSub ? isExpanded : undefined} onClick={() => hasSub && setExpanded((current) => ({ ...current, [key]: !current[key] }))}>
                 <span>{item.label[lang]}</span>{hasSub && <ChevronRight size={15} aria-hidden="true" />}
               </button>
-            ) : item.menuType === 'external' ? (
-              <a href={item.href} target="_blank" rel="noopener noreferrer" className={`sf-menu-link ${isActive(item.href) ? 'is-active' : ''}`} aria-haspopup={hasSub ? 'true' : undefined} onClick={onNavigate}>
-                <span>{item.label[lang]}</span>{hasSub && <ChevronRight size={15} aria-hidden="true" />}
-              </a>
             ) : (
-              <Link href={item.href} className={`sf-menu-link ${isActive(item.href) ? 'is-active' : ''}`} aria-current={isActive(item.href) ? 'page' : undefined} aria-haspopup={hasSub ? 'true' : undefined} onClick={onNavigate}>
+              <AppLink href={item.href} action={item.menuType === 'external' ? 'external' : undefined} className={`sf-menu-link ${isActive(item.href) ? 'is-active' : ''}`} aria-current={isActive(item.href) ? 'page' : undefined} aria-haspopup={hasSub ? 'true' : undefined} onClick={onNavigate}>
                 <span>{item.label[lang]}</span>{hasSub && <ChevronRight size={15} aria-hidden="true" />}
-              </Link>
+              </AppLink>
             )}
             {hasSub && <NavMenuTree items={item.children!} lang={lang} isActive={isActive} onNavigate={onNavigate} depth={depth + 1} />}
           </li>

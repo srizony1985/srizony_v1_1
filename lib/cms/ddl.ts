@@ -37,6 +37,7 @@ export const CMS_DDL: string[] = [
   "ALTER TABLE job_applications ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'new'",
   "ALTER TABLE job_applications ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now()",
   "CREATE INDEX IF NOT EXISTS job_applications_job_idx ON job_applications(job_id, created_at DESC)",
+  "CREATE INDEX IF NOT EXISTS job_applications_created_idx ON job_applications(created_at DESC)",
   "CREATE TABLE IF NOT EXISTS job_resume_uploads (\n  token_hash CHAR(64) PRIMARY KEY,\n  media_id BIGINT NOT NULL REFERENCES media_items(id) ON DELETE CASCADE,\n  expires_at TIMESTAMPTZ NOT NULL,\n  consumed_at TIMESTAMPTZ,\n  created_at TIMESTAMPTZ NOT NULL DEFAULT now()\n)",
   "CREATE INDEX IF NOT EXISTS job_resume_uploads_expiry_idx ON job_resume_uploads(expires_at)",
   "CREATE TABLE IF NOT EXISTS job_public_rate_limits (\n  rate_key VARCHAR(100) PRIMARY KEY,\n  window_started_at TIMESTAMPTZ NOT NULL DEFAULT now(),\n  attempts INTEGER NOT NULL DEFAULT 0\n)",

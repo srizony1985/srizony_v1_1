@@ -119,16 +119,15 @@ export default function LandingCollectionCardsEditor({ component }: { component:
           </div>}
 
       {editingRecord !== undefined && (
-        <div className="cms-landing-collection-editor" aria-label={`${copy.title} editor`}>
-          <ContentEditor
-            key={editingRecord?.id ?? 'new'}
-            component={component}
-            record={editingRecord}
-            onSaved={upsert}
-            onDeleted={remove}
-            onClose={() => setEditingRecord(undefined)}
-          />
-        </div>
+        <ContentEditor
+          key={`${component}-${editingRecord?.id ?? 'new'}`}
+          component={component}
+          record={editingRecord}
+          presentation="modal"
+          onSaved={upsert}
+          onDeleted={remove}
+          onClose={() => setEditingRecord(undefined)}
+        />
       )}
     </fieldset>
   )

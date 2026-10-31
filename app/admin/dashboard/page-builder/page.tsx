@@ -1,6 +1,8 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { websiteEssentialsRequest } from '@/lib/api/adminResources'
+
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowDown, ArrowUp, Copy, ExternalLink, Eye, EyeOff, GripVertical, Plus, Save, Trash2, ChevronDown, ChevronUp } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -23,6 +25,8 @@ import LandingCollectionCardsEditor from '../_components/LandingCollectionCardsE
 import { ContentEditor } from '../_components/ContentEditor'
 import { listContent } from '@/lib/api/siteContent'
 import { COMPONENTS, FIXED_CONTENT_PARENT, type ContentComponent, type ContentRecord } from '@/lib/cms/components'
+import { normalizeMediaSrc } from '@/lib/mediaUrl'
+import { useAdminActions, useRegisterAdminActions } from '../_components/AdminActionContext'
 
 const SECTION_TYPES: Section['type'][] = ['richText', 'stats', 'cards', 'gallery', 'timeline', 'diagram', 'table', 'video', 'cta', 'noticeList', 'contact', 'donation', 'carousel', 'contentFeed', 'reports']
 const COLLECTION_SECTION_TYPES = new Set<Section['type']>(['richText', 'stats', 'cards', 'gallery', 'timeline', 'table', 'cta', 'noticeList', 'donation', 'carousel', 'contentFeed', 'reports'])
@@ -33,6 +37,22 @@ function layoutsForSection(type: Section['type']): Array<'grid' | 'carousel' | '
   if (type === 'carousel') return ['carousel', 'grid', 'list']
   if (type === 'stats') return ['grid', 'list']
   return ['list']
+}
+
+function isProjectsCollectionMarker(section: PageSection) {
+  const candidate = section as PageSection & { collectionKind?: string; dataSource?: string; components?: string[]; heading?: Bilingual }
+  const heading = `${candidate.heading?.en || ''} ${candidate.heading?.bn || ''}`.toLowerCase()
+  return candidate.collectionKind === 'projects'
+    || candidate.contentCollection?.component === 'project'
+    || (candidate.type === 'contentFeed' && candidate.components?.[0] === 'project')
+    || (candidate.dataSource !== 'manual' && /projects?|প্রকল্প/.test(heading)
+      && ['cards', 'carousel', 'contentFeed', 'gallery'].includes(candidate.type))
+}
+
+function isProjectsCollectionPresentation(section: PageSection) {
+  return ['cards', 'carousel', 'contentFeed', 'gallery'].includes(section.type)
+    && (section as PageSection & { dataSource?: string }).dataSource !== 'manual'
+    && !['news', 'stories', 'newsFeed', 'successStories'].includes(String(section.homeComponent || ''))
 }
 
 function defaultCollectionComponent(type: Section['type']): ContentComponent {
@@ -366,19 +386,23 @@ function defaultSectionButton(section: PageSection): SectionButtonConfig {
   return defaultButton(false)
 }
 
-function SectionCard({ section, index, total, pageSlug, onChange, onMove, onDuplicate, onRemove }: {
-  section: PageSection; index: number; total: number; pageSlug: string; onChange: (section: PageSection) => void; onMove: (delta: number) => void; onDuplicate: () => void; onRemove: () => void
+function SectionCard({ section, index, total, pageSlug, isProjectsCatalogSection = false, onChange, onMove, onDuplicate, onRemove }: {
+  section: PageSection; index: number; total: number; pageSlug: string; isProjectsCatalogSection?: boolean; onChange: (section: PageSection) => void; onMove: (delta: number) => void; onDuplicate: () => void; onRemove: () => void
 }) {
   const [rawJson, setRawJson] = useState(JSON.stringify(section, null, 2))
   const [jsonError, setJsonError] = useState('')
+  const [editorTab, setEditorTab] = useState<'content' | 'collection' | 'actions' | 'advanced'>('content')
   useEffect(() => { setRawJson(JSON.stringify(section, null, 2)); setJsonError('') }, [section])
   const type = section.type
+  const isProjectsDatabaseSection = pageSlug === '/projects' && isProjectsCatalogSection
+  const collectionManaged = Boolean(section.contentCollection?.enabled || isProjectsDatabaseSection || section.type === 'contentFeed')
   const commonChange = (key: string, value: unknown) => onChange({ ...section, [key]: value } as PageSection)
   const heading = getBilingual((section as any).heading)
   const eyebrow = getBilingual((section as any).eyebrow)
   const bodyRaw: any = (section as any).body
   const body = getBilingual(bodyRaw) ?? (Array.isArray(bodyRaw) ? { en: bodyRaw.map((p: any) => String(p?.en ?? '')).join('\n'), bn: bodyRaw.map((p: any) => String(p?.bn ?? '')).join('\n') } : null)
   const button = defaultSectionButton(section)
+  const editorId = `pb-section-${index}-editor`
   const setButton = (next: Partial<SectionButtonConfig>) => commonChange('buttonConfig', { ...button, ...next })
 
   function setBodyBoth(value: Bilingual) {
@@ -405,40 +429,78 @@ function SectionCard({ section, index, total, pageSlug, onChange, onMove, onDupl
 
   return <Card className={`pb-section-card ${section.visible === false ? 'pb-section-hidden' : ''}`}>
     <CardHeader><div className="pb-section-head">
-      <div className="pb-section-title"><GripVertical size={16} /><div><CardTitle>Section {index + 1}</CardTitle><CardDescription>{type}</CardDescription></div></div>
-      <div className="pb-section-actions"><Button size="sm" variant="outline" onClick={() => onMove(-1)} disabled={index === 0} title="Move up"><ArrowUp size={14} /></Button><Button size="sm" variant="outline" onClick={() => onMove(1)} disabled={index === total - 1} title="Move down"><ArrowDown size={14} /></Button><Button size="sm" variant="outline" onClick={() => commonChange('visible', section.visible === false)} title={section.visible === false ? 'Show section' : 'Hide section'} aria-label={section.visible === false ? 'Show section' : 'Hide section'}>{section.visible === false ? <Eye size={14} /> : <EyeOff size={14} />}</Button><Button size="sm" variant="outline" onClick={onDuplicate} title="Duplicate section" aria-label="Duplicate section"><Copy size={14} /></Button><Button size="sm" variant="outline" className="cms-danger-outline" onClick={onRemove} title="Remove section" aria-label="Remove section"><Trash2 size={14} /></Button></div>
+      <div className="pb-section-title"><GripVertical size={16} /><div><CardTitle>{heading?.en || heading?.bn || `${type[0].toUpperCase()}${type.slice(1)} section ${index + 1}`}</CardTitle><CardDescription>Section {index + 1} of {total} · {type} · {section.visible === false ? 'Hidden' : 'Published'}</CardDescription></div></div>
+      <div className="pb-section-actions">
+        <Button size="sm" variant="outline" onClick={() => onMove(-1)} disabled={index === 0} title="Move section up"><ArrowUp size={14} /><span>Up</span></Button>
+        <Button size="sm" variant="outline" onClick={() => onMove(1)} disabled={index === total - 1} title="Move section down"><ArrowDown size={14} /><span>Down</span></Button>
+        <Button size="sm" variant="outline" onClick={() => commonChange('visible', section.visible === false)} title={section.visible === false ? 'Show section' : 'Hide section'} aria-label={section.visible === false ? 'Show section' : 'Hide section'}>{section.visible === false ? <Eye size={14} /> : <EyeOff size={14} />}<span>{section.visible === false ? 'Show' : 'Hide'}</span></Button>
+        <Button size="sm" variant="outline" onClick={onDuplicate} title="Duplicate section" aria-label="Duplicate section"><Copy size={14} /><span>Duplicate</span></Button>
+        <Button size="sm" variant="outline" className="cms-danger-outline" onClick={onRemove} title="Remove section" aria-label="Remove section"><Trash2 size={14} /><span>Remove</span></Button>
+      </div>
     </div></CardHeader>
     <CardContent>
-      <div className="cms-form-grid pb-section-grid">
-        <label className="cms-field"><span>Section content type</span><select className="ui-select" value={type} disabled={Boolean(section.homeComponent)} onChange={(e) => { const nextType = e.target.value as Section['type']; const next = blankSection(nextType, heading ?? blankBi()); next.visible = section.visible !== false; next.buttonConfig = button; onChange(next) }}>{(section.homeComponent ? [type] : SECTION_TYPES).map((t) => <option key={t} value={t}>{t}</option>)}</select></label>
-        <label className="cms-field"><span>Section visibility</span><select className="ui-select" value={section.visible === false ? 'hidden' : 'visible'} onChange={(e) => commonChange('visible', e.target.value === 'visible')}><option value="visible">Show on site</option><option value="hidden">Hide on site</option></select></label>
-        {section.homeComponent !== 'hero' && heading && <div className="cms-span-2"><BilingualInputs label="Heading" value={heading} onChange={(v) => commonChange('heading', v)} /></div>}
-        {section.homeComponent !== 'hero' && eyebrow && <div className="cms-span-2"><BilingualInputs label="Eyebrow / label" value={eyebrow} onChange={(v) => commonChange('eyebrow', v)} /></div>}
-        {section.homeComponent !== 'hero' && body && !section.contentCollection?.enabled && section.type !== 'contentFeed' && <div className="cms-span-2"><BilingualInputs label="Body / description" value={body} multiline onChange={setBodyBoth} /></div>}
+      <div className="pb-section-editor-tabs" role="tablist" aria-label={`Section ${index + 1} editor areas`}>
+        <button type="button" id={`${editorId}-tab-content`} aria-controls={`${editorId}-panel-content`} role="tab" aria-selected={editorTab === 'content'} className={editorTab === 'content' ? 'active' : ''} onClick={() => setEditorTab('content')}>Content</button>
+        {!section.homeComponent && (COLLECTION_SECTION_TYPES.has(section.type) || section.contentCollection?.enabled || section.type === 'contentFeed') && <button type="button" id={`${editorId}-tab-collection`} aria-controls={`${editorId}-panel-collection`} role="tab" aria-selected={editorTab === 'collection'} className={editorTab === 'collection' ? 'active' : ''} onClick={() => setEditorTab('collection')}>Collection</button>}
+        {section.homeComponent !== 'hero' && <button type="button" id={`${editorId}-tab-actions`} aria-controls={`${editorId}-panel-actions`} role="tab" aria-selected={editorTab === 'actions'} className={editorTab === 'actions' ? 'active' : ''} onClick={() => setEditorTab('actions')}>Actions & routes</button>}
+        <button type="button" id={`${editorId}-tab-advanced`} aria-controls={`${editorId}-panel-advanced`} role="tab" aria-selected={editorTab === 'advanced'} className={editorTab === 'advanced' ? 'active' : ''} onClick={() => setEditorTab('advanced')}>Advanced</button>
       </div>
-      {(section.homeComponent !== 'news' && section.homeComponent !== 'stories' && section.homeComponent !== 'newsFeed' && section.homeComponent !== 'successStories' && !section.contentCollection?.enabled && section.type !== 'contentFeed') && <FriendlyListEditor section={section} onChange={onChange} />}
-      {!section.contentCollection?.enabled && section.type !== 'contentFeed' && <TableRowsEditor section={section} onChange={onChange} />}
-      <SectionExtrasEditor section={section} onChange={onChange} />
-      {section.homeComponent === 'locations' && <LandingLocationsEditor key="landing-locations-editor" />}
-      {!section.homeComponent && COLLECTION_SECTION_TYPES.has(section.type) && <SectionCollectionEditor section={section} pageSlug={pageSlug} onChange={onChange} />}
-      {section.homeComponent !== 'hero' && <details className="pb-button-settings" open={false}>
-        <summary>Buttons & destination routes</summary>
-        <div className="cms-form-grid">
-          <label className="cms-field"><span>Show section button(s)</span><select className="ui-select" value={button.visible ? 'yes' : 'no'} onChange={(e) => setButton({ visible: e.target.value === 'yes' })}><option value="yes">Show</option><option value="no">Hide</option></select></label>
-          <label className="cms-field"><span>Button type</span><select className="ui-select" value={button.mode} onChange={(e) => setButton({ mode: e.target.value as SectionButtonConfig['mode'] })}><option value="primary">Primary</option><option value="secondary">Secondary</option><option value="both">Primary + secondary</option></select></label>
-          <div className="cms-span-2"><BilingualInputs label={button.mode === 'secondary' ? 'Button title' : 'Primary button title'} value={button.mode === 'secondary' ? (button.secondaryLabel ?? button.label) : button.label} onChange={(label) => setButton(button.mode === 'secondary' ? { secondaryLabel: label } : { label })} /></div>
-          <label className="cms-field"><span>{button.mode === 'secondary' ? 'Button action' : 'Primary action'}</span><select className="ui-select" value={(button.mode === 'secondary' ? button.secondaryAction : button.action) || 'route'} onChange={(e) => setButton(button.mode === 'secondary' ? { secondaryAction: e.target.value as SectionButtonConfig['secondaryAction'] } : { action: e.target.value as SectionButtonConfig['action'] })}><option value="route">Internal route</option><option value="external">External URL</option><option value="anchor">Page anchor</option></select></label>
-          <label className="cms-field"><span>{button.mode === 'secondary' ? 'Button destination / route' : 'Primary destination / route'}</span><Input value={button.mode === 'secondary' ? (button.secondaryHref ?? button.href) : button.href} onChange={(e) => setButton(button.mode === 'secondary' ? { secondaryHref: e.target.value } : { href: e.target.value })} placeholder="/contact or https://…" /></label>
-          {button.mode === 'both' && <><div className="cms-span-2"><BilingualInputs label="Secondary button title" value={button.secondaryLabel ?? blankBi()} onChange={(secondaryLabel) => setButton({ secondaryLabel })} /></div><label className="cms-field"><span>Secondary action</span><select className="ui-select" value={button.secondaryAction || 'route'} onChange={(e) => setButton({ secondaryAction: e.target.value as SectionButtonConfig['secondaryAction'] })}><option value="route">Internal route</option><option value="external">External URL</option><option value="anchor">Page anchor</option></select></label><label className="cms-field"><span>Secondary destination / route</span><Input value={button.secondaryHref ?? ''} onChange={(e) => setButton({ secondaryHref: e.target.value })} placeholder="/projects or https://…" /></label></>}
+      <div id={`${editorId}-panel-content`} className="pb-section-tab-panel" role="tabpanel" aria-labelledby={`${editorId}-tab-content`} hidden={editorTab !== 'content'}>
+        <div className="cms-form-grid pb-section-grid">
+          <label className="cms-field"><span>Section content type</span><select className="ui-select" value={type} disabled={Boolean(section.homeComponent)} onChange={(e) => { const nextType = e.target.value as Section['type']; const next = blankSection(nextType, heading ?? blankBi()); next.visible = section.visible !== false; next.buttonConfig = button; onChange(next) }}>{(section.homeComponent ? [type] : SECTION_TYPES).map((t) => <option key={t} value={t}>{t}</option>)}</select></label>
+          <label className="cms-field"><span>Section visibility</span><select className="ui-select" value={section.visible === false ? 'hidden' : 'visible'} onChange={(e) => commonChange('visible', e.target.value === 'visible')}><option value="visible">Show on site</option><option value="hidden">Hide on site</option></select></label>
+          {section.homeComponent !== 'hero' && heading && <div className="cms-span-2"><BilingualInputs label="Heading" value={heading} onChange={(v) => commonChange('heading', v)} /></div>}
+          {section.homeComponent !== 'hero' && eyebrow && <div className="cms-span-2"><BilingualInputs label="Eyebrow / label" value={eyebrow} onChange={(v) => commonChange('eyebrow', v)} /></div>}
+          {section.homeComponent !== 'hero' && body && !collectionManaged && section.type !== 'contentFeed' && <div className="cms-span-2"><BilingualInputs label="Body / description" value={body} multiline onChange={setBodyBoth} /></div>}
         </div>
-      </details>}
-      <details className="pb-json-settings"><summary>Advanced technical data (optional)</summary><p className="admin-small-note">Most content can be edited with the forms above. Use this only for section properties not covered by the visual editor; malformed JSON can prevent saving this section.</p><textarea className="ui-textarea pb-json-area" rows={12} spellCheck={false} value={rawJson} onChange={(e) => setRawJson(e.target.value)} /><div className="pb-json-foot"><small className="cms-slug-taken">{jsonError}</small><Button variant="outline" size="sm" onClick={applyJson}>Apply JSON</Button></div></details>
+        {(section.homeComponent !== 'news' && section.homeComponent !== 'stories' && section.homeComponent !== 'newsFeed' && section.homeComponent !== 'successStories' && !collectionManaged) && <FriendlyListEditor section={section} onChange={onChange} />}
+        {!collectionManaged && <TableRowsEditor section={section} onChange={onChange} />}
+        {isProjectsDatabaseSection && <p className="admin-small-note pb-projects-live-note">Project cards and uploaded images are loaded from published Project records in Site Content. The saved page layout intentionally does not duplicate those records in its manual items array; manage the live records in the Collection tab.</p>}
+        <SectionExtrasEditor section={section} onChange={onChange} />
+        {section.homeComponent === 'locations' && <LandingLocationsEditor key="landing-locations-editor" />}
+      </div>
+      {!section.homeComponent && (COLLECTION_SECTION_TYPES.has(section.type) || section.contentCollection?.enabled || section.type === 'contentFeed') && <div id={`${editorId}-panel-collection`} className="pb-section-tab-panel" role="tabpanel" aria-labelledby={`${editorId}-tab-collection`} hidden={editorTab !== 'collection'}>
+        {COLLECTION_SECTION_TYPES.has(section.type) || section.type === 'contentFeed'
+          ? <SectionCollectionEditor section={section} pageSlug={pageSlug} isProjectsCatalogSection={isProjectsCatalogSection} onChange={onChange} />
+          : <div className="admin-empty-state">This section does not use a database collection.</div>}
+      </div>}
+      {section.homeComponent !== 'hero' && <div id={`${editorId}-panel-actions`} className="pb-section-tab-panel" role="tabpanel" aria-labelledby={`${editorId}-tab-actions`} hidden={editorTab !== 'actions'}>
+        <fieldset className="pb-button-settings"><legend>Buttons and destination routes</legend>
+          <div className="cms-form-grid">
+            <label className="cms-field"><span>Show section button(s)</span><select className="ui-select" value={button.visible ? 'yes' : 'no'} onChange={(e) => setButton({ visible: e.target.value === 'yes' })}><option value="yes">Show</option><option value="no">Hide</option></select></label>
+            <label className="cms-field"><span>Button type</span><select className="ui-select" value={button.mode} onChange={(e) => setButton({ mode: e.target.value as SectionButtonConfig['mode'] })}><option value="primary">Primary</option><option value="secondary">Secondary</option><option value="both">Primary + secondary</option></select></label>
+            <div className="cms-span-2"><BilingualInputs label={button.mode === 'secondary' ? 'Button title' : 'Primary button title'} value={button.mode === 'secondary' ? (button.secondaryLabel ?? button.label) : button.label} onChange={(label) => setButton(button.mode === 'secondary' ? { secondaryLabel: label } : { label })} /></div>
+            <label className="cms-field"><span>{button.mode === 'secondary' ? 'Button action' : 'Primary action'}</span><select className="ui-select" value={(button.mode === 'secondary' ? button.secondaryAction : button.action) || 'route'} onChange={(e) => setButton(button.mode === 'secondary' ? { secondaryAction: e.target.value as SectionButtonConfig['secondaryAction'] } : { action: e.target.value as SectionButtonConfig['action'] })}><option value="route">Internal route</option><option value="external">External URL</option><option value="anchor">Page anchor</option></select></label>
+            <label className="cms-field"><span>{button.mode === 'secondary' ? 'Button destination / route' : 'Primary destination / route'}</span><Input value={button.mode === 'secondary' ? (button.secondaryHref ?? button.href) : button.href} onChange={(e) => setButton(button.mode === 'secondary' ? { secondaryHref: e.target.value } : { href: e.target.value })} placeholder="/contact or https://…" /></label>
+            {button.mode === 'both' && <><div className="cms-span-2"><BilingualInputs label="Secondary button title" value={button.secondaryLabel ?? blankBi()} onChange={(secondaryLabel) => setButton({ secondaryLabel })} /></div><label className="cms-field"><span>Secondary action</span><select className="ui-select" value={button.secondaryAction || 'route'} onChange={(e) => setButton({ secondaryAction: e.target.value as SectionButtonConfig['secondaryAction'] })}><option value="route">Internal route</option><option value="external">External URL</option><option value="anchor">Page anchor</option></select></label><label className="cms-field"><span>Secondary destination / route</span><Input value={button.secondaryHref ?? ''} onChange={(e) => setButton({ secondaryHref: e.target.value })} placeholder="/projects or https://…" /></label></>}
+          </div>
+        </fieldset>
+      </div>}
+      <div id={`${editorId}-panel-advanced`} className="pb-section-tab-panel" role="tabpanel" aria-labelledby={`${editorId}-tab-advanced`} hidden={editorTab !== 'advanced'}>
+        <fieldset className="pb-json-settings"><legend>Advanced technical data</legend><p className="admin-small-note">Use this only for properties not covered by the visual editor. Invalid JSON is rejected before applying changes.</p><textarea className="ui-textarea pb-json-area" rows={12} spellCheck={false} value={rawJson} onChange={(e) => setRawJson(e.target.value)} /><div className="pb-json-foot"><small className="cms-slug-taken">{jsonError}</small><Button variant="outline" size="sm" onClick={applyJson}>Apply JSON</Button></div></fieldset>
+      </div>
     </CardContent>
   </Card>
 }
 
-function SectionCollectionEditor({ section, pageSlug, onChange }: { section: PageSection; pageSlug: string; onChange: (section: PageSection) => void }) {
-  const config = section.contentCollection ?? { enabled: section.type === 'contentFeed', component: ((section.type === 'contentFeed' ? section.components?.[0] : undefined) ?? 'project') as ContentComponent, maxItems: 12, layout: section.type === 'carousel' ? 'carousel' as const : section.type === 'gallery' ? 'masonry' as const : 'grid' as const, columns: 3 as const, gap: 24, viewportItems: 3 }
+function SectionCollectionEditor({ section, pageSlug, isProjectsCatalogSection = false, onChange }: { section: PageSection; pageSlug: string; isProjectsCatalogSection?: boolean; onChange: (section: PageSection) => void }) {
+  const sectionData = section as PageSection & { collectionKind?: string; heading?: Bilingual; dataSource?: string }
+  const headingText = `${sectionData.heading?.en || ''} ${sectionData.heading?.bn || ''}`.toLowerCase()
+  const isCanonicalProjectsCollection = pageSlug === '/projects' && (
+    isProjectsCatalogSection
+    || isProjectsCollectionMarker(section)
+    || (sectionData.dataSource !== 'manual' && /projects?|প্রকল্প/.test(headingText))
+  )
+  const defaultConfig = { enabled: section.type === 'contentFeed' || isCanonicalProjectsCollection, component: ((section.type === 'contentFeed' ? section.components?.[0] : undefined) ?? 'project') as ContentComponent, maxItems: 12, layout: section.type === 'carousel' ? 'carousel' as const : section.type === 'gallery' ? 'masonry' as const : 'grid' as const, columns: 3 as const, gap: 24, viewportItems: 3 }
+  // The canonical Projects page always reads its published CMS catalogue. This
+  // repairs older saved sections whose `contentCollection.enabled` flag remained
+  // false and consequently left both the editor list and public `items` empty.
+  const config = {
+    ...defaultConfig,
+    ...(section.contentCollection ?? {}),
+    enabled: isCanonicalProjectsCollection ? true : section.contentCollection?.enabled ?? defaultConfig.enabled,
+    component: isCanonicalProjectsCollection ? 'project' as ContentComponent : section.contentCollection?.component ?? defaultConfig.component,
+  }
   const [items, setItems] = useState<ContentRecord[]>([])
   const [loading, setLoading] = useState(false)
   const [editing, setEditing] = useState<ContentRecord | null | 'new'>(null)
@@ -448,11 +510,13 @@ function SectionCollectionEditor({ section, pageSlug, onChange }: { section: Pag
     try {
       const all = await listContent(config.component)
       const contentPage = FIXED_CONTENT_PARENT[config.component] || pageSlug
-      setItems(all.filter((item) => String(FIXED_CONTENT_PARENT[item.component] || item.values.routeParent || '') === contentPage))
+      setItems(isCanonicalProjectsCollection
+        ? all
+        : all.filter((item) => String(FIXED_CONTENT_PARENT[item.component] || item.values.routeParent || '') === contentPage))
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Unable to load this section collection.')
     } finally { setLoading(false) }
-  }, [config.enabled, config.component, pageSlug])
+  }, [config.enabled, config.component, pageSlug, isCanonicalProjectsCollection])
   useEffect(() => { void refresh() }, [refresh])
   const setConfig = (patch: Partial<typeof config>) => onChange({ ...section, contentCollection: { ...config, ...patch } })
   const selectableComponents = Object.keys(COMPONENTS) as ContentComponent[]
@@ -465,7 +529,9 @@ function SectionCollectionEditor({ section, pageSlug, onChange }: { section: Pag
     <legend>Site content collection</legend>
     <p className="admin-small-note">A section defines a database-backed collection. Records created here also appear in Site Content. Records created in Site Content appear here when their destination page and content type match.</p>
     <div className="cms-form-grid">
-      <label className="cms-field"><span>Connect Site Content</span><select className="ui-select" value={config.enabled ? 'yes' : 'no'} onChange={(event) => setConfig({ enabled: event.target.value === 'yes' })}><option value="yes">Enabled — database collection</option><option value="no">Disabled — manually managed section</option></select></label>
+      {isCanonicalProjectsCollection
+        ? <div className="cms-field"><span>Connect Site Content</span><p className="admin-small-note">Enabled automatically for the canonical Projects page. Published Project records supply this section's cards and uploaded images.</p></div>
+        : <label className="cms-field"><span>Connect Site Content</span><select className="ui-select" value={config.enabled ? 'yes' : 'no'} onChange={(event) => setConfig({ enabled: event.target.value === 'yes' })}><option value="yes">Enabled — database collection</option><option value="no">Disabled — manually managed section</option></select></label>}
       {config.enabled && <>
         <label className="cms-field"><span>Content type</span><select className="ui-select" value={config.component} onChange={(event) => setConfig({ component: event.target.value as ContentComponent })}>{selectableComponents.map((component) => <option key={component} value={component}>{COMPONENTS[component].plural}</option>)}</select></label>
         <label className="cms-field"><span>Maximum records</span><Input type="number" min="1" max="100" value={String(singleRecordSection ? 1 : config.maxItems)} disabled={singleRecordSection} onChange={(event) => setConfig({ maxItems: Math.max(1, Math.min(100, Number(event.target.value) || 1)) })} />{singleRecordSection && <small className="admin-small-note">This section uses one record as its call-to-action content.</small>}</label>
@@ -479,10 +545,10 @@ function SectionCollectionEditor({ section, pageSlug, onChange }: { section: Pag
       <p className="admin-small-note">Notice and job feeds use two columns on medium and larger screens, and one column on smaller screens.</p>
     )}
     {config.enabled && <div className="cms-collection-manager">
-      <div className="cms-collection-manager-head"><div><strong>{COMPONENTS[config.component].plural}</strong><small>{items.length} record(s) assigned to <code>{contentPage}</code>{heading?.en ? ` · ${heading.en}` : ''}</small></div><Button size="sm" onClick={() => setEditing('new')}><Plus size={14} /> Add content</Button></div>
-      {loading ? <p className="admin-small-note">Loading collection…</p> : items.length ? <div className="cms-collection-items">{items.map((item) => <div key={item.id} className="cms-collection-item"><div><strong>{item.values.title_en || item.slug}</strong><small>{item.slug} · {item.status}</small></div><Button size="sm" variant="outline" onClick={() => setEditing(item)}>Edit</Button></div>)}</div> : <p className="admin-small-note">No records assigned yet. Add one here or create it in Site Content and set its “Publish under page” destination to {contentPage}.</p>}
+      <div className="cms-collection-manager-head"><div><strong>{COMPONENTS[config.component].plural}</strong><small>{items.length} {isCanonicalProjectsCollection ? 'record(s) in the Projects catalogue' : <>record(s) assigned to <code>{contentPage}</code></>}{heading?.en ? ` · ${heading.en}` : ''}</small></div><Button size="sm" onClick={() => setEditing('new')}><Plus size={14} /> Add content</Button></div>
+      {loading ? <p className="admin-small-note">Loading collection…</p> : items.length ? <div className="cms-collection-items">{items.map((item) => <div key={item.id} className="cms-collection-item">{item.values.image ? <img className="cms-collection-thumb" src={normalizeMediaSrc(item.values.image)} alt="" loading="lazy" /> : <span className="cms-collection-thumb cms-collection-thumb--empty" aria-hidden="true">No image</span>}<div><strong>{item.values.title_en || item.slug}</strong><small>{item.slug} · {item.status}{item.values.image ? ' · image attached' : ' · no image selected'}</small></div><Button size="sm" variant="outline" onClick={() => setEditing(item)}>Edit</Button></div>)}</div> : <p className="admin-small-note">{isCanonicalProjectsCollection ? 'No project records yet. Add one here or publish a Project from Site Content.' : `No records assigned yet. Add one here or create it in Site Content and set its “Publish under page” destination to ${contentPage}.`}</p>}
       <a className="ui-button ui-button-ghost ui-button-sm" href={`/admin/dashboard/site-content?component=${config.component}&page=${encodeURIComponent(contentPage)}`}>Open all Site Content ↗</a>
-      {editing !== null && <div className="cms-inline-content-editor"><ContentEditor key={`${config.component}-${editing === 'new' ? 'new' : editing.id}`} component={config.component} record={editing === 'new' ? null : editing} defaultRouteParent={contentPage} onSaved={() => { setEditing(null); void refresh(); toast.success('Section content saved.') }} onDeleted={() => { setEditing(null); void refresh() }} onClose={() => setEditing(null)} /></div>}
+      {editing !== null && <ContentEditor key={`${config.component}-${editing === 'new' ? 'new' : editing.id}`} component={config.component} record={editing === 'new' ? null : editing} defaultRouteParent={contentPage} presentation="modal" onSaved={() => { setEditing(null); void refresh(); toast.success('Section content saved.') }} onDeleted={() => { setEditing(null); void refresh() }} onClose={() => setEditing(null)} />}
     </div>}
   </fieldset>
 }
@@ -523,6 +589,7 @@ function LandingGlobalEditor() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [saveError, setSaveError] = useState('')
+  const [dirty, setDirty] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -532,6 +599,7 @@ function LandingGlobalEditor() {
       const data = result.global && typeof result.global === 'object' ? result.global : {}
       setGlobalDraft(data)
       setHero(normalizeHeroDraft(data.homeHero))
+      setDirty(false)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Unable to load homepage hero settings.')
     } finally {
@@ -540,10 +608,12 @@ function LandingGlobalEditor() {
   }, [])
 
   useEffect(() => { void load() }, [load])
+  useRegisterAdminActions('page-builder-landing-hero', { save: saveSettings, reload: load, dirty, saving, label: 'Homepage hero' })
 
   const updateHero = (path: string, value: unknown) => {
     setSaveError('')
     setHero((current) => setPath(current, path, value) as HeroData)
+    setDirty(true)
   }
 
   async function saveSettings() {
@@ -574,6 +644,7 @@ function LandingGlobalEditor() {
       }
       await savePortfolioGlobal(nextGlobal, latestResult.updatedAt)
       setGlobalDraft(nextGlobal)
+      setDirty(false)
       toast.success('Homepage hero settings saved.')
       await load()
     } catch (e) {
@@ -642,12 +713,13 @@ function LandingLocationsEditor() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [saveError, setSaveError] = useState('')
+  const [dirty, setDirty] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
     setError('')
     try {
-      const response = await fetch('/api/website-essentials', { cache: 'no-store' })
+      const response = await websiteEssentialsRequest()
       if (!response.ok) throw new Error('Unable to load website locations.')
       const value = normalizeWebsiteEssentials(await response.json())
       const isConfigured = response.headers.get('X-Website-Essentials-Configured') === 'true'
@@ -655,6 +727,7 @@ function LandingLocationsEditor() {
       // The legacy directory is used only until the first DB document is seeded.
       // Once configured, even an empty array is an intentional CMS value.
       setBranches(isConfigured ? value.locations : (value.locations.length ? value.locations : BRANCHES.map((branch) => ({ ...branch }))))
+      setDirty(false)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Unable to load office locations.')
     } finally {
@@ -663,6 +736,7 @@ function LandingLocationsEditor() {
   }, [])
 
   useEffect(() => { void load() }, [load])
+  useRegisterAdminActions('page-builder-landing-locations', { save: saveSettings, reload: load, dirty, saving, label: 'Office locations' })
 
   async function saveSettings() {
     const seenIds = new Set<string>()
@@ -694,7 +768,7 @@ function LandingLocationsEditor() {
     try {
       // Read the current document first so this focused editor never overwrites
       // socials, staff or published PDF configuration owned by Website Essentials.
-      const currentResponse = await fetch('/api/website-essentials', { cache: 'no-store' })
+      const currentResponse = await websiteEssentialsRequest()
       if (!currentResponse.ok) throw new Error('Unable to refresh Website Essentials before saving locations.')
       const latest: WebsiteEssentials = normalizeWebsiteEssentials(await currentResponse.json())
       const normalizedBranches = branches.map((branch) => ({
@@ -708,17 +782,17 @@ function LandingLocationsEditor() {
         division: branch.division ?? blankBi(),
         address: branch.address ?? blankBi(),
       }))
-      const response = await fetch('/api/website-essentials', {
+      const response = await websiteEssentialsRequest({
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...latest, locations: normalizedBranches }),
-        cache: 'no-store',
       })
       const payload = await response.json().catch(() => ({}))
       if (response.status === 401) { window.location.assign('/admin/login'); return }
       if (!response.ok) throw new Error(payload.error || 'Unable to save office locations.')
       setConfigured(true)
       setBranches(normalizeWebsiteEssentials(payload.data).locations)
+      setDirty(false)
       toast.success('Office locations saved to Website Essentials. The homepage map and location directory now use this database record.')
       await load()
     } catch (e) {
@@ -741,7 +815,7 @@ function LandingLocationsEditor() {
       {loading ? <PageLoading rows={4} /> : error ? <AdminErrorState message={error} onRetry={() => void load()} /> : <>
         {!configured && <p className="admin-small-note">Showing the legacy bootstrap directory until Website Essentials has been seeded. Saving here writes the locations to PostgreSQL.</p>}
         <fieldset className="cms-array-fieldset"><legend>Bangladesh map locations</legend>
-          <BranchDirectoryEditor value={branches} onChange={(next) => { setSaveError(''); setBranches(next) }} />
+          <BranchDirectoryEditor value={branches} onChange={(next) => { setSaveError(''); setBranches(next); setDirty(true) }} />
         </fieldset>
         {saveError && <div className="cms-save-error" role="alert"><strong>Changes were not saved.</strong><span>{saveError}</span></div>}
         <div className="pb-bottom-save"><Button onClick={() => void saveSettings()} disabled={saving}><Save size={15} />{saving ? 'Saving…' : 'Save office locations'}</Button><Button variant="outline" onClick={() => void load()} disabled={saving}>Reload saved locations</Button></div>
@@ -751,6 +825,7 @@ function LandingLocationsEditor() {
 }
 
 export default function PageBuilderPage() {
+  const { dirty: anyEditorDirty } = useAdminActions()
   const [pages, setPages] = useState<PageIndexItem[]>([])
   const [slug, setSlug] = useState('')
   const [draft, setDraft] = useState<PageData | null>(null)
@@ -764,6 +839,8 @@ export default function PageBuilderPage() {
   const [newLandingComponent, setNewLandingComponent] = useState<LandingComponentKey>('growth')
   const [dragIndex, setDragIndex] = useState<number | null>(null)
   const [pageQuery, setPageQuery] = useState('')
+  const [activeSectionIndex, setActiveSectionIndex] = useState(0)
+  const baselineRef = useRef('')
 
   const loadIndex = useCallback(async () => {
     setLoading(true); setError('')
@@ -783,9 +860,12 @@ export default function PageBuilderPage() {
       const result = await getEditablePage(nextSlug)
       const data = result.override ?? result.fallback
       if (!data) throw new Error('No content is available for this page.')
-      setDraft({ ...data, slug: nextSlug, status: nextSlug === '/' ? 'published' : data.status, title: data.title ?? { en: nextSlug, bn: nextSlug }, sections: Array.isArray(data.sections) ? data.sections.map((s: any) => ({ ...s, visible: s.visible !== false })) : [] })
+      const normalizedDraft: PageData = { ...data, slug: nextSlug, status: nextSlug === '/' ? 'published' : data.status, title: data.title ?? { en: nextSlug, bn: nextSlug }, sections: Array.isArray(data.sections) ? data.sections.map((section: any, index: number) => ({ ...section, sectionId: section.sectionId || `section-${nextSlug.replace(/[^a-z0-9]+/gi, '-')}-${index + 1}`, visible: section.visible !== false })) : [] }
+      baselineRef.current = JSON.stringify(normalizedDraft)
+      setActiveSectionIndex(0)
+      setDraft(normalizedDraft)
       setUpdatedAt(result.meta?.updatedAt)
-    } catch (e) { setDraft(null); setError(e instanceof Error ? e.message : 'Unable to load page.') }
+    } catch (e) { baselineRef.current = ''; setDraft(null); setError(e instanceof Error ? e.message : 'Unable to load page.') }
     finally { setPageLoading(false) }
   }, [])
 
@@ -834,7 +914,9 @@ export default function PageBuilderPage() {
     setSaveError('')
     setSaving(true)
     try {
-      await saveEditablePage(slug, { ...draft, slug, ...(slug === '/' ? { status: 'published' as const } : {}) }, updatedAt)
+      const savedSnapshot = { ...draft, slug, ...(slug === '/' ? { status: 'published' as const } : {}) }
+      await saveEditablePage(slug, savedSnapshot, updatedAt)
+      baselineRef.current = JSON.stringify(savedSnapshot)
       toast.success('Page layout and content saved to the database.')
       await loadPage(slug)
       await loadIndex()
@@ -842,7 +924,27 @@ export default function PageBuilderPage() {
     finally { setSaving(false) }
   }
 
+  const isDirty = Boolean(draft && JSON.stringify(draft) !== baselineRef.current)
+  useRegisterAdminActions('page-builder-current-page', { save: async () => { await save() }, reload: async () => { await loadIndex(); if (slug) await loadPage(slug) }, dirty: isDirty, saving, label: 'Page content' })
+
+  function changePage(nextSlug: string) {
+    if (nextSlug === slug) return
+    if (anyEditorDirty && !window.confirm('You have unsaved changes in this page or one of its editors. Discard them and open another page?')) return
+    baselineRef.current = ''
+    setActiveSectionIndex(0)
+    setDraft(null)
+    setSlug(nextSlug)
+  }
+
   const sections = draft?.sections ?? []
+  const markedProjectsSectionIndex = slug === '/projects' ? sections.findIndex(isProjectsCollectionMarker) : -1
+  const projectsCatalogSectionIndex = slug === '/projects'
+    ? markedProjectsSectionIndex >= 0 ? markedProjectsSectionIndex : sections.findIndex(isProjectsCollectionPresentation)
+    : -1
+  function jumpToSection(index: number) {
+    setActiveSectionIndex(index)
+    document.getElementById(`pb-section-${index}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
   function addPageSection() {
     if (!draft) return
     const next = blankSection(newSectionType, { en: `New ${newSectionType} section`, bn: `নতুন ${newSectionType} অংশ` })
@@ -875,10 +977,17 @@ export default function PageBuilderPage() {
     setDraft((current) => current ? ({ ...current, sections: [...current.sections, next] }) : current)
   }
   return <>
-    <SectionToolbar title="Page Builder" description="Edit bilingual page content section by section. Reorder sections, toggle visibility, and configure buttons and routes; published updates flow to the website." count={pages.length} onRefresh={() => { void loadIndex(); if (slug) void loadPage(slug) }} refreshing={loading || pageLoading} />
+    <SectionToolbar title="Page Builder" description="Edit pages and their sections in focused workspaces. Changes are tracked, and the global Save all action saves every open editor." count={pages.length} onRefresh={() => { void loadIndex(); if (slug) void loadPage(slug) }} refreshing={loading || pageLoading} actions={<span className={`pb-save-state ${isDirty || saveError ? 'is-dirty' : ''}`}>{saving ? 'Saving changes…' : saveError ? 'Save failed — retry' : isDirty ? 'Unsaved changes' : 'All changes saved'}</span>} />
     {loading && !pages.length ? <PageLoading rows={4} /> : error && !draft ? <AdminErrorState message={error} onRetry={() => { void loadIndex(); if (slug) void loadPage(slug) }} /> : <div className="pb-layout">
-      <aside className="pb-page-list"><div className="pb-page-list-head"><strong>Pages</strong><span>{pagesSorted.length}</span></div><input className="ui-input" aria-label="Filter pages" placeholder="Filter by title or route…" value={pageQuery} onChange={(e) => setPageQuery(e.target.value)} />{pagesSorted.map((p) => <button data-page-option={`${p.slug} ${p.title.en} ${p.title.bn}`.toLowerCase()} type="button" key={p.slug} className={`pb-page-option ${slug === p.slug ? 'active' : ''}`} onClick={() => setSlug(p.slug)}><strong>{p.slug === '/' ? 'Landing Page' : p.title.en}</strong><small>{p.slug}</small><span>{p.status}</span></button>)}</aside>
-      <section className="pb-editor">
+      <div className="pb-page-navigation">
+        <div className="pb-page-navigation-head"><div><strong>Pages</strong><span>{pages.length} editable routes</span></div><input className="ui-input" aria-label="Filter pages" placeholder="Filter pages…" value={pageQuery} onChange={(e) => setPageQuery(e.target.value)} /></div>
+        <nav className="pb-page-tabs" aria-label="Pages" role="tablist">
+          {pagesSorted.map((page) => <button id={`pb-page-tab-${page.slug === '/' ? 'home' : page.slug.replace(/[^a-z0-9_-]+/gi, '-')}`} role="tab" aria-controls="pb-page-editor-panel" aria-selected={slug === page.slug} data-page-option={`${page.slug} ${page.title.en} ${page.title.bn}`.toLowerCase()} type="button" key={page.slug} className={`pb-page-tab ${slug === page.slug ? 'active' : ''}`} onClick={() => changePage(page.slug)}><strong>{page.slug === '/' ? 'Landing Page' : page.title.en || page.slug}</strong><small>{page.slug}</small><span className={`pb-page-status ${page.status}`}>{page.status}</span></button>)}
+          {!pagesSorted.length && <span className="admin-small-note">No pages match this search.</span>}
+        </nav>
+        <label className="pb-mobile-page-picker"><span>Choose page</span><select className="ui-select" value={slug} onChange={(event) => changePage(event.target.value)}>{pagesSorted.map((page) => <option key={page.slug} value={page.slug}>{page.slug === '/' ? 'Landing Page' : page.title.en} · {page.slug}</option>)}</select></label>
+      </div>
+      <section id="pb-page-editor-panel" className="pb-editor" role="tabpanel" tabIndex={0} aria-label={`Editing ${slug === '/' ? 'Landing Page' : slug || 'page'}`}>
         {pageLoading || !draft ? <PageLoading rows={4} /> : <>
           <Card><CardHeader><div className="pb-page-title-row"><div><CardTitle>{slug === '/' ? 'Landing Page' : (draft.title.en || slug)}</CardTitle><CardDescription>{slug === '/' ? 'Homepage content document' : 'Database-backed page document'} · <code>{slug}</code></CardDescription></div><div className="pb-page-title-actions"><a className="ui-button ui-button-outline ui-button-default" href={slug === '/' ? '/' : slug} target="_blank" rel="noopener noreferrer"><ExternalLink size={15} /> View site</a><Button onClick={() => void save()} disabled={saving}><Save size={15} />{saving ? 'Saving…' : 'Save page'}</Button></div></div></CardHeader><CardContent><div className="cms-form-grid">
             <div className="cms-span-2"><BilingualInputs label={slug === '/' ? "Page title (browser/search metadata)" : "Page title"} value={draft.title} onChange={(title) => updateTop('title', title)} /></div>
@@ -892,8 +1001,15 @@ export default function PageBuilderPage() {
           </div></CardContent></Card>
           {slug === '/' && <LandingGlobalEditor key="landing-global-editor" />}
           <div className="pb-sections-heading"><div><h2>{slug === '/' ? 'Landing compositions' : 'Page sections'}</h2><p>{sections.length} section{sections.length === 1 ? '' : 's'} · Drag sections to rearrange them. {slug === '/' ? 'Configure every landing composition here; use the News Rail and Success Stories card managers inside those sections to create and edit their database records.' : 'Use normal page sections or optionally add a reusable landing composition.'} Hidden sections remain editable but do not render publicly.</p></div><div className="pb-add-section">{slug === '/' ? <><select className="ui-select" aria-label="Landing composition" value={newLandingComponent} onChange={(e) => setNewLandingComponent(e.target.value as LandingComponentKey)}>{LANDING_COMPONENT_OPTIONS.map((option) => <option key={option.key} value={option.key}>{option.label}</option>)}</select><Button variant="outline" onClick={() => addLandingSection(newLandingComponent)}><Plus size={14} /> Add landing composition</Button></> : <><select className="ui-select" aria-label="Page section type" value={newSectionType} onChange={(e) => setNewSectionType(e.target.value as Section['type'])}>{SECTION_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}</select><Button variant="outline" onClick={addPageSection}><Plus size={14} /> Add page section</Button><select className="ui-select" aria-label="Reusable landing composition" value={newLandingComponent} onChange={(e) => setNewLandingComponent(e.target.value as LandingComponentKey)}>{LANDING_COMPONENT_OPTIONS.map((option) => <option key={option.key} value={option.key}>{option.label}</option>)}</select><Button variant="outline" onClick={() => addLandingSection(newLandingComponent)}><Plus size={14} /> Add landing UI</Button></>}</div></div>
+          {!!sections.length && <nav className="pb-section-navigation" aria-label="Page sections">
+            <div className="pb-section-navigation-label">Jump to section</div>
+            <div className="pb-section-tabs">
+              {sections.map((section, index) => <button type="button" key={section.sectionId || `section-${index}`} aria-current={activeSectionIndex === index ? 'true' : undefined} onClick={() => jumpToSection(index)}><span>{index + 1}</span>{getBilingual((section as any).heading)?.en || section.homeComponent || section.type}</button>)}
+            </div>
+            <label className="pb-mobile-section-picker"><span>Choose section</span><select className="ui-select" value={String(Math.min(activeSectionIndex, Math.max(0, sections.length - 1)))} onChange={(event) => jumpToSection(Number(event.target.value))}>{sections.map((section, index) => <option key={section.sectionId || `mobile-section-${index}`} value={index}>{index + 1}. {getBilingual((section as any).heading)?.en || section.homeComponent || section.type}</option>)}</select></label>
+          </nav>}
           <div className="pb-sections-list" onDragOver={(e) => e.preventDefault()} onDragStartCapture={(e) => { const target = e.target as HTMLElement; const card = target.closest('[data-section-index]'); if (card) setDragIndex(Number(card.getAttribute('data-section-index'))) }} onDropCapture={(e) => { const target = e.target as HTMLElement; const card = target.closest('[data-section-index]'); if (!card || dragIndex === null) return; const to = Number(card.getAttribute('data-section-index')); if (to !== dragIndex) setDraft((cur) => cur ? ({ ...cur, sections: moveItem(cur.sections, dragIndex, to) }) : cur); setDragIndex(null) }}>
-            {sections.map((section, index) => <div data-section-index={index} key={`${slug}-section-${index}`} draggable onDragStart={(e) => { setDragIndex(index); e.dataTransfer.setData('text/plain', String(index)); e.dataTransfer.effectAllowed = 'move' }} onDragOver={(e) => e.preventDefault()}><SectionCard section={section} index={index} total={sections.length} pageSlug={slug} onChange={(value) => updateSection(index, value)} onMove={(delta) => setDraft((cur) => cur ? ({ ...cur, sections: moveItem(cur.sections, index, index + delta) }) : cur)} onDuplicate={() => duplicateSection(index)} onRemove={() => { if (confirm(`Remove section ${index + 1}?`)) setDraft((cur) => cur ? ({ ...cur, sections: cur.sections.filter((_, i) => i !== index) }) : cur) }} /></div>)}
+            {sections.map((section, index) => <div id={`pb-section-${index}`} data-section-index={index} key={section.sectionId || `${slug}-section-${index}`} draggable onDragStart={(e) => { setDragIndex(index); e.dataTransfer.setData('text/plain', String(index)); e.dataTransfer.effectAllowed = 'move' }} onDragOver={(e) => e.preventDefault()}><SectionCard section={section} index={index} total={sections.length} pageSlug={slug} isProjectsCatalogSection={index === projectsCatalogSectionIndex} onChange={(value) => updateSection(index, value)} onMove={(delta) => setDraft((cur) => cur ? ({ ...cur, sections: moveItem(cur.sections, index, index + delta) }) : cur)} onDuplicate={() => duplicateSection(index)} onRemove={() => { if (confirm(`Remove section ${index + 1}?`)) setDraft((cur) => cur ? ({ ...cur, sections: cur.sections.filter((_, i) => i !== index) }) : cur) }} /></div>)}
             {!sections.length && <div className="admin-empty-state">This page has no sections. Add a section to build the page.</div>}
           </div>
           {saveError && <div className="cms-save-error" role="alert"><strong>Changes were not saved.</strong><span>{saveError}</span><small>Your edits are still in this form. You can correct the issue and retry without losing the draft.</small></div>}

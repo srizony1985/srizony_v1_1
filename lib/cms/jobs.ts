@@ -35,15 +35,61 @@ export async function listJobSummaries() {
       (SELECT COUNT(*)::int FROM job_applications a WHERE a.job_id = i.id) AS applications,
       (SELECT COUNT(*)::int FROM job_applications a WHERE a.job_id = i.id AND a.status = 'new') AS new_applications
     FROM cms_content_items i WHERE i.component = 'job' ORDER BY i.published_at DESC, i.id DESC`)).rows as Row[]
-  return rows.map((r) => ({ id: Number(r.id), slug: r.slug, title: { en: r.title_en, bn: r.title_bn }, status: r.status, postedAt: String(r.published_at).slice(0, 10), deadline: r.attributes?.deadline || '', applications: Number(r.applications), newApplications: Number(r.new_applications) }))
+  return rows.map((r) => ({
+    id: Number(r.id), slug: r.slug, title: { en: r.title_en, bn: r.title_bn || r.title_en },
+    category: {
+      en: String(r.attributes?.category_en || r.attributes?.category || r.attributes?.employmentType || 'Uncategorized'),
+      bn: String(r.attributes?.category_bn || r.attributes?.category_en || r.attributes?.category || r.attributes?.employmentType || 'অনির্ধারিত'),
+    },
+    status: r.status, postedAt: String(r.published_at).slice(0, 10), deadline: r.attributes?.deadline || '',
+    applications: Number(r.applications), newApplications: Number(r.new_applications),
+  }))
 }
 
-export async function listApplications(jobId?: number) {
+export async function listApplications(jobId?: number, status?: string) {
   await ensureCmsSchema()
+  if (status && !(APPLICATION_STATUSES as readonly string[]).includes(status)) throw new JobError('Unsupported application status.')
+  const where = jobId && status
+    ? sql`WHERE a.job_id = ${jobId} AND a.status = ${status}`
+    : jobId
+      ? sql`WHERE a.job_id = ${jobId}`
+      : status
+        ? sql`WHERE a.status = ${status}`
+        : sql``
   const rows = (await run(sql`
-    SELECT a.*, i.title_en AS job_title, i.slug AS job_slug FROM job_applications a JOIN cms_content_items i ON i.id = a.job_id
-    ${jobId ? sql`WHERE a.job_id = ${jobId}` : sql``} ORDER BY a.created_at DESC LIMIT 2000`)).rows as Row[]
-  return rows.map((r) => ({ id: Number(r.id), jobId: Number(r.job_id), jobTitle: r.job_title, jobSlug: r.job_slug, name: r.name, email: r.email, phone: r.phone || '', coverLetter: r.cover_letter || '', resumeUrl: r.resume_url || '', status: r.status, createdAt: iso(r.created_at) }))
+    SELECT a.*, i.title_en AS job_title, i.slug AS job_slug,
+      COALESCE(NULLIF(i.attributes->>'category_en', ''), NULLIF(i.attributes->>'category', ''), NULLIF(i.attributes->>'employmentType', ''), 'Uncategorized') AS job_category_en,
+      COALESCE(NULLIF(i.attributes->>'category_bn', ''), NULLIF(i.attributes->>'category_en', ''), NULLIF(i.attributes->>'category', ''), NULLIF(i.attributes->>'employmentType', ''), 'অনির্ধারিত') AS job_category_bn
+    FROM job_applications a JOIN cms_content_items i ON i.id = a.job_id
+    ${where} ORDER BY a.created_at DESC LIMIT 2000`)).rows as Row[]
+  return rows.map((r) => ({
+    id: Number(r.id), jobId: Number(r.job_id), jobTitle: r.job_title, jobSlug: r.job_slug,
+    jobCategory: { en: r.job_category_en, bn: r.job_category_bn },
+    name: r.name, email: r.email, phone: r.phone || '', coverLetter: r.cover_letter || '',
+    resumeUrl: r.resume_url || '', status: r.status, createdAt: iso(r.created_at),
+  }))
+}
+
+/** New application notifications, with an exact total and the latest 2,000 applicant records. */
+export async function listApplicantNotifications() {
+  await ensureCmsSchema()
+  const [countResult, rowsResult] = await Promise.all([
+    run(sql`SELECT COUNT(*)::int AS total FROM job_applications WHERE status = 'new'`),
+    run(sql`
+      SELECT a.*, i.title_en AS job_title, i.slug AS job_slug,
+        COALESCE(NULLIF(i.attributes->>'category_en', ''), NULLIF(i.attributes->>'category', ''), NULLIF(i.attributes->>'employmentType', ''), 'Uncategorized') AS job_category_en,
+        COALESCE(NULLIF(i.attributes->>'category_bn', ''), NULLIF(i.attributes->>'category_en', ''), NULLIF(i.attributes->>'category', ''), NULLIF(i.attributes->>'employmentType', ''), 'অনির্ধারিত') AS job_category_bn
+      FROM job_applications a JOIN cms_content_items i ON i.id = a.job_id
+      WHERE a.status = 'new' ORDER BY a.created_at DESC LIMIT 2000
+    `),
+  ])
+  const items = (rowsResult.rows as Row[]).map((r) => ({
+    id: Number(r.id), jobId: Number(r.job_id), jobTitle: r.job_title, jobSlug: r.job_slug,
+    jobCategory: { en: r.job_category_en, bn: r.job_category_bn },
+    name: r.name, email: r.email, phone: r.phone || '', coverLetter: r.cover_letter || '',
+    resumeUrl: r.resume_url || '', status: r.status, createdAt: iso(r.created_at),
+  }))
+  return { total: Number((countResult.rows[0] as Row | undefined)?.total ?? 0), items }
 }
 
 export async function setApplicationStatus(id: number, status: string) {

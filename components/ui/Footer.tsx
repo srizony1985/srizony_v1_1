@@ -3,13 +3,15 @@
 import SafeImage from '@/components/ui/SafeImage'
 import Link from 'next/link'
 import { Mail, MapPin, Phone } from 'lucide-react'
-import { FaLinkedin } from 'react-icons/fa'
 import { localizeDigits } from '@/lib/utils'
 import { FALLBACK_CONTACT, FALLBACK_LOGO } from '@/lib/siteFallback'
 import { useSite } from '@/components/containers/SiteProvider'
+import SocialLinks from '@/components/ui/SocialLinks'
+import { useWebsiteEssentials } from '@/components/hooks/useWebsiteEssentials'
 
 export default function Footer() {
   const { lang, site } = useSite()
+  const { essentials } = useWebsiteEssentials()
   const data = site?.global
   if (!data) return null
 
@@ -45,16 +47,12 @@ export default function Footer() {
       <div className="sf-container sf-footer-grid">
         <div className="sf-footer-col sf-footer-brand">
           <Link href="/" className="sf-brand sf-brand--footer" aria-label={brandLabel}>
-            <SafeImage src={logo} alt={brandLabel} width={56} height={56} className="sf-brand-logo" fallbackTitle="Srizony Foundation logo" showSourceLinks={false} />
+            <SafeImage src={logo} alt={brandLabel} width={56} height={56} className="sf-brand-logo" fallbackTitle="Srizony Foundation logo" />
             <span className="sf-brand-name">{brandLabel}</span>
           </Link>
           <p>{brandTagline}</p>
           {brandSummary && <p>{brandSummary}</p>}
-          {contactInfo.socials?.linkedin && (
-            <a className="sf-social" href={contactInfo.socials.linkedin} target="_blank" rel="noopener noreferrer" aria-label="LinkedIn">
-              <FaLinkedin size={18} />
-            </a>
-          )}
+          <SocialLinks socials={essentials.socials} lang={lang} size={18} className="sf-footer-socials" />
         </div>
 
         <div className="sf-footer-col">

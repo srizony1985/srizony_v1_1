@@ -1,11 +1,14 @@
 import Link from 'next/link'
-import type { ReactNode } from 'react'
+import type { AnchorHTMLAttributes } from 'react'
 
-export function isExternalLink(href: string) {
-  return /^(https?:)?\/\//.test(href) || /^(mailto:|tel:)/.test(href)
-}
+export type LinkAction = 'route' | 'external' | 'anchor'
 
-export default function AppLink({ href, className, children, target, rel }: { href: string; className?: string; children: ReactNode; target?: string; rel?: string }) {
-  if (isExternalLink(href)) return <a href={href} className={className} target={target ?? (href.startsWith('http') ? '_blank' : undefined)} rel={rel ?? (href.startsWith('http') ? 'noopener noreferrer' : undefined)}>{children}</a>
-  return <Link href={href} className={className}>{children}</Link>
+const EXTERNAL = /^(https?:)?\/\//
+const NATIVE = /^(mailto:|tel:|#)/
+
+/** The single link primitive: client route, new-tab external link, or plain anchor/mailto/tel, chosen from `action` or the href itself. */
+export default function AppLink({ href, action, external, ...props }: Omit<AnchorHTMLAttributes<HTMLAnchorElement>, 'href'> & { href: string; action?: LinkAction; external?: boolean }) {
+  if (external || action === 'external' || EXTERNAL.test(href)) return <a href={href} target="_blank" rel="noopener noreferrer" {...props} />
+  if (action === 'anchor' || NATIVE.test(href)) return <a href={href} {...props} />
+  return <Link href={href} {...props} />
 }

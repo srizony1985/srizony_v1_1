@@ -1,12 +1,11 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
-import { ChevronDown } from 'lucide-react'
 import { localizeDigits } from '@/lib/utils'
 import type { Lang, PageData } from '@/types/entityType'
 import CmsCardIllustration from '@/components/home/CmsCardIllustration'
 import type { IllustrationName } from '@/types/entityType'
-import HomeSectionActions from '@/components/home/HomeSectionActions'
+import SectionActions from '@/components/ui/SectionActions'
 
 type MissionSection = Extract<PageData['sections'][number], { type: 'cards' }>
 const normalizeHeading = (value?: string) => (value ?? '').trim().toLocaleLowerCase().replace(/[\s_-]+/g, ' ')
@@ -127,7 +126,7 @@ export default function MissionVisionValues({ lang, page }: { lang: Lang; page: 
           </div>
         </div>
       </div>
-      <HomeSectionActions section={source} lang={lang} />
+      <SectionActions config={source?.buttonConfig} lang={lang} arrow className="sf-home-section-actions" />
     </section>
   )
 }

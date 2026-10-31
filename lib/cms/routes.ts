@@ -130,7 +130,7 @@ export function buildContentRoute(parentPath: string, contentSlug: string): stri
   return parent === LANDING_ROUTE ? `/${slug}` : `${parent}/${slug}`
 }
 
-/** The page path that owns a one-to-three-segment content detail URL. */
+/** The page path that owns a nested content detail URL at any depth. */
 export function getContentRouteParent(path: string): string {
   const normalized = canonicalizeCmsRoute(String(path || LANDING_ROUTE).replace(/\/+$/, '') || LANDING_ROUTE)
   const segments = normalized.split('/').filter(Boolean)

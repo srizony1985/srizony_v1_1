@@ -21,7 +21,7 @@ test('site content feeds reuse the existing content-type card designs', () => {
   assert.match(cards, /carousel-card-body/)
   assert.match(cards, /notice-date/)
   assert.match(cards, /content-card-copy/)
-  assert.match(globals, /\.content-card,\.stat-card,\.notice-card,\.location-card,\.carousel-card/)
+  assert.match(globals, /\.content-card,\s*\.notice-card,\s*\.location-card,\s*\.carousel-card/)
   assert.match(polish, /grid-auto-rows: auto; align-items: start;/)
   assert.match(polish, /\.sf-content-feed \.sf-feed-grid \.carousel-card-body \{ display: flex; flex-direction: column; gap: 4px;/)
   assert.doesNotMatch(cards, /sf-news-card|sf-notice-feed-card|sf-card-body|sf-card-media/)

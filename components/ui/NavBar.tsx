@@ -3,28 +3,29 @@
 import SafeImage from '@/components/ui/SafeImage'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
 import { ChevronDown, Heart, Menu, Moon, Sun, X } from 'lucide-react'
-import { SiFacebook, SiInstagram, SiYoutube } from 'react-icons/si'
-import { FaLinkedin } from 'react-icons/fa'
 import NavMenuTree from '@/components/ui/NavMenuTree'
+import AppLink from '@/components/ui/AppLink'
+import SocialLinks, { hasSocials } from '@/components/ui/SocialLinks'
+import { useWebsiteEssentials } from '@/components/hooks/useWebsiteEssentials'
 import { FALLBACK_HOME_LABEL, FALLBACK_LOGO } from '@/lib/siteFallback'
 import LanguageFlag from '@/components/ui/LanguageFlag'
 import { useSite } from '@/components/containers/SiteProvider'
 import type { NavItem } from '@/types/entityType'
+import { cn } from '@/lib/utils'
 
 /** Shared responsive navigation for desktop, tablet, and mobile layouts. */
 
 export default function NavBar() {
-  const siteContext = useSite()
-  const { lang, setLang, mode, setMode, site } = siteContext
+  const { lang, setLang, mode, setMode, site } = useSite()
+  const { essentials } = useWebsiteEssentials()
 
   const pathname = usePathname() ?? '/'
   const [openGroup, setOpenGroup] = useState<string | null>(null)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [mobileExpandedItems, setMobileExpandedItems] = useState<Record<string, boolean>>({})
   const [stuck, setStuck] = useState(false)
-  const [officialSocials, setOfficialSocials] = useState<Record<string, string>>({ linkedin: 'https://bd.linkedin.com/company/srizonyfoundation' })
   const headerRef = useRef<HTMLElement | null>(null)
 
   const closeAll = useCallback(() => {
@@ -36,18 +37,15 @@ export default function NavBar() {
   useEffect(() => closeAll(), [pathname, closeAll])
 
   useEffect(() => {
-    let cancelled = false
-    fetch('/api/website-essentials', { cache: 'no-store' }).then((response) => response.ok ? response.json() : null).then((payload) => {
-      if (!cancelled && payload?.socials) setOfficialSocials(payload.socials)
-    }).catch(() => undefined)
-    return () => { cancelled = true }
-  }, [])
-
-  useEffect(() => {
     if (!mobileOpen) return
     const previousOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
-    return () => { document.body.style.overflow = previousOverflow }
+    document.querySelector<HTMLElement>('#sf-mobile-drawer a, #sf-mobile-drawer button')?.focus()
+    // The drawer only exists below the burger breakpoint; close it (and release scroll lock) if the viewport grows past it.
+    const desktop = window.matchMedia('(min-width: 901px)')
+    const onChange = () => { if (desktop.matches) setMobileOpen(false) }
+    desktop.addEventListener('change', onChange)
+    return () => { document.body.style.overflow = previousOverflow; desktop.removeEventListener('change', onChange) }
   }, [mobileOpen])
 
   // Sub-menus always open to the right; slide the dropdown left just enough that they stay on screen.
@@ -120,14 +118,9 @@ export default function NavBar() {
   const logo = data.images?.logo?.trim() || FALLBACK_LOGO
   const home = primaryNav[0] ?? { label: FALLBACK_HOME_LABEL, href: '/' }
   const mainNavigationLinks = (home.children?.length ? home.children : primaryNav.slice(1)).filter((item) => item.href !== '/donate')
-  const socialIcons = { facebook: SiFacebook, instagram: SiInstagram, youtube: SiYoutube, linkedin: FaLinkedin }
-  const socialLabels: Record<string, { en: string; bn: string }> = { facebook: { en: 'Facebook', bn: 'ফেসবুক' }, instagram: { en: 'Instagram', bn: 'ইনস্টাগ্রাম' }, youtube: { en: 'YouTube', bn: 'ইউটিউব' }, linkedin: { en: 'LinkedIn', bn: 'লিংকডইন' } }
-  const activeSocials = Object.entries(officialSocials).filter(([key, url]) => key in socialIcons && typeof url === 'string' && /^https:\/\//i.test(url.trim()))
 
   const isActive = (href: string) => !href ? false : (href === '/' ? pathname === '/' : pathname === href || pathname.startsWith(`${href}/`))
   const itemActive = (item: NavItem): boolean => item.menuType === 'folder' ? Boolean(item.children?.some(itemActive)) : isActive(item.href) || Boolean(item.children?.some(itemActive))
-
-  const brand = brandLabel
 
   const toggleMobileItem = (item: NavItem) => {
     const key = `${item.href}-${item.label.en}`
@@ -142,6 +135,9 @@ export default function NavBar() {
     const indent = { paddingInlineStart: `${16 + depth * 16}px` }
     const label = <span>{item.label[lang]}</span>
     const toggle = () => toggleMobileItem(item)
+    const link = (extra: string, style?: CSSProperties) => (
+      <AppLink href={item.href} action={item.menuType === 'external' ? 'external' : undefined} className={cn('sf-drawer-link', extra, active && 'is-active')} style={style} aria-current={isActive(item.href) ? 'page' : undefined} onClick={closeAll}>{label}</AppLink>
+    )
     return (
       <div className="sf-drawer-item" key={key}>
         {item.menuType === 'folder' ? (
@@ -150,20 +146,12 @@ export default function NavBar() {
           </button>
         ) : hasChildren ? (
           <div className="sf-drawer-item-row" style={indent}>
-            {item.menuType === 'external' ? (
-              <a href={item.href} target="_blank" rel="noopener noreferrer" className={`sf-drawer-link sf-drawer-row-link ${active ? 'is-active' : ''}`} onClick={closeAll}>{label}</a>
-            ) : (
-              <Link href={item.href} className={`sf-drawer-link sf-drawer-row-link ${active ? 'is-active' : ''}`} aria-current={isActive(item.href) ? 'page' : undefined} onClick={closeAll}>{label}</Link>
-            )}
+            {link('sf-drawer-row-link')}
             <button type="button" className="sf-drawer-expand" aria-label={`${expanded ? 'Collapse' : 'Expand'} ${item.label[lang]}`} aria-expanded={expanded} onClick={toggle}>
               <ChevronDown size={16} className={expanded ? 'is-rot' : ''} aria-hidden="true" />
             </button>
           </div>
-        ) : item.menuType === 'external' ? (
-          <a href={item.href} target="_blank" rel="noopener noreferrer" className={`sf-drawer-link ${active ? 'is-active' : ''}`} style={indent} onClick={closeAll}>{label}</a>
-        ) : (
-          <Link href={item.href} className={`sf-drawer-link ${active ? 'is-active' : ''}`} style={indent} aria-current={isActive(item.href) ? 'page' : undefined} onClick={closeAll}>{label}</Link>
-        )}
+        ) : link('', indent)}
         {hasChildren && expanded && <div className="sf-drawer-subitems">{item.children!.map((child) => renderMobileItem(child, depth + 1))}</div>}
       </div>
     )
@@ -171,12 +159,12 @@ export default function NavBar() {
 
   return (
     <header className={`sf-header ${stuck ? 'is-stuck' : ''}`} ref={headerRef}>
-      {activeSocials.length > 0 && <div className="sf-social-topbar"><div className="sf-container sf-social-topbar-in"><span>{tr('Connect with us', 'আমাদের সঙ্গে যুক্ত থাকুন')}</span><div className="sf-social-topbar-links">{activeSocials.map(([key, url]) => { const Icon = socialIcons[key as keyof typeof socialIcons]; return <a key={key} href={url} target="_blank" rel="noopener noreferrer" aria-label={socialLabels[key]?.[lang] || key} title={socialLabels[key]?.[lang] || key}><Icon size={15} aria-hidden="true"/><span className="sf-sr">{socialLabels[key]?.[lang] || key}</span></a> })}</div></div></div>}
+      {hasSocials(essentials.socials) && <div className="sf-social-topbar"><div className="sf-container sf-social-topbar-in"><span>{tr('Connect with us', 'আমাদের সঙ্গে যুক্ত থাকুন')}</span><SocialLinks socials={essentials.socials} lang={lang} className="sf-social-topbar-links" /></div></div>}
       <div className="sf-navbar">
         <div className="sf-container sf-navbar-in">
-          <Link href="/" className="sf-brand" aria-label={brand}>
+          <Link href="/" className="sf-brand" aria-label={brandLabel}>
             <span className="sf-brand-logo">
-              <SafeImage src={logo} fallbackSrc={FALLBACK_LOGO} alt={brand} fallbackTitle="Srizony Foundation logo" fill priority sizes="80px" showSourceLinks={false} />
+              <SafeImage src={logo} fallbackSrc={FALLBACK_LOGO} alt={brandLabel} fallbackTitle="Srizony Foundation logo" fill priority sizes="80px" />
             </span>
             <span className="sf-brand-text">
               <strong className="sf-brand-name">{brandName}</strong>
@@ -231,10 +219,9 @@ export default function NavBar() {
                   </div>
                 </div>
               }
-              if (item.menuType === 'external') return <a key={item.href} href={item.href} target="_blank" rel="noopener noreferrer" className="sf-nav-link"><span className="sf-nav-label">{item.label[lang]}</span></a>
-              return <Link key={item.href} href={item.href} className={`sf-nav-link ${itemActive(item) ? 'is-active' : ''}`} aria-current={isActive(item.href) ? 'page' : undefined}>
+              return <AppLink key={item.href} href={item.href} action={item.menuType === 'external' ? 'external' : undefined} className={`sf-nav-link ${itemActive(item) ? 'is-active' : ''}`} aria-current={isActive(item.href) ? 'page' : undefined}>
                 <span className="sf-nav-label">{item.label[lang]}</span>
-              </Link>
+              </AppLink>
             })}
           </nav>
 

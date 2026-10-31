@@ -9,7 +9,8 @@ import type { Lang, PageData } from '@/types/entityType'
 import { useSite } from '@/components/containers/SiteProvider'
 import LogoLoader from '@/components/ui/LogoLoader'
 import Reveal from '@/components/containers/Reveal'
-import HomeSectionActions from '@/components/home/HomeSectionActions'
+import SectionActions from '@/components/ui/SectionActions'
+import { useWebsiteEssentials } from '@/components/hooks/useWebsiteEssentials'
 
 /* ───────────── Leaflet loader (CDN, so no extra npm dependency) ───────────── */
 
@@ -324,17 +325,7 @@ export default function LocationMaps({ page, variant = 'default' }: { page: Page
   const [wantMap, setWantMap] = useState(false)
   const [isMobileViewport, setIsMobileViewport] = useState(false)
 
-  const [configuredLocations, setConfiguredLocations] = useState<Branch[] | null>(null)
-  useEffect(() => {
-    let cancelled = false
-    fetch('/api/website-essentials', { cache: 'no-store' }).then((response) => response.ok ? response.json() : null).then((payload) => {
-      if (cancelled || !Array.isArray(payload?.locations)) return
-      const valid = payload.locations.filter((branch: any) => branch && typeof branch.id === 'string' && branch.name && branch.district && branch.division && Number.isFinite(Number(branch.lat)) && Number.isFinite(Number(branch.lng)))
-      setConfiguredLocations(valid.map((branch: any) => ({ ...branch, lat: Number(branch.lat), lng: Number(branch.lng), kind: branch.kind === 'head' ? 'head' : 'branch' })) as Branch[])
-    }).catch(() => undefined)
-    return () => { cancelled = true }
-  }, [])
-  const branchDirectory = useMemo<Branch[]>(() => configuredLocations ?? [], [configuredLocations])
+  const branchDirectory = useWebsiteEssentials().essentials.locations
   const all = useMemo(() => branchDirectory.map((b) => resolve(b, lang, contact)), [branchDirectory, lang, contact.primaryPhone, contact.address?.en, contact.address?.bn]) // eslint-disable-line react-hooks/exhaustive-deps
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -884,7 +875,7 @@ export default function LocationMaps({ page, variant = 'default' }: { page: Page
           </aside>
         </div>
       </div>
-      <HomeSectionActions section={footprintCopy} lang={lang} />
+      <SectionActions config={footprintCopy?.buttonConfig} lang={lang} arrow className="sf-home-section-actions" />
     </section>
   )
 }

@@ -15,7 +15,8 @@ import type {
   PageData,
 } from '@/types/entityType'
 import SafeImage from '@/components/ui/SafeImage'
-import ConfiguredLink from '@/components/ui/ConfiguredLink'
+import AppLink from '@/components/ui/AppLink'
+import Button from '@/components/ui/ActionButton'
 import Container from '@/components/containers/Container'
 
 const MAX_VISIBLE_DOTS = 3
@@ -76,12 +77,6 @@ export default function Hero({
       count > 0 ? current % count : 0,
     )
   }, [count])
-
-  const actionFor = (href: string): 'route' | 'external' | 'anchor' => {
-    if (/^https?:\/\//i.test(href)) return 'external'
-    if (href.includes('#')) return 'anchor'
-    return 'route'
-  }
 
   // Autoplay respects user preference, reduced motion,
   // hover pause, and browser tab visibility.
@@ -310,24 +305,16 @@ export default function Hero({
             <div className="sf-hero-actions">
               {hero.primaryAction?.label?.[lang] &&
                 hero.primaryAction.href && (
-                  <ConfiguredLink
-                    href={hero.primaryAction.href}
-                    action={actionFor(hero.primaryAction.href)}
-                    className="sf-btn sf-btn--primary"
-                  >
+                  <Button href={hero.primaryAction.href}>
                     {hero.primaryAction.label[lang]}
-                  </ConfiguredLink>
+                  </Button>
                 )}
 
               {hero.secondaryAction?.label?.[lang] &&
                 hero.secondaryAction.href && (
-                  <ConfiguredLink
-                    href={hero.secondaryAction.href}
-                    action={actionFor(hero.secondaryAction.href)}
-                    className="sf-btn sf-btn--outline"
-                  >
+                  <Button href={hero.secondaryAction.href} variant="outline">
                     {hero.secondaryAction.label[lang]}
-                  </ConfiguredLink>
+                  </Button>
                 )}
             </div>
           </Container>
@@ -340,18 +327,14 @@ export default function Hero({
           <div className="sf-hero-bar">
             <Container className="sf-hero-bar-in">
               {activeSlide.href ? (
-                <ConfiguredLink
-                  href={activeSlide.href}
-                  action={actionFor(activeSlide.href)}
-                  className="sf-hero-caption"
-                >
+                <AppLink href={activeSlide.href} className="sf-hero-caption">
                   {activeSlide.description?.[lang] && (
                     <small>{activeSlide.description[lang]}</small>
                   )}
                   {activeSlide.title?.[lang] && (
                     <strong>{activeSlide.title[lang]}</strong>
                   )}
-                </ConfiguredLink>
+                </AppLink>
               ) : (
                 <div className="sf-hero-caption">
                   {activeSlide.description?.[lang] && (

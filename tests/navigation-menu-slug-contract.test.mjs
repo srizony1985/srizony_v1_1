@@ -82,14 +82,14 @@ test('the admin editor offers edit, visibility, delete and reorder controls for 
   assert.match(editor, /onClick=\{\(\) => openEdit\(node\)\}/)
   assert.match(editor, /onClick=\{\(\) => setConfirm\(node\)\}/)
   assert.match(editor, /Enter the complete public route/)
-  assert.match(editor, /const MAX_TREE_DEPTH = 4/)
+  assert.doesNotMatch(editor, /MAX_TREE_DEPTH|at most three editable levels/)
 })
 
-test('the allowed hierarchy has three editable levels beneath fixed Home', () => {
+test('the hierarchy supports unlimited editable levels beneath fixed Home', () => {
   const navigation = read('lib/cms/navigation.ts')
   const editor = read('app/admin/dashboard/navigation/page.tsx')
-  assert.match(navigation, /const MENU_LEVELS_BELOW_LANDING = 3/)
-  assert.match(navigation, /const MAX_DEPTH = MENU_LEVELS_BELOW_LANDING \+ 1/)
+  assert.doesNotMatch(navigation, /MENU_LEVELS_BELOW_LANDING|MAX_DEPTH/)
+  assert.doesNotMatch(editor, /MAX_TREE_DEPTH/)
   assert.match(navigation, /UPDATE nav_items n SET parent_id = v\.parent_id, sort_order = v\.sort_order/)
   assert.match(editor, /await saveMenuOrder\('primary', toMove\(next\)\)/)
 })

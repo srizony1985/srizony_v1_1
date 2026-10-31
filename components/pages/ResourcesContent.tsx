@@ -1,34 +1,14 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import Link from 'next/link'
 import { Download, FileText, MapPin, Users } from 'lucide-react'
 import { useSite } from '@/components/containers/SiteProvider'
-import type { WebsiteEssentials } from '@/lib/websiteEssentials'
-import { DEFAULT_WEBSITE_ESSENTIALS, normalizeWebsiteEssentials } from '@/lib/websiteEssentials'
+import { useWebsiteEssentials } from '@/components/hooks/useWebsiteEssentials'
 
 export default function ResourcesContent() {
   const { lang } = useSite()
-  const [essentials, setEssentials] = useState<WebsiteEssentials>(DEFAULT_WEBSITE_ESSENTIALS)
-  const [loading, setLoading] = useState(true)
-  const [failed, setFailed] = useState(false)
-
-  useEffect(() => {
-    const controller = new AbortController()
-    fetch('/api/website-essentials', { cache: 'no-store', signal: controller.signal })
-      .then(async (response) => {
-        if (!response.ok) throw new Error('Unable to load documents')
-        return response.json()
-      })
-      .then((data) => setEssentials(normalizeWebsiteEssentials(data)))
-      .catch((error) => {
-        if (error?.name !== 'AbortError') setFailed(true)
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setLoading(false)
-      })
-    return () => controller.abort()
-  }, [])
+  const { essentials, loading, failed } = useWebsiteEssentials()
 
   const bn = lang === 'bn'
   const docs = useMemo(() => [

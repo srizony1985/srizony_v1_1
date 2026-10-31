@@ -1,6 +1,6 @@
 'use client'
 
-import ConfiguredLink from '@/components/ui/ConfiguredLink'
+import Button from '@/components/ui/ActionButton'
 import { ArrowRight } from 'lucide-react'
 import type { Lang, PageData } from '@/types/entityType'
 import Illustration from '@/components/home/Illustration'
@@ -39,12 +39,12 @@ export default function GrowthSection({ lang, page }: { lang: Lang; page: PageDa
           {section?.introBody?.[lang] && <p className="sf-growth-lead">{section.introBody[lang]}</p>}
           <Stats items={counters} lang={lang} animated showIcons className="sf-growth-stats" />
           {button?.visible && <div className="sf-cta-actions">
-            {aboutLabel && aboutHref && (showPrimary || isSecondaryOnly) && <ConfiguredLink href={aboutHref} action={aboutAction} className={`sf-btn ${button.mode === 'both' ? 'sf-btn--primary' : button.mode === 'secondary' ? 'sf-btn--outline' : 'sf-btn--ghost'}`}>
+            {aboutLabel && aboutHref && (showPrimary || isSecondaryOnly) && <Button href={aboutHref} action={aboutAction} variant={button.mode === 'both' ? 'primary' : button.mode === 'secondary' ? 'outline' : 'ghost'}>
               {aboutLabel[lang]} <ArrowRight size={16} aria-hidden="true" />
-            </ConfiguredLink>}
-            {showSecondary && button?.secondaryLabel && button.secondaryHref && <ConfiguredLink href={button.secondaryHref} action={button.secondaryAction} className="sf-btn sf-btn--outline">
+            </Button>}
+            {showSecondary && button?.secondaryLabel && button.secondaryHref && <Button href={button.secondaryHref} action={button.secondaryAction} variant="outline">
               {button.secondaryLabel[lang]}
-            </ConfiguredLink>}
+            </Button>}
           </div>}
         </div>
       </Container>

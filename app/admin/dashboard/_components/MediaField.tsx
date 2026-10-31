@@ -1,6 +1,7 @@
 'use client'
 
 import { normalizeMediaSrc } from '@/lib/mediaUrl'
+import { adminMediaUpload } from '@/lib/api/adminResources'
 import { useRef, useState } from 'react'
 import { LoaderCircle, Trash2, Upload } from 'lucide-react'
 
@@ -45,7 +46,7 @@ export function MediaField({
     form.append('altEn', alt)
     setUploading(true)
     try {
-      const response = await fetch('/api/admin/media/upload', { method: 'POST', body: form, cache: 'no-store' })
+      const response = await adminMediaUpload(form)
       const data = await response.json().catch(() => ({}))
       if (response.status === 401) {
         window.location.assign('/admin/login')

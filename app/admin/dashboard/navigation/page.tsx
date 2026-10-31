@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, CirclePlus, Eye, EyeOff, GripVertical, Pencil, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -10,21 +10,17 @@ import { Label } from '@/components/ui/label'
 import { addMenu, getNavigation, modifyMenu, removeMenu, saveMenuOrder, setNavigationVisibility, type NavGroup, type NavNode, type MenuType, type SectionButtonType } from '@/lib/api/navigation'
 import type { Section } from '@/types/entityType'
 import { AdminErrorState, PageLoading, SectionToolbar, useAdminFetch } from '../_components/AdminCommon'
+import { useRegisterAdminActions } from '../_components/AdminActionContext'
 
-// Home is level 1. Who We Are / What We Do are level 2 folders,
-// their page links level 3, and nested page links level 4.
-const MAX_TREE_DEPTH = 4
+// Home is the fixed root. All descendant menu levels remain editable.
 const RENDERED_COMPONENTS: Section['type'][] = ['richText', 'stats', 'cards', 'gallery', 'timeline', 'diagram', 'table', 'video', 'cta', 'noticeList', 'contact', 'donation', 'carousel', 'contentFeed', 'reports']
 type Zone = 'before' | 'after' | 'inside'
 type Editor = { mode: 'create' | 'edit'; parentId: number | null; id?: number; labelEn: string; labelBn: string; slug: string; slugTouched: boolean; renderedComponents: Section['type'][]; menuType: MenuType; sectionCount: number; sectionContentType: Section['type']; sectionButtonType: SectionButtonType }
 
 const slugify = (value: string) => '/' + value.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
-const height = (node: NavNode): number => 1 + Math.max(0, ...node.children.map(height))
 function find(nodes: NavNode[], id: number): NavNode | null { for (const node of nodes) { if (node.id === id) return node; const child = find(node.children, id); if (child) return child } return null }
 function without(nodes: NavNode[], id: number): NavNode[] { return nodes.filter((node) => node.id !== id).map((node) => ({ ...node, children: without(node.children, id) })) }
-function depthOf(nodes: NavNode[], id: number, depth = 1): number { for (const node of nodes) { if (node.id === id) return depth; const child = depthOf(node.children, id, depth + 1); if (child) return child } return 0 }
-function treeDepth(nodes: NavNode[], depth = 1): number { return nodes.reduce((max, node) => Math.max(max, depth, treeDepth(node.children, depth + 1)), 0) }
-function dropZone(depth: number, ratio: number): Zone { if (depth >= MAX_TREE_DEPTH) return ratio < 0.5 ? 'before' : 'after'; return ratio < 0.25 ? 'before' : ratio > 0.75 ? 'after' : 'inside' }
+function dropZone(_depth: number, ratio: number): Zone { return ratio < 0.25 ? 'before' : ratio > 0.75 ? 'after' : 'inside' }
 function place(nodes: NavNode[], target: number, zone: Zone, moved: NavNode): NavNode[] {
   const next: NavNode[] = []
   for (const node of nodes) {
@@ -66,6 +62,7 @@ export default function NavigationPage() {
   const [dragId, setDragId] = useState<number | null>(null)
   const [over, setOver] = useState<{ id: number; zone: Zone } | null>(null)
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set())
+  const editorBaselineRef = useRef('')
 
   const navigation = useMemo(() => data?.find((item) => item.key === 'primary') ?? data?.[0] ?? null, [data])
   const tree = navigation?.items ?? []
@@ -75,17 +72,9 @@ export default function NavigationPage() {
     const dragged = find(tree, dragId)
     if (!dragged || dragged.isLandingPage || targetId === dragId || find(dragged.children, targetId)) return
     const rest = without(tree, dragId)
-    let zone = requestedZone
-    const targetDepth = depthOf(rest, targetId, 1)
-    if (!targetDepth) return
-    if (zone === 'inside' && targetDepth >= MAX_TREE_DEPTH) zone = 'after'
-    const resultingDepth = zone === 'inside' ? targetDepth + 1 : targetDepth
-    if (resultingDepth + height(dragged) - 1 > MAX_TREE_DEPTH) {
-      toast.error('This move would exceed the supported three editable levels beneath Home. Move the item before or after another menu.')
-      return
-    }
-    const next = place(rest, targetId, zone, dragged)
-    if (treeDepth(next, 1) > MAX_TREE_DEPTH) { toast.error('The navigation can have at most three editable levels beneath Home.'); return }
+    const targetExists = find(rest, targetId)
+    if (!targetExists) return
+    const next = place(rest, targetId, requestedZone, dragged)
     const previous = data
     setBusy(true)
     setData(previous.map((item) => item.key === navigation.key ? { ...item, items: next } : item))
@@ -114,11 +103,15 @@ export default function NavigationPage() {
   }
   function openCreate(parentId: number) {
     setEditorError('')
-    setEditor({ mode: 'create', parentId, labelEn: '', labelBn: '', slug: '', slugTouched: false, renderedComponents: [...RENDERED_COMPONENTS], menuType: 'page', sectionCount: 1, sectionContentType: 'richText', sectionButtonType: 'none' })
+    const next: Editor = { mode: 'create', parentId, labelEn: '', labelBn: '', slug: '', slugTouched: false, renderedComponents: [...RENDERED_COMPONENTS], menuType: 'page', sectionCount: 1, sectionContentType: 'richText', sectionButtonType: 'none' }
+    editorBaselineRef.current = JSON.stringify(next)
+    setEditor(next)
   }
   function openEdit(node: NavNode) {
     setEditorError('')
-    setEditor({ mode: 'edit', parentId: node.parentId ?? null, id: node.id, labelEn: node.labelEn, labelBn: node.labelBn, slug: node.slug, slugTouched: true, renderedComponents: node.renderedComponents?.length ? node.renderedComponents : [...RENDERED_COMPONENTS], menuType: node.menuType || 'page', sectionCount: node.sectionCount || 1, sectionContentType: node.sectionContentType || 'richText', sectionButtonType: node.sectionButtonType || 'none' })
+    const next: Editor = { mode: 'edit', parentId: node.parentId ?? null, id: node.id, labelEn: node.labelEn, labelBn: node.labelBn, slug: node.slug, slugTouched: true, renderedComponents: node.renderedComponents?.length ? node.renderedComponents : [...RENDERED_COMPONENTS], menuType: node.menuType || 'page', sectionCount: node.sectionCount || 1, sectionContentType: node.sectionContentType || 'richText', sectionButtonType: node.sectionButtonType || 'none' }
+    editorBaselineRef.current = JSON.stringify(next)
+    setEditor(next)
   }
 
   async function toggleVisibility(node: NavNode) {
@@ -155,6 +148,9 @@ export default function NavigationPage() {
     catch (cause) { toast.error(cause instanceof Error ? cause.message : 'Unable to remove the menu.') }
     finally { setBusy(false) }
   }
+
+  const editorDirty = Boolean(editor) && editorBaselineRef.current !== JSON.stringify(editor)
+  useRegisterAdminActions('navigation-editor', { save: async () => { await submit() }, reload: async () => { setEditor(null); setEditorError(''); await reload() }, dirty: editorDirty, saving: busy && Boolean(editor), label: 'Navigation editor' })
 
   const count = (node: NavNode): number => 1 + node.children.reduce((total, child) => total + count(child), 0)
 
@@ -194,7 +190,7 @@ export default function NavigationPage() {
             <Button variant="outline" size="sm" onClick={() => void toggleVisibility(node)} disabled={busy} title={node.visible === false ? 'Show in navigation' : 'Hide from navigation'} aria-label={node.visible === false ? `Show ${node.labelEn} in navigation` : `Hide ${node.labelEn} from navigation`}>{node.visible === false ? <Eye size={14} /> : <EyeOff size={14} />}</Button>
             <Button variant="outline" size="sm" onClick={() => void reorderMenu(node.id, -1)} disabled={busy || siblingIndex === 0} title="Move menu up" aria-label={`Move ${node.labelEn} up`}><ArrowUp size={14} /></Button>
             <Button variant="outline" size="sm" onClick={() => void reorderMenu(node.id, 1)} disabled={busy || siblingIndex === siblings.length - 1} title="Move menu down" aria-label={`Move ${node.labelEn} down`}><ArrowDown size={14} /></Button>
-            {depth < MAX_TREE_DEPTH && <Button variant="outline" size="sm" onClick={() => openCreate(node.id)} title="Add submenu" aria-label={`Add submenu to ${node.labelEn}`}><CirclePlus size={14} /></Button>}
+            <Button variant="outline" size="sm" onClick={() => openCreate(node.id)} title="Add submenu" aria-label={`Add submenu to ${node.labelEn}`}><CirclePlus size={14} /></Button>
             <Button variant="outline" size="sm" onClick={() => openEdit(node)} title="Modify" aria-label={`Modify ${node.labelEn}`}><Pencil size={14} /></Button>
             <Button variant="outline" size="sm" onClick={() => setConfirm(node)} title="Remove" aria-label={`Remove ${node.labelEn}`}><Trash2 size={14} /></Button>
           </>}
@@ -238,7 +234,7 @@ export default function NavigationPage() {
           {editor.menuType === 'folder' && <p className="admin-small-note">Folders have no URL. They are used only as expandable navigation headings.</p>}
         </div>
         {editorError && <div className="cms-save-error" role="alert"><strong>Menu changes were not saved.</strong><span>{editorError}</span><small>Your entries are still in this form. Correct the issue and retry.</small></div>}
-        <div className="cms-modal-actions"><Button variant="outline" onClick={() => { setEditor(null); setEditorError('') }} disabled={busy}>Cancel</Button><Button onClick={() => void submit()} disabled={busy}>{busy ? 'Saving…' : editor.mode === 'create' ? 'Add navigation item' : 'Save changes'}</Button></div>
+        <div className="cms-modal-actions"><Button variant="outline" onClick={() => { if (editorDirty && !window.confirm('Discard the unsaved navigation changes?')) return; setEditor(null); setEditorError('') }} disabled={busy}>Cancel</Button><Button onClick={() => void submit()} disabled={busy}>{busy ? 'Saving…' : editor.mode === 'create' ? 'Add navigation item' : 'Save changes'}</Button></div>
       </div>
     </div>}
 

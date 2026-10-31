@@ -5,7 +5,7 @@ import type { Lang, PageData } from '@/types/entityType'
 import Container from '@/components/containers/Container'
 import ProjectCard, { type ProjectArea } from '@/components/home/ProjectCard'
 import Reveal from '@/components/containers/Reveal'
-import HomeSectionActions from '@/components/home/HomeSectionActions'
+import SectionActions from '@/components/ui/SectionActions'
 
 const normalizeHeading = (value?: string) => (value ?? '').trim().toLocaleLowerCase().replace(/[\s_-]+/g, ' ')
 type CardsSection = Extract<PageData['sections'][number], { type: 'cards' }>
@@ -59,7 +59,7 @@ export default function DevelopmentAreas({ lang, page }: { lang: Lang; page: Pag
         {areas.length > 0 && <div className="sf-areas-grid" style={{ '--cols': section?.columns ?? 3 } as CSSProperties}>
           {areas.map((area, index) => <ProjectCard key={`${area.href}-${index}`} area={area} lang={lang} index={index} />)}
         </div>}
-        <HomeSectionActions section={section} lang={lang} />
+        <SectionActions config={section?.buttonConfig} lang={lang} arrow className="sf-home-section-actions" />
       </Container>
     </section>
   )

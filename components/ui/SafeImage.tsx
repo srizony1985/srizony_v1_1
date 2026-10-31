@@ -10,17 +10,11 @@ export type SafeImageProps = Omit<ImageProps, 'alt' | 'src'> & {
   alt: string
   fallbackTitle?: string
   fallbackSrc?: string
-  showSourceLinks?: boolean
 }
 
-const extensionCandidates = (src: string, fallbackSrc?: string) => {
-  const values = [src, fallbackSrc].filter((value): value is string => Boolean(value && value.trim()))
-  return Array.from(new Set(values))
-}
-
-export default function SafeImage({ alt, fallbackTitle, fallbackSrc, showSourceLinks: _showSourceLinks, src, onError, ...props }: SafeImageProps) {
+export default function SafeImage({ alt, fallbackTitle, fallbackSrc, src, onError, ...props }: SafeImageProps) {
   const title = fallbackTitle || alt || 'Community image'
-  const candidates = useMemo(() => extensionCandidates(normalizeMediaSrc(src), normalizeMediaSrc(fallbackSrc)), [src, fallbackSrc])
+  const candidates = useMemo(() => [...new Set([normalizeMediaSrc(src), normalizeMediaSrc(fallbackSrc)].filter((value): value is string => Boolean(value?.trim())))], [src, fallbackSrc])
   const [candidateIndex, setCandidateIndex] = useState(0)
   const [failed, setFailed] = useState(false)
 

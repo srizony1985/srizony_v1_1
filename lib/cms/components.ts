@@ -106,6 +106,7 @@ export const COMPONENTS: Record<ContentComponent, ComponentDef> = {
     key: 'job', label: 'Job post', plural: 'Job posts', description: 'Career opportunities.', fields: [
       ...core('Posted date'),
       { key: 'deadline', label: 'Application deadline', type: 'date', required: true },
+      { key: 'category', label: 'Job category', type: 'text', bilingual: true, max: 120, help: 'Group related vacancies together in the applicant notification inbox (for example: Programme, Finance, Field Operations).' },
       { key: 'location', label: 'Location', type: 'text', bilingual: true, max: 200 },
       { key: 'employmentType', label: 'Employment type', type: 'select', options: ['Full-time', 'Part-time', 'Contract', 'Internship'] },
       { key: 'vacancies', label: 'Vacancies', type: 'number' },

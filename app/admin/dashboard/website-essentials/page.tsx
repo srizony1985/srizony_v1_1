@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -9,6 +9,8 @@ import type { Branch } from '@/types/branch'
 import { DEFAULT_WEBSITE_ESSENTIALS, normalizeWebsiteEssentials, type ManagementStaffMember, type WebsiteEssentials } from '@/lib/websiteEssentials'
 import { AdminErrorState, PageLoading, SectionToolbar } from '../_components/AdminCommon'
 import { CirclePlus, FileUp, Save, Trash2, Users, MapPin, Share2, FileText } from 'lucide-react'
+import { adminMediaUpload, websiteEssentialsRequest } from '@/lib/api/adminResources'
+import { useRegisterAdminActions } from '../_components/AdminActionContext'
 
 const initial = (): WebsiteEssentials => ({ ...DEFAULT_WEBSITE_ESSENTIALS, staff: [], locations: BRANCHES.map((branch) => ({ ...branch })) })
 const randomId = (prefix: string) => `${prefix}-${Math.random().toString(36).slice(2, 9)}`
@@ -32,7 +34,7 @@ function PublicPdfField({ title, value, onChange }: { title: string; value: stri
     form.append('visibility', 'public')
     setUploading(true)
     try {
-      const response = await fetch('/api/admin/media/upload', { method: 'POST', body: form, cache: 'no-store' })
+      const response = await adminMediaUpload(form)
       const data = await response.json().catch(() => ({}))
       if (!response.ok || !data.src) throw new Error(data?.error?.message || data?.error || 'PDF upload failed. Check the media storage configuration.')
       onChange(String(data.src))
@@ -58,20 +60,23 @@ export default function WebsiteEssentialsPage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
+  const baselineRef = useRef('')
 
-  useEffect(() => {
-    let cancelled = false
-    fetch('/api/website-essentials', { cache: 'no-store' }).then(async (response) => {
+  const load = useCallback(async () => {
+    setLoading(true); setError('')
+    try {
+      const response = await websiteEssentialsRequest()
       if (!response.ok) throw new Error('Unable to load website settings.')
       const value = await response.json()
-      return { value, configured: response.headers.get('X-Website-Essentials-Configured') === 'true' }
-    }).then(({ value, configured }) => {
-      if (cancelled) return
+      const configured = response.headers.get('X-Website-Essentials-Configured') === 'true'
       const normalized = normalizeWebsiteEssentials(value)
-      setData({ ...normalized, locations: configured ? normalized.locations : (normalized.locations.length ? normalized.locations : BRANCHES.map((branch) => ({ ...branch }))) })
-    }).catch((cause) => { if (!cancelled) setError(cause instanceof Error ? cause.message : 'Unable to load website settings.') }).finally(() => { if (!cancelled) setLoading(false) })
-    return () => { cancelled = true }
+      const next = { ...normalized, locations: configured ? normalized.locations : (normalized.locations.length ? normalized.locations : BRANCHES.map((branch) => ({ ...branch }))) }
+      setData(next); baselineRef.current = JSON.stringify(next)
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Unable to load website settings.') }
+    finally { setLoading(false) }
   }, [])
+
+  useEffect(() => { void load() }, [load])
 
   function patchStaff(id: string, patch: Partial<ManagementStaffMember>) {
     setData((current) => ({ ...current, staff: current.staff.map((person) => person.id === id ? { ...person, ...patch } : person) }))
@@ -86,21 +91,25 @@ export default function WebsiteEssentialsPage() {
   async function save() {
     setSaving(true); setError(''); setNotice('')
     try {
-      const response = await fetch('/api/website-essentials', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data), cache: 'no-store' })
+      const response = await websiteEssentialsRequest({ method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
       const payload = await response.json().catch(() => ({}))
       if (response.status === 401) { window.location.assign('/admin/login'); return }
       if (!response.ok) throw new Error(payload.error || 'Could not save website essentials.')
-      setData(normalizeWebsiteEssentials(payload.data ?? data))
+      const saved = normalizeWebsiteEssentials(payload.data ?? data)
+      setData(saved); baselineRef.current = JSON.stringify(saved)
       setNotice('Website essentials saved. Published social links, staff and location data now use the CMS record.')
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not save website essentials.') }
     finally { setSaving(false) }
   }
 
+  const dirty = useMemo(() => Boolean(baselineRef.current) && !loading && !error && baselineRef.current !== JSON.stringify(data), [loading, data, error])
+  useRegisterAdminActions('website-essentials-editor', { save, reload: load, dirty, saving, label: 'Website essentials' })
+
   if (loading) return <PageLoading rows={5} />
-  if (error && !data) return <AdminErrorState message={error} onRetry={() => window.location.reload()} />
+  if (error && !baselineRef.current) return <AdminErrorState message={error} onRetry={() => void load()} />
 
   return <div className="essentials-page">
-    <SectionToolbar title="Website Essentials" description="Manage official social accounts, public PDF downloads, management staff and working locations in one place." actions={<Button onClick={() => void save()} disabled={saving}><Save size={15}/>{saving ? 'Saving…' : 'Save changes'}</Button>} />
+    <SectionToolbar title="Website Essentials" description="Manage official social accounts, public PDF downloads, management staff and working locations in one place." actions={<Button onClick={() => void save()} disabled={saving || !baselineRef.current || Boolean(error)}><Save size={15}/>{saving ? 'Saving…' : 'Save changes'}</Button>} />
     {error && <div className="essentials-alert" role="alert">{error}</div>}
     {notice && <div className="essentials-success essentials-global-notice" role="status">{notice}</div>}
 

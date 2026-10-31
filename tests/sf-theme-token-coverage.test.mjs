@@ -83,7 +83,6 @@ test('no UI stylesheet keeps arbitrary numeric border radii outside intentional 
   assert.deepEqual(offenders, [])
 })
 
-test('active and compatibility stylesheets stay synchronized', () => {
-  assert.equal(read('site-components.css'), read('app/site-components.css'))
-  assert.equal(read('site-polish.css'), read('app/site-polish.css'))
+test('stylesheets live only under app/ (no stale root copies)', () => {
+  for (const file of ['site-components.css', 'site-polish.css']) assert.equal(existsSync(resolve(process.cwd(), file)), false)
 })

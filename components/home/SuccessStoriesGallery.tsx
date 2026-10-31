@@ -5,7 +5,7 @@ import type { Lang, PageData } from '@/types/entityType'
 import Container from '@/components/containers/Container'
 import Reveal from '@/components/containers/Reveal'
 import SafeImage from '@/components/ui/SafeImage'
-import ConfiguredLink from '@/components/ui/ConfiguredLink'
+import Button from '@/components/ui/ActionButton'
 
 type CarouselSection = Extract<PageData['sections'][number], { type: 'carousel' }>
 
@@ -63,9 +63,9 @@ export default function SuccessStoriesGallery({ page, lang }: { page: PageData; 
           {lang === 'en' ? 'New success stories will appear here as soon as they are published.' : 'নতুন সাফল্যের গল্প প্রকাশিত হলে এখানে দেখা যাবে।'}
         </div>}
         {showAll && <div className="sf-success-gallery-actions">
-          <ConfiguredLink href="/success-stories" action="route" className="sf-btn sf-btn--ghost">
+          <Button href="/success-stories" variant="ghost">
             {buttonLabel}
-          </ConfiguredLink>
+          </Button>
         </div>}
       </Container>
     </section>

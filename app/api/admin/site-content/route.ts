@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { COMPONENTS } from '@/lib/cms/components'
-import { createItem, deleteItem, getItem, isComponent, listItems, setItemStatus, slugTaken, updateItem } from '@/lib/cms/content'
+import { createItem, deleteItem, deleteItems, getItem, hideItems, isComponent, listItems, setItemStatus, slugTaken, updateItem } from '@/lib/cms/content'
 import { failure, requireAdmin } from '@/lib/cms/guard'
 import { auditAdminAction } from '@/lib/security'
 
@@ -9,6 +9,8 @@ const noStore = { 'Cache-Control': 'no-store' }
 const values = z.record(z.string(), z.union([z.string(), z.number(), z.null()]))
 const saveSchema = z.object({ component: z.string().optional(), id: z.number().int().positive().optional(), slug: z.string().trim().min(1).max(160), values, status: z.enum(['published', 'draft', 'hidden']).default('published'), expectedUpdatedAt: z.string().optional() })
 const statusSchema = z.object({ id: z.number().int().positive(), status: z.enum(['published', 'draft', 'hidden']) })
+const bulkHideSchema = z.object({ ids: z.array(z.number().int().positive()).min(1).max(500), status: z.literal('hidden') })
+const bulkDeleteSchema = z.object({ ids: z.array(z.number().int().positive()).min(1).max(500) })
 
 export async function GET(req: Request) {
   const { denied } = await requireAdmin()
@@ -58,12 +60,22 @@ export async function PATCH(req: Request) {
   const guard = await requireAdmin('admin', 'editor')
   if (guard.denied) return guard.denied
   const admin = guard.admin!
-  const body = statusSchema.safeParse(await req.json().catch(() => null))
-  if (!body.success) return NextResponse.json({ error: 'Invalid visibility value.' }, { status: 400 })
+  const payload = await req.json().catch(() => null)
+  const single = statusSchema.safeParse(payload)
+  const bulk = bulkHideSchema.safeParse(payload)
   try {
-    const item = await setItemStatus(body.data.id, body.data.status)
-    await auditAdminAction({ actorEmail: admin.email, action: 'content.visibility', entity: item.component, entityId: item.slug, metadata: { status: item.status }, request: req })
-    return NextResponse.json({ ok: true, item })
+    if (single.success) {
+      const item = await setItemStatus(single.data.id, single.data.status)
+      await auditAdminAction({ actorEmail: admin.email, action: 'content.visibility', entity: item.component, entityId: item.slug, metadata: { status: item.status }, request: req })
+      return NextResponse.json({ ok: true, item })
+    }
+    if (bulk.success) {
+      const items = await hideItems(bulk.data.ids)
+      const ids = items.map((item) => item.id)
+      await auditAdminAction({ actorEmail: admin.email, action: 'content.bulk_visibility', entity: 'cms_content_items', metadata: { requestedIds: [...new Set(bulk.data.ids)], affectedIds: ids, status: 'hidden' }, request: req })
+      return NextResponse.json({ ok: true, items, ids, affected: ids.length })
+    }
+    return NextResponse.json({ error: 'Invalid visibility value. Bulk visibility supports hiding selected records.' }, { status: 400 })
   } catch (e) { return failure(e, 'Unable to change visibility.') }
 }
 
@@ -71,12 +83,21 @@ export async function DELETE(req: Request) {
   const guard = await requireAdmin('admin', 'editor')
   if (guard.denied) return guard.denied
   const admin = guard.admin!
-  const id = Number(new URL(req.url).searchParams.get('id'))
-  if (!Number.isInteger(id) || id <= 0) return NextResponse.json({ error: 'Item id is required.' }, { status: 400 })
+  const url = new URL(req.url)
+  const id = Number(url.searchParams.get('id'))
   try {
-    const item = await getItem(id)
-    await deleteItem(id)
-    await auditAdminAction({ actorEmail: admin.email, action: 'content.delete', entity: item?.component, entityId: item?.slug, request: req })
-    return NextResponse.json({ ok: true })
-  } catch (e) { return failure(e, 'Unable to delete the item.') }
+    if (Number.isInteger(id) && id > 0) {
+      const item = await getItem(id)
+      await deleteItem(id)
+      await auditAdminAction({ actorEmail: admin.email, action: 'content.delete', entity: item?.component, entityId: item?.slug, request: req })
+      return NextResponse.json({ ok: true })
+    }
+
+    const payload = await req.json().catch(() => null)
+    const bulk = bulkDeleteSchema.safeParse(payload)
+    if (!bulk.success) return NextResponse.json({ error: 'An item ID or a valid list of IDs is required.' }, { status: 400 })
+    const ids = await deleteItems(bulk.data.ids)
+    await auditAdminAction({ actorEmail: admin.email, action: 'content.bulk_delete', entity: 'cms_content_items', metadata: { requestedIds: [...new Set(bulk.data.ids)], deletedIds: ids }, request: req })
+    return NextResponse.json({ ok: true, ids, affected: ids.length })
+  } catch (e) { return failure(e, 'Unable to delete the item(s).') }
 }

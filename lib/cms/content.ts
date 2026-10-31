@@ -3,6 +3,7 @@ import { revalidatePath, revalidateTag } from 'next/cache'
 import { contentData, contentEntries, contentDetails, imageForSlug, openImageUrlForPath } from '@/lib/cms/fallback-gateway'
 import { db, withDbRetry } from '@/lib/db'
 import { buildContentRoute, canonicalizeCmsRoute, getContentRouteParent } from '@/lib/cms/routes'
+import { normalizeMediaSrc } from '@/lib/mediaUrl'
 import { ensureCmsSchema } from './ensureSchema'
 import { COMPONENTS, CONTENT_COLLECTION_ROUTES, CORE_KEYS, DEFAULT_CONTENT_PARENT, NEWS_COMPONENTS, FIXED_CONTENT_PARENT, SLUG_PATTERN, storageKeys, type ContentComponent, type ContentRecord, type ContentValues, type FeedItem } from './components'
 import type { PageData, Bilingual } from '@/types/entityType'
@@ -49,14 +50,47 @@ function isSeedCatalogueImage(row: Row, attrs: Record<string, unknown>): boolean
   return false
 }
 
+/**
+ * Older CMS exports stored media keys or `{ src }` objects in JSON attributes,
+ * while current records use the `image_src` column. Resolve both shapes into a
+ * browser-safe public URL and keep legacy private-bucket paths on the guarded
+ * compatibility endpoint.
+ */
+function storedImageSource(row: Row, attrs: Record<string, unknown>) {
+  const imageManaged = String(attrs.imageManaged || '').toLowerCase() === 'true'
+  const attributeCandidates = [attrs.image, attrs.imageSrc, attrs.image_url]
+  // When the editor has explicitly selected a new CMS image, that value takes
+  // precedence over an older seed/legacy image that may still be present in the
+  // image_src column. Otherwise prefer the canonical column, then legacy attrs.
+  const candidates = imageManaged
+    ? [...attributeCandidates, row.image_src]
+    : [row.image_src, ...attributeCandidates]
+
+  for (const raw of candidates) {
+    const candidate = raw && typeof raw === 'object' && !Array.isArray(raw)
+      ? (raw as Record<string, unknown>).src ?? (raw as Record<string, unknown>).url
+      : raw
+    if (typeof candidate !== 'string') continue
+    const value = candidate.trim()
+    if (!value || /^(?:data|blob|javascript):/i.test(value) || value.startsWith('//')) continue
+    if (/^media\//i.test(value)) {
+      return `/api/media/by-key/${value.split('/').map((part) => encodeURIComponent(part)).join('/')}`
+    }
+    if (/^\/?uploads\/media\//i.test(value)) return normalizeMediaSrc(value.startsWith('/') ? value : `/${value}`)
+    if (value.startsWith('/') || /^https?:\/\//i.test(value)) return normalizeMediaSrc(value)
+  }
+  return ''
+}
+
 function toRecord(row: Row): ContentRecord {
   const attrs = (row.attributes && typeof row.attributes === 'object' ? row.attributes : {}) as Record<string, unknown>
   const seedSource = String(attrs.seedSource || '')
   const imageManaged = String(attrs.imageManaged || '').toLowerCase() === 'true'
-  const knownSeedImage = isSeedCatalogueImage(row, attrs)
+  const knownSeedImage = !imageManaged && isSeedCatalogueImage(row, attrs)
   // Keep seed artwork out of the CMS image field. Otherwise editing an unrelated
   // field could silently turn a bundled or legacy stock image into a CMS image.
-  const editableImage = row.image_src && !knownSeedImage && (imageManaged || !seedSource) ? String(row.image_src) : ''
+  const savedImage = storedImageSource(row, attrs)
+  const editableImage = savedImage && !knownSeedImage && (imageManaged || !seedSource) ? savedImage : ''
   const values: ContentValues = {
     title_en: row.title_en || '', title_bn: row.title_bn || '', summary_en: row.summary_en || '', summary_bn: row.summary_bn || '',
     body_en: row.body_en || '', body_bn: row.body_bn || '', image: editableImage, date: isoDate(row.published_at),
@@ -79,9 +113,8 @@ export function validateValues(component: ContentComponent, slug: string, input:
   if (!/^\/(?:[a-z0-9]+(?:-[a-z0-9]+)*(?:\/[a-z0-9]+(?:-[a-z0-9]+)*)*)?$/.test(routeParent)) {
     throw new ContentError('Choose a valid destination page from the list.', 400, 'routeParent')
   }
-  if (routeParent.split('/').filter(Boolean).length > 2) {
-    throw new ContentError('Content can be placed on Home, a main menu page, or one submenu page only.', 400, 'routeParent')
-  }
+  // Destination pages can be nested to any CMS navigation depth. The route regex above
+  // validates each segment, so there is intentionally no submenu-depth cap.
   const clean: ContentValues = {}
   for (const field of def.fields) {
     const keys = field.bilingual ? [`${field.key}_en`, `${field.key}_bn`] : [field.key]
@@ -330,6 +363,40 @@ export async function deleteItem(id: number) {
   touch()
 }
 
+/** Hide a set of CMS records in one database statement. IDs are deduplicated so
+ * repeated selections cannot inflate the result or cause duplicate work. */
+export async function hideItems(ids: number[]): Promise<ContentRecord[]> {
+  await ensureCmsSchema()
+  const uniqueIds = [...new Set(ids)]
+  if (!uniqueIds.length) return []
+  const idList = sql.join(uniqueIds.map((id) => sql`${id}`), sql`, `)
+  const result = await withDbRetry(() => database().execute(sql`
+    UPDATE cms_content_items
+    SET status = 'hidden', updated_at = now()
+    WHERE id IN (${idList}) AND status <> 'hidden'
+    RETURNING *
+  `))
+  const hiddenItems = (result.rows as Row[]).map(toRecord)
+  if (hiddenItems.length) touch()
+  return hiddenItems
+}
+
+/** Permanently delete a set of CMS records in one database statement. */
+export async function deleteItems(ids: number[]): Promise<number[]> {
+  await ensureCmsSchema()
+  const uniqueIds = [...new Set(ids)]
+  if (!uniqueIds.length) return []
+  const idList = sql.join(uniqueIds.map((id) => sql`${id}`), sql`, `)
+  const result = await withDbRetry(() => database().execute(sql`
+    DELETE FROM cms_content_items
+    WHERE id IN (${idList})
+    RETURNING id
+  `))
+  const deletedIds = (result.rows as Row[]).map((row) => Number(row.id))
+  if (deletedIds.length) touch()
+  return deletedIds
+}
+
 const FIELD_NEWS_ENGLISH: Record<string, { title: string; summary: string }> = {
   'community-health-and-nutrition-update': { title: 'Health and Nutrition Update', summary: 'Community health and nutrition are vital to everyday wellbeing. This update shares information about health awareness, nutrition and access to essential care.' },
   'livelihood-and-enterprise-update': { title: 'Livelihood and Enterprise Update', summary: 'Explore updates on livelihood support, small enterprises, practical skills and financial inclusion that can help households strengthen their economic security.' },
@@ -436,7 +503,7 @@ export async function getPublishedContentDetailPage(path: string): Promise<{ han
     // Generic CMS content details inherit the route of the page whose contentFeed
     // displays them: /item, /menu/item, or /menu/submenu/item. A feed is deliberately
     // limited to one content component so a route can never ambiguously represent types.
-    if (!routed && !legacyLoan && segments.length >= 1 && segments.length <= 3) {
+    if (!routed && !legacyLoan && segments.length >= 1) {
       const itemSlug = segments[segments.length - 1]
       const parentPath = getContentRouteParent(normalized)
       const parentResult = await withDbRetry(() => database().execute(sql`
@@ -534,7 +601,7 @@ export async function getPublishedContentDetailPage(path: string): Promise<{ han
       bn: banglaParagraphs[index] || banglaParagraphs[banglaParagraphs.length - 1] || summary.bn,
     }))
 
-    const imageSrc = String(row.image_src || '')
+    const imageSrc = storedImageSource(row, attributes)
     const imageManagedValue = String(attributes.imageManaged ?? '').toLowerCase()
     // Older seed records contain bundled photos, not images selected in the CMS.
     // Hide those until an editor explicitly saves a CMS media selection.

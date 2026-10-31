@@ -1,13 +1,15 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { MapPin, Plus, RefreshCw, Save, Trash2 } from 'lucide-react'
+import { websiteEssentialsRequest } from '@/lib/api/adminResources'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { BRANCHES } from '@/lib/cms/fallback-gateway'
 import { normalizeWebsiteEssentials, type WebsiteEssentials } from '@/lib/websiteEssentials'
+import { useRegisterAdminActions } from './AdminActionContext'
 import type { Branch } from '@/types/branch'
 
 type Bi = { en: string; bn: string }
@@ -36,17 +38,20 @@ export default function PortfolioBranchLocationsEditor() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const baselineRef = useRef('')
 
   const load = useCallback(async () => {
     setLoading(true)
     setError('')
     try {
-      const response = await fetch('/api/website-essentials', { cache: 'no-store' })
+      const response = await websiteEssentialsRequest()
       if (!response.ok) throw new Error('Unable to load the location directory.')
       const essentials = normalizeWebsiteEssentials(await response.json())
       const isConfigured = response.headers.get('X-Website-Essentials-Configured') === 'true'
       setConfigured(isConfigured)
-      setLocations(isConfigured ? essentials.locations : (essentials.locations.length ? essentials.locations : BRANCHES.map((branch) => ({ ...branch }))))
+      const nextLocations = isConfigured ? essentials.locations : (essentials.locations.length ? essentials.locations : BRANCHES.map((branch) => ({ ...branch })))
+      setLocations(nextLocations)
+      baselineRef.current = JSON.stringify(nextLocations)
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Unable to load the location directory.')
     } finally {
@@ -88,7 +93,7 @@ export default function PortfolioBranchLocationsEditor() {
     try {
       // Read the latest full settings document first. This editor owns only locations;
       // social URLs, staff and PDF records remain untouched.
-      const currentResponse = await fetch('/api/website-essentials', { cache: 'no-store' })
+      const currentResponse = await websiteEssentialsRequest()
       if (!currentResponse.ok) throw new Error('Unable to refresh Website Essentials before saving locations.')
       const latest: WebsiteEssentials = normalizeWebsiteEssentials(await currentResponse.json())
       const normalizedLocations: Branch[] = locations.map((location) => ({
@@ -102,17 +107,17 @@ export default function PortfolioBranchLocationsEditor() {
         division: asBi(location.division),
         address: asBi(location.address),
       }))
-      const response = await fetch('/api/website-essentials', {
+      const response = await websiteEssentialsRequest({
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...latest, locations: normalizedLocations }),
-        cache: 'no-store',
       })
       const payload = await response.json().catch(() => ({}))
       if (response.status === 401) { window.location.assign('/admin/login'); return }
       if (!response.ok) throw new Error(payload.error || 'Unable to save location details.')
       const saved = normalizeWebsiteEssentials(payload.data ?? { ...latest, locations: normalizedLocations })
       setLocations(saved.locations)
+      baselineRef.current = JSON.stringify(saved.locations)
       setConfigured(true)
       toast.success('Portfolio locations saved. The public map and branch-manager contact panels now use these database records.')
     } catch (cause) {
@@ -123,6 +128,9 @@ export default function PortfolioBranchLocationsEditor() {
       setSaving(false)
     }
   }
+
+  const dirty = useMemo(() => Boolean(baselineRef.current) && !loading && baselineRef.current !== JSON.stringify(locations), [loading, locations])
+  useRegisterAdminActions('portfolio-branch-locations', { save, reload: load, dirty, saving, label: 'Branch locations' })
 
   return <Card className="cms-span-2">
     <CardHeader>

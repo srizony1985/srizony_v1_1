@@ -3,10 +3,13 @@
 import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { Briefcase, Building2, ChevronDown, ChevronRight, Database, Workflow, FileSpreadsheet, FileText, Inbox, LayoutDashboard, LogOut, Menu, Network, Settings, ShieldCheck, Users, X, PanelsTopLeft, House, Globe } from 'lucide-react'
+import { useEffect, useMemo, useState, type MouseEvent, type ReactNode } from 'react'
+import { Briefcase, Building2, ChevronDown, ChevronRight, Database, Workflow, FileSpreadsheet, FileText, LayoutDashboard, LogOut, Menu, Network, Settings, ShieldCheck, Users, X, PanelsTopLeft, Globe, RefreshCw, Save, Sun, Moon } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { adminLogout } from '@/lib/api/auth'
+import { AdminActionProvider, useAdminActions } from './AdminActionContext'
+import { useAdminTheme } from '../../AdminThemeShell'
+import { Button } from '@/components/ui/button'
 
 export type AdminNavItem = { label: string; href: string; icon?: LucideIcon }
 export type AdminNavGroup =
@@ -15,9 +18,7 @@ export type AdminNavGroup =
 
 const GROUPS: readonly AdminNavGroup[] = [
   { kind: 'link', key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, href: '/admin/dashboard/overview' },
-  { kind: 'link', key: 'contacts', label: 'Contact Requests', icon: Inbox, href: '/admin/dashboard/reports/submissions' },
   { kind: 'link', key: 'navigation', label: 'Site Navigation', icon: Network, href: '/admin/dashboard/navigation' },
-  { kind: 'link', key: 'landing-page', label: 'Landing Page', icon: House, href: '/admin/dashboard/page-builder?slug=%2F' },
   { kind: 'link', key: 'content', label: 'Site Content', icon: FileText, href: '/admin/dashboard/site-content' },
   { kind: 'link', key: 'page-builder', label: 'Page Builder', icon: PanelsTopLeft, href: '/admin/dashboard/page-builder' },
   { kind: 'link', key: 'portfolio', label: 'Portfolio', icon: Building2, href: '/admin/dashboard/portfolio' },
@@ -73,7 +74,45 @@ function titleFromRoute(pathname: string, searchParams: URLSearchParams) {
   return pathname.startsWith('/admin/dashboard') ? 'Dashboard' : 'CMS'
 }
 
-export default function Shell({ userEmail, children }: { userEmail?: string; children: ReactNode }) {
+function AdminHeaderActions() {
+  const { hasSave, hasReload, dirty, saving, runSave, runReload } = useAdminActions()
+  const { mode, setMode } = useAdminTheme()
+  const [reloading, setReloading] = useState(false)
+
+  async function reload() {
+    if (dirty && !window.confirm('Reload CMS data and discard unsaved changes in the open editors?')) return
+    setReloading(true)
+    try {
+      if (hasReload) await runReload()
+      else window.location.reload()
+    } finally {
+      setReloading(false)
+    }
+  }
+
+  return (
+    <div className="admin-global-actions" aria-label="CMS actions">
+      <Button type="button" variant="outline" size="sm" onClick={() => void reload()} disabled={reloading} title="Reload current CMS data">
+        <RefreshCw size={15} className={reloading ? 'admin-spin' : ''} /><span>Reload</span>
+      </Button>
+      <Button type="button" size="sm" onClick={() => void runSave()} disabled={!hasSave || !dirty || saving} title={dirty ? 'Save all unsaved changes in the open editors' : 'There are no unsaved changes'}>
+        <Save size={15} /><span>{saving ? 'Saving…' : 'Save all'}</span>{dirty && <i className="admin-unsaved-dot" aria-label="Unsaved changes" />}
+      </Button>
+      <span className="admin-header-action-divider" aria-hidden="true" />
+      <button type="button" className="admin-mode-toggle" onClick={() => setMode(mode === 'dark' ? 'light' : 'dark')} aria-label={`Switch to ${mode === 'dark' ? 'light' : 'dark'} mode`} title={`Switch to ${mode === 'dark' ? 'light' : 'dark'} mode`}>
+        {mode === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
+        <span>{mode === 'dark' ? 'Light' : 'Dark'}</span>
+      </button>
+    </div>
+  )
+}
+
+export default function Shell(props: { userEmail?: string; children: ReactNode }) {
+  return <AdminActionProvider><ShellContent {...props} /></AdminActionProvider>
+}
+
+function ShellContent({ userEmail, children }: { userEmail?: string; children: ReactNode }) {
+  const { dirty } = useAdminActions()
   const pathname = usePathname() || '/'
   const searchParams = useSearchParams()
   const router = useRouter()
@@ -121,7 +160,20 @@ export default function Shell({ userEmail, children }: { userEmail?: string; chi
 
   const current = useMemo(() => titleFromRoute(pathname, searchParams), [pathname, searchParams])
 
+  function handleNavLinkClick(event: MouseEvent<HTMLAnchorElement>) {
+    if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.currentTarget.target === '_blank') return
+    const destination = new URL(event.currentTarget.href, window.location.href)
+    const currentUrl = new URL(window.location.href)
+    const changesRoute = destination.pathname !== currentUrl.pathname || destination.search !== currentUrl.search
+    if (dirty && changesRoute && !window.confirm('You have unsaved CMS changes. Leave this page and discard them?')) {
+      event.preventDefault()
+      return
+    }
+    setMobileOpen(false)
+  }
+
   async function logout() {
+    if (dirty && !window.confirm('You have unsaved CMS changes. Sign out and discard them?')) return
     setLoggingOut(true)
     try {
       await adminLogout()
@@ -181,8 +233,9 @@ export default function Shell({ userEmail, children }: { userEmail?: string; chi
                 <Link
                   href={group.href}
                   className={`admin-nav-parent ${active ? 'active' : ''}`}
+                  data-nav-label={group.label}
                   title={collapsed ? group.label : undefined}
-                  onClick={() => setMobileOpen(false)}
+                  onClick={handleNavLinkClick}
                 >
                   <Icon size={17} />
                   {!collapsed && <span>{group.label}</span>}
@@ -192,16 +245,21 @@ export default function Shell({ userEmail, children }: { userEmail?: string; chi
           }
 
           return (
-            <section className="admin-nav-group" key={group.key}>
+            <section className="admin-nav-group" key={group.key}
+              onMouseEnter={() => { if (!collapsed && typeof window !== 'undefined' && window.matchMedia('(hover: hover)').matches) setExpanded((state) => ({ ...state, [group.key]: true })) }}
+              onMouseLeave={() => { if (!collapsed && typeof window !== 'undefined' && window.matchMedia('(hover: hover)').matches && !active) setExpanded((state) => ({ ...state, [group.key]: false })) }}
+            >
               <button
                 type="button"
                 title={collapsed ? group.label : undefined}
                 className={`admin-nav-parent ${active ? 'active' : ''}`}
+                data-nav-label={group.label}
                 onClick={() => {
-                  if (collapsed) setCollapsed(false)
+                  if (collapsed) { setCollapsed(false); setExpanded((currentState) => ({ ...currentState, [group.key]: true })) }
                   else toggleGroup(group.key)
                 }}
                 aria-expanded={!collapsed ? isExpanded : undefined}
+                onFocus={(event) => { if (event.currentTarget.matches(':focus-visible')) { if (collapsed) setCollapsed(false); setExpanded((state) => ({ ...state, [group.key]: true })) } }}
               >
                 <Icon size={17} />
                 {!collapsed && (
@@ -221,7 +279,7 @@ export default function Shell({ userEmail, children }: { userEmail?: string; chi
                         href={item.href}
                         key={item.href}
                         className={itemActive ? 'active' : ''}
-                        onClick={() => setMobileOpen(false)}
+                        onClick={handleNavLinkClick}
                       >
                         {ItemIcon && <ItemIcon size={13} aria-hidden="true" />}
                         <span>{item.label}</span>
@@ -270,6 +328,7 @@ export default function Shell({ userEmail, children }: { userEmail?: string; chi
               </div>
           </div>
           <div className="admin-header-tools">
+            <AdminHeaderActions />
             <div className="admin-provider-select" aria-label="CMS data source">
               <Database size={15} aria-hidden="true" />
               <span className="admin-provider-label">Data source</span>

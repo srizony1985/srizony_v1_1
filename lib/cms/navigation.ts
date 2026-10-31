@@ -6,6 +6,8 @@ import type { PageData, PageSection, Section } from '@/types/entityType'
 import { CONTENT_COLLECTION_ROUTES } from './components'
 import { ensureCmsSchema } from './ensureSchema'
 import { canonicalizeCmsRoute, getContentRouteParent } from '@/lib/cms/routes'
+import { parseRenderedComponents, RENDERED_COMPONENT_TYPES } from './rendered-components'
+export { RENDERED_COMPONENT_TYPES } from './rendered-components'
 
 type Row = Record<string, any>
 export type MenuType = 'page' | 'external' | 'folder'
@@ -14,10 +16,7 @@ export type NavNode = { id: number; parentId?: number | null; labelEn: string; l
 export type NavGroupTree = { id: number; key: string; labelEn: string; labelBn: string; landingId: number; items: NavNode[] }
 export class NavError extends Error { constructor(message: string, public status = 400) { super(message) } }
 
-// One navigation tree: Home is fixed, followed by up to three editable levels.
-// This accommodates Who We Are -> About Us -> About Us child pages.
-const MENU_LEVELS_BELOW_LANDING = 3
-const MAX_DEPTH = MENU_LEVELS_BELOW_LANDING + 1
+// One navigation tree: Home is fixed and all descendant levels are editable.
 const SLUG = /^\/[a-z0-9]+(?:-[a-z0-9]+)*(?:\/[a-z0-9]+(?:-[a-z0-9]+)*)*$/
 const RESERVED = /^\/(admin|api|bn|_next|search|unsubscribe|home)(\/|$)/
 const SECTION_TYPES: Section['type'][] = ['richText', 'stats', 'cards', 'gallery', 'timeline', 'diagram', 'table', 'video', 'cta', 'noticeList', 'contact', 'donation', 'carousel', 'contentFeed', 'reports']
@@ -65,16 +64,6 @@ const refresh = () => {
   revalidatePath('/api/navigation')
   revalidatePath('/api/site')
   revalidateTag('site-content', 'max')
-}
-
-export const RENDERED_COMPONENT_TYPES: Section['type'][] = ['richText', 'stats', 'cards', 'gallery', 'timeline', 'diagram', 'table', 'video', 'cta', 'noticeList', 'contact', 'donation', 'carousel', 'contentFeed', 'reports']
-
-function parseRenderedComponents(value: unknown): Section['type'][] {
-  const list = Array.isArray(value) ? value : typeof value === 'string' ? (() => { try { return JSON.parse(value) } catch { return [] } })() : []
-  const valid = (list as unknown[]).filter((v): v is Section['type'] => RENDERED_COMPONENT_TYPES.includes(v as Section['type']))
-  // Existing rows store collection names (project/product/team). Treat these old values as
-  // "all components selected" to avoid breaking a page during the one-time UI transition.
-  return valid.length ? Array.from(new Set(valid)) : [...RENDERED_COMPONENT_TYPES]
 }
 
 export function normalizeSlug(input: string) {
@@ -272,12 +261,6 @@ export async function createMenu(input: { groupKey: string; parentId: number | n
   if (input.parentId == null) throw new NavError('Home is the only root. Add every other menu under Home or an existing menu.', 409)
   const parent = (await run(sql`SELECT id, group_id, href, menu_type FROM nav_items WHERE id = ${input.parentId} LIMIT 1`)).rows[0] as Row | undefined
   if (!parent || Number(parent.group_id) !== Number(group.id)) throw new NavError('Choose a parent from the single Site Navigation tree.', 409)
-  const p = (await run(sql`WITH RECURSIVE ancestors AS (
-    SELECT id, parent_id, 1 AS depth FROM nav_items WHERE id = ${input.parentId}
-    UNION ALL SELECT parent.id, parent.parent_id, ancestors.depth + 1 FROM nav_items parent JOIN ancestors ON parent.id = ancestors.parent_id
-  ) SELECT MAX(depth)::int AS depth FROM ancestors`)).rows[0] as Row
-  if (!p?.depth) throw new NavError('Parent menu not found.', 404)
-  if (Number(p.depth) >= MAX_DEPTH) throw new NavError(`Menus can have at most ${MENU_LEVELS_BELOW_LANDING} editable levels beneath Home.`, 409)
   if (parent.menu_type === 'external') throw new NavError('A submenu cannot be nested under an external URL.')
 
   const menuType: MenuType = input.menuType === 'folder' ? 'folder' : input.menuType === 'external' ? 'external' : 'page'
@@ -375,20 +358,18 @@ export async function saveNavigationOrder(groupKey: string, tree: MoveNode[]) {
   const landingId = Number(landingRow.id)
   const isPrimary = true
   const rootParent = null
-  const startingDepth = 1
   const existingRows = (await run(sql`SELECT id, parent_id, sort_order, href, menu_type FROM nav_items WHERE group_id = ${Number(group.id)}`)).rows as Row[]
   const existing = new Set(existingRows.map((r) => Number(r.id)))
   const flat: Array<{ id: number; parent: number | null; order: number }> = []
   const seen = new Set<number>()
-  const walk = (nodes: MoveNode[], parent: number | null, depth: number) => {
-    if (depth > MAX_DEPTH) throw new NavError(`Menus can have at most ${MENU_LEVELS_BELOW_LANDING} editable levels beneath Home.`, 409)
+  const walk = (nodes: MoveNode[], parent: number | null) => {
     nodes.forEach((n, order) => {
       const nid = Number(n.id)
       if (!existing.has(nid) || seen.has(nid)) throw new NavError('The navigation changed in another session. Reload and try again.', 409)
-      seen.add(nid); flat.push({ id: nid, parent, order }); walk(n.children || [], nid, depth + 1)
+      seen.add(nid); flat.push({ id: nid, parent, order }); walk(n.children || [], nid)
     })
   }
-  walk(tree, rootParent, startingDepth)
+  walk(tree, rootParent)
   const byExistingId = new Map(existingRows.map((row) => [Number(row.id), row]))
   const parentLookup = new Map(byExistingId)
   parentLookup.set(landingId, landingRow)

@@ -1,4 +1,4 @@
-import type { ContactInfo, HeroData, MediaItem, NavGroup, NavItem, PageData, ThemeDefinition, UIContent } from '@/types/entityType'
+import type { ContactInfo, HeroData, NavGroup, NavItem, PageData, ThemeDefinition, UIContent } from '@/types/entityType'
 
 export type PublicPaymentInfo = { id: string; en: string; bn: string; noteEn: string; noteBn: string; icon: string }
 export type SiteIdentity = {

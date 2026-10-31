@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowDown, ArrowUp, Building2, FileJson, Image as ImageIcon, Save, Users, RefreshCw, Plus, Trash2, ChevronDown, ChevronUp } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -11,6 +11,7 @@ import { getPortfolioGlobal, savePortfolioGlobal } from '@/lib/api/portfolio'
 import { AdminErrorState, PageLoading, SectionToolbar } from '../_components/AdminCommon'
 import { MediaField } from '../_components/MediaField'
 import PortfolioBranchLocationsEditor from '../_components/PortfolioBranchLocationsEditor'
+import { useRegisterAdminActions } from '../_components/AdminActionContext'
 
 type Bi = { en: string; bn: string }
 type Portfolio = Record<string, any>
@@ -26,6 +27,7 @@ function JsonEditor({ title, value, onChange, note }: { title: string; value: un
   const [text, setText] = useState(pretty(value))
   const [error, setError] = useState('')
   const [saveError, setSaveError] = useState('')
+  const baselineRef = useRef('')
   useEffect(() => { setText(pretty(value)); setError('') }, [value])
   return <div className="portfolio-json-editor"><div className="portfolio-json-head"><Label>{title}</Label><Button size="sm" variant="outline" onClick={() => { try { const parsed = JSON.parse(text); if (!Array.isArray(parsed) && (parsed === null || typeof parsed !== 'object')) throw new Error('Enter a JSON object or array.'); onChange(parsed); setError(''); toast.success(`${title} applied to draft.`) } catch (e) { setError(e instanceof Error ? e.message : 'Invalid JSON.') } }}><FileJson size={14} /> Apply JSON</Button></div>{note && <p className="admin-small-note">{note}</p>}<textarea className="ui-textarea portfolio-json-area" rows={12} spellCheck={false} value={text} onChange={(e) => setText(e.target.value)} /><p role="status" className="portfolio-json-error">{error}</p></div>
 }
@@ -105,6 +107,7 @@ export default function PortfolioPage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [saveError, setSaveError] = useState('')
+  const baselineRef = useRef('')
 
   const load = useCallback(async () => {
     setLoading(true); setError('')
@@ -132,6 +135,7 @@ export default function PortfolioPage() {
         customProperties: saved.customProperties && typeof saved.customProperties === 'object' ? saved.customProperties : {},
       }
       setGlobal(data); setPortfolio(nextPortfolio); setImages(imageData); setContact(contactData); setUpdatedAt(result.updatedAt)
+      baselineRef.current = JSON.stringify({ global: data, portfolio: nextPortfolio, images: imageData, contact: contactData })
     } catch (e) { setError(e instanceof Error ? e.message : 'Unable to load the portfolio.') }
     finally { setLoading(false) }
   }, [])
@@ -163,11 +167,15 @@ export default function PortfolioPage() {
     try {
       await savePortfolioGlobal(nextGlobal, updatedAt)
       setGlobal(nextGlobal); setPortfolio(updatedPortfolio); setImages(nextGlobal.images); setContact(nextContact)
+      baselineRef.current = JSON.stringify({ global: nextGlobal, portfolio: updatedPortfolio, images: nextGlobal.images, contact: nextContact })
       toast.success('Portfolio profile saved. Public branding, contact details and portfolio-driven pages will use the updated values.')
       await load()
     } catch (e) { const message = e instanceof Error ? e.message : 'Unable to save the portfolio.'; setSaveError(message); toast.error(message, { description: 'Your edits are still in the form. Fix the issue or check the database connection, then retry.' }) }
     finally { setSaving(false) }
   }
+
+  const dirty = useMemo(() => Boolean(global) && baselineRef.current !== JSON.stringify({ global, portfolio, images, contact }), [global, portfolio, images, contact])
+  useRegisterAdminActions('portfolio-editor', { save, reload: load, dirty, saving, label: 'Portfolio' })
 
   return <>
     <SectionToolbar title="Portfolio" description="Manage the public identity, organizational profile, branch map details, branch-manager contacts, mission, vision and values through database-backed CMS records." onRefresh={() => void load()} refreshing={loading} actions={<Button onClick={() => void save()} disabled={loading || saving || !global}><Save size={15} />{saving ? 'Saving…' : 'Save portfolio'}</Button>} />

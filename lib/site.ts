@@ -3,12 +3,15 @@ import { revalidatePath, revalidateTag, unstable_cache } from 'next/cache'
 import { contentData, systemData, donationInfo, SDGsteps } from '@/lib/cms/fallback-gateway'
 import { db, withDbRetry } from '@/lib/db'
 import type { NavGroup, NavItem, PageData } from '@/types/entityType'
-import { CONTENT_COLLECTION_ROUTES } from '@/lib/cms/components'
+import { CONTENT_COLLECTION_ROUTES, type ContentComponent } from '@/lib/cms/components'
 import { canonicalizeCmsRoute } from '@/lib/cms/routes'
 import { getPublishedFeed, getPublishedFieldNews, getPublishedContentDetailPage } from '@/lib/cms/content'
 import { validatePageComponentLayers } from '@/lib/cms/component-policy'
+import { parseRenderedComponents } from '@/lib/cms/rendered-components'
 
 export type CmsDocumentKey = 'site-global' | `page:${string}` | 'ui'
+
+const PROJECT_CONTENT_COMPONENTS: ContentComponent[] = ['project']
 
 // Public navigation deliberately hides these legacy menu entries. The underlying
 // content pages may remain available to CMS editors, but they must not appear in
@@ -145,11 +148,9 @@ async function getCmsNavigation(): Promise<{ primaryNav: NavItem[]; navGroups: N
       const id = Number(row.item_id)
       const menuType = row.menu_type === 'folder' ? 'folder' as const : row.menu_type === 'external' ? 'external' as const : 'page' as const
       const children = buildItems(id)
-      const sectionTypes = ['richText','stats','cards','gallery','timeline','diagram','table','video','cta','noticeList','contact','donation','carousel','contentFeed','reports'] as const
-      let rawComponents: unknown = row.content_types
-      if (typeof rawComponents === 'string') { try { rawComponents = JSON.parse(rawComponents) } catch { rawComponents = [] } }
-      const validComponents = Array.isArray(rawComponents) ? rawComponents.filter((value): value is typeof sectionTypes[number] => typeof value === 'string' && sectionTypes.includes(value as typeof sectionTypes[number])) : []
-      const renderedComponents = validComponents.length ? Array.from(new Set(validComponents)) : undefined
+      // Normalize legacy JSONB objects/strings the same way as the admin API.
+      // Invalid or legacy collection names intentionally fall back to all types.
+      const renderedComponents = parseRenderedComponents(row.content_types)
       return {
         label: { en: String(row.label_en), bn: String(row.label_bn || '') },
         href: menuType === 'folder' ? '' : menuType === 'external' ? String(row.href) : resolvePagePath(String(row.href)),
@@ -179,6 +180,10 @@ async function savePage(database: NonNullable<typeof db>, slug: string, value: u
   const metaDescriptionEn = data.metaDescription?.en || null
   const metaDescriptionBn = data.metaDescription?.bn || null
   const rawValue = (value && typeof value === 'object' ? value : {}) as Record<string, unknown>
+  const markedProjectsSectionIndex = slug === '/projects' ? (data.sections ?? []).findIndex((section) => isProjectsCollectionSection(section)) : -1
+  const projectsSectionIndex = slug === '/projects'
+    ? markedProjectsSectionIndex >= 0 ? markedProjectsSectionIndex : (data.sections ?? []).findIndex((section) => isProjectCollectionPresentation(section))
+    : -1
   const normalizedSections = Array.isArray(data.sections) ? data.sections.map((rawSection, index) => {
     if (!rawSection || typeof rawSection !== 'object') return rawSection
     const section = rawSection as Record<string, any>
@@ -188,6 +193,15 @@ async function savePage(database: NonNullable<typeof db>, slug: string, value: u
     const storedCollection = section.contentCollection && typeof section.contentCollection === 'object' ? section.contentCollection as Record<string, unknown> : null
     const selectedComponent = storedCollection?.component ?? rawComponents.find((item) => typeof item === 'string' && allContentTypes.includes(item)) ?? 'project'
     const component = allContentTypes.includes(String(selectedComponent)) ? String(selectedComponent) : 'project'
+    const sectionHeading = `${String(section.heading?.en || '')} ${String(section.heading?.bn || '')}`.trim().toLowerCase()
+    const isCanonicalProjectsCollection = slug === '/projects' && (
+      index === projectsSectionIndex
+      || section.collectionKind === 'projects'
+      || storedCollection?.component === 'project'
+      || rawComponents.includes('project')
+      || (section.dataSource !== 'manual' && /projects?|প্রকল্প/.test(sectionHeading)
+        && ['cards', 'carousel', 'contentFeed', 'gallery'].includes(String(section.type)))
+    )
     const allowedLayouts: Record<string, string[]> = {
       cards: ['grid', 'carousel', 'masonry', 'list'], contentFeed: ['grid', 'carousel', 'masonry', 'list'],
       carousel: ['carousel', 'grid', 'list'], gallery: ['grid', 'masonry'], stats: ['grid', 'list'],
@@ -197,10 +211,10 @@ async function savePage(database: NonNullable<typeof db>, slug: string, value: u
     const layout = sectionLayouts.includes(requestedLayout) ? requestedLayout : sectionLayouts[0]
     // A contentFeed is intrinsically a collection. Older CMS pages that predate
     // contentCollection are upgraded to an enabled collection using their saved type.
-    const shouldNormalizeCollection = Boolean(storedCollection) || section.type === 'contentFeed'
+    const shouldNormalizeCollection = Boolean(storedCollection) || section.type === 'contentFeed' || isCanonicalProjectsCollection
     const contentCollection = shouldNormalizeCollection ? {
-      enabled: section.type === 'contentFeed' ? storedCollection?.enabled !== false : storedCollection?.enabled === true,
-      component,
+      enabled: isCanonicalProjectsCollection ? true : section.type === 'contentFeed' ? storedCollection?.enabled !== false : storedCollection?.enabled === true,
+      component: isCanonicalProjectsCollection ? 'project' : component,
       maxItems: section.type === 'cta' || section.type === 'donation' ? 1 : Math.max(1, Math.min(100, Number(storedCollection?.maxItems) || 12)),
       layout,
       columns: [2, 3, 4].includes(Number(storedCollection?.columns)) ? Number(storedCollection?.columns) : Number(section.columns) && [2, 3, 4].includes(Number(section.columns)) ? Number(section.columns) : 3,
@@ -212,6 +226,9 @@ async function savePage(database: NonNullable<typeof db>, slug: string, value: u
       sectionId,
       ...(section.type === 'contentFeed' ? { components: [component] } : {}),
       ...(contentCollection ? { contentCollection } : {}),
+      // Project cards are a live CMS catalogue. The admin editor may receive a
+      // hydrated preview, but the page snapshot must never duplicate those records.
+      ...(slug === '/projects' && isCanonicalProjectsCollection ? { items: [] } : {}),
     }
   }) : data.sections
   const storedValue = { ...rawValue, ...(normalizedSections ? { sections: normalizedSections } : {}), slug, status, sortOrder }
@@ -499,6 +516,17 @@ function applyPortfolioToPage(page: PageData, global: Record<string, any>): Page
   return { ...page, sections }
 }
 
+function isProjectCollectionPresentation(section: any) {
+  return Boolean(section && ['cards', 'carousel', 'gallery', 'contentFeed'].includes(String(section.type))
+    && section.dataSource !== 'manual'
+    && !['news', 'stories', 'newsFeed', 'successStories'].includes(String(section.homeComponent || '')))
+}
+
+function projectsCollectionSectionIndex(sections: PageData['sections']) {
+  const marked = sections.findIndex((section) => isProjectsCollectionSection(section))
+  return marked >= 0 ? marked : sections.findIndex((section) => isProjectCollectionPresentation(section))
+}
+
 function hydrateSectionFromCollection(section: any, entries: Awaited<ReturnType<typeof getPublishedFeed>>, config: Record<string, any>) {
   const items = entries.map((entry) => ({
     title: entry.title,
@@ -528,6 +556,71 @@ function hydrateSectionFromCollection(section: any, entries: Awaited<ReturnType<
     }
     default: return section
   }
+}
+
+/**
+ * The Projects page is a catalogue, not a manually maintained array embedded in
+ * pages.render_cache. Older saved page documents can contain an empty `items`
+ * array or a different section type than the original carousel. Recognise the
+ * CMS collection binding independently of that presentation choice.
+ */
+function isProjectsCollectionSection(section: PageData['sections'][number]) {
+  const candidate = section as PageData['sections'][number] & {
+    collectionKind?: string
+    dataSource?: string
+    components?: string[]
+    contentCollection?: { component?: string; enabled?: boolean }
+    heading?: { en?: string; bn?: string }
+  }
+  const heading = `${candidate.heading?.en || ''} ${candidate.heading?.bn || ''}`.trim().toLowerCase()
+  const configuredComponent = candidate.contentCollection?.component
+  const feedComponent = Array.isArray(candidate.components) ? candidate.components[0] : undefined
+  return candidate.collectionKind === 'projects'
+    || configuredComponent === 'project'
+    || (candidate.type === 'contentFeed' && feedComponent === 'project')
+    || (candidate.dataSource !== 'manual' && /projects?|প্রকল্প/.test(heading)
+      && ['cards', 'carousel', 'contentFeed', 'gallery'].includes(candidate.type))
+}
+
+function projectFeedCards(entries: Awaited<ReturnType<typeof getPublishedFeed>>) {
+  return entries.map((entry) => ({
+    title: entry.title,
+    body: entry.summary,
+    href: entry.href || `/projects/${entry.slug}`,
+    ...(entry.image ? { image: { src: entry.image, alt: entry.title } } : {}),
+    icon: 'briefcase' as const,
+  }))
+}
+
+/**
+ * The Projects page editor must show the live CMS records in its `items` array,
+ * even though those records are stripped again before the page layout is saved.
+ * This keeps the editor preview, collection manager and public page in sync while
+ * preserving cms_content_items as the single source of truth.
+ */
+function hydrateProjectsEditorPage(page: PageData | null, entries: Awaited<ReturnType<typeof getPublishedFeed>>): PageData | null {
+  if (!page || !Array.isArray(page.sections)) return page
+  const sections = [...page.sections]
+  const sectionIndex = projectsCollectionSectionIndex(sections)
+  const hydrate = (section: PageData['sections'][number]) => {
+    if (section.type === 'contentFeed') return { ...section, components: [...PROJECT_CONTENT_COMPONENTS], items: entries }
+    if (section.type === 'cards') return { ...section, items: projectFeedCards(entries) }
+    if (section.type === 'gallery') return { ...section, items: entries.filter((entry) => entry.image).map((entry) => ({ src: entry.image!, alt: entry.title, caption: entry.title })) }
+    if (section.type === 'carousel') return { ...section, items: entries.map((entry) => ({
+      title: entry.title,
+      body: entry.summary,
+      ...(entry.image ? { image: { src: entry.image, alt: entry.title } } : {}),
+      href: entry.href || `/projects/${entry.slug}`,
+    })) }
+    return section
+  }
+  if (sectionIndex >= 0) sections[sectionIndex] = hydrate(sections[sectionIndex])
+  else if (entries.length) sections.push({
+    type: 'contentFeed', visible: true, heading: { en: 'Projects', bn: 'প্রকল্পসমূহ' },
+    components: [...PROJECT_CONTENT_COMPONENTS], items: entries, columns: 3,
+    contentCollection: { enabled: true, component: 'project', maxItems: 100, layout: 'grid', columns: 3, gap: 24, viewportItems: 3 },
+  } as PageData['sections'][number])
+  return { ...page, sections }
 }
 
 export async function getPublicSiteSnapshot(path = '/') {
@@ -667,21 +760,41 @@ export async function getPublicSiteSnapshot(path = '/') {
       '/organizational-development': { component: 'loan-product', route: '/organizational-development' },
     }
     const config = catalogueConfig[canonicalSlug]
-    const collection = config && db ? await getPublishedFeed([config.component], 100, canonicalSlug) : []
+    // `/projects` is the canonical catalogue for published projects. A number of
+    // older CMS records were assigned to a nested page before the listing page was
+    // made database-backed, so include all published project records here. Their
+    // individual hrefs still honour each record's saved routeParent.
+    const collection = config && db
+      ? await getPublishedFeed([config.component], 100, canonicalSlug === '/projects' ? undefined : canonicalSlug)
+      : []
     if (config && db) {
-      const cards = collection.map((entry, index) => ({
-        title: entry.title,
-        body: entry.summary,
-        href: entry.href || `${config!.route}/${entry.slug}`,
-        image: entry.image ? { src: entry.image, alt: entry.title } : undefined,
-        icon: (config!.component === 'health-service' ? 'heart' : config!.component === 'partner-agency' ? 'building' : config!.component === 'loan-product' ? 'coins' : 'briefcase') as any,
-        tag: config!.component === 'loan-product' ? { en: 'Loan product', bn: 'ঋণ পণ্য' } : undefined,
-      }))
+      const cards = config.component === 'project'
+        ? projectFeedCards(collection)
+        : collection.map((entry) => ({
+            title: entry.title,
+            body: entry.summary,
+            href: entry.href || `${config!.route}/${entry.slug}`,
+            image: entry.image ? { src: entry.image, alt: entry.title } : undefined,
+            icon: (config!.component === 'health-service' ? 'heart' : config!.component === 'partner-agency' ? 'building' : config!.component === 'loan-product' ? 'coins' : 'briefcase') as any,
+            tag: config!.component === 'loan-product' ? { en: 'Loan product', bn: 'ঋণ পণ্য' } : undefined,
+          }))
+      const projectSectionIndex = canonicalSlug === '/projects' ? projectsCollectionSectionIndex(page.sections) : -1
+      let projectSectionMatched = false
       page = {
         ...page,
-        sections: page.sections.map((section) => {
-          if (canonicalSlug === '/projects' && section.type === 'carousel' && section.collectionKind === 'projects') {
-            return { ...section, items: collection.map((entry) => ({ title: entry.title, body: entry.summary, ...(entry.image ? { image: { src: entry.image, alt: entry.title } } : {}), href: entry.href || `${config!.route}/${entry.slug}` })) }
+        sections: page.sections.map((section, sectionIndex) => {
+          if (canonicalSlug === '/projects' && config!.component === 'project' && sectionIndex === projectSectionIndex) {
+            projectSectionMatched = true
+            if (section.type === 'contentFeed') return { ...section, components: ['project'], items: collection }
+            if (section.type === 'cards') return { ...section, items: cards }
+            if (section.type === 'gallery') return { ...section, items: collection.filter((entry) => entry.image).map((entry) => ({ src: entry.image!, alt: entry.title, caption: entry.title })) }
+            if (section.type === 'carousel') return { ...section, items: collection.map((entry) => ({
+              title: entry.title,
+              body: entry.summary,
+              ...(entry.image ? { image: { src: entry.image, alt: entry.title } } : {}),
+              href: entry.href || `${config!.route}/${entry.slug}`,
+            })) }
+            return section
           }
           if (canonicalSlug === '/news' && section.type === 'carousel' && section.collectionKind === 'news') {
             return { ...section, items: collection.map((entry) => ({ title: entry.title, body: entry.summary, ...(entry.image ? { image: { src: entry.image, alt: entry.title } } : {}), href: entry.href || `${config!.route}/${entry.slug}`, tag: { en: entry.date, bn: entry.date } })) }
@@ -703,6 +816,22 @@ export async function getPublicSiteSnapshot(path = '/') {
           }
           return section
         }),
+      }
+      // If a legacy editor save removed the old carousel marker entirely, keep the
+      // published catalogue visible rather than leaving the page with an empty
+      // `items` array and no database-backed section.
+      if (canonicalSlug === '/projects' && collection.length && !projectSectionMatched) {
+        page = {
+          ...page,
+          sections: [...page.sections, {
+            type: 'contentFeed',
+            visible: true,
+            heading: { en: 'Projects', bn: 'প্রকল্পসমূহ' },
+            components: ['project'],
+            items: collection,
+            columns: 3,
+          } as PageData['sections'][number]],
+        }
       }
     }
   }
@@ -765,8 +894,13 @@ export async function getPublicSiteSnapshot(path = '/') {
     const hydrated = await Promise.all(page.sections.map(async (section) => {
       const config = (section as any).contentCollection as Record<string, any> | undefined
       if (!config?.enabled || typeof config.component !== 'string') return section
+      if (canonicalSlug === '/projects' && config.component === 'project') return section
       const maxItems = Math.max(1, Math.min(100, Number(config.maxItems) || 12))
-      const entries = await getPublishedFeed([config.component as any], maxItems, canonicalSlug)
+      const entries = await getPublishedFeed(
+        [config.component as any],
+        maxItems,
+        canonicalSlug === '/projects' && config.component === 'project' ? undefined : canonicalSlug,
+      )
       return hydrateSectionFromCollection(section, entries, config)
     }))
     page = { ...page, sections: hydrated }
@@ -778,9 +912,12 @@ export async function getPublicSiteSnapshot(path = '/') {
     page = { ...page, sections: await Promise.all(page.sections.map(async (section) => {
       if (section.type !== 'contentFeed') return section
       if ((section as any).contentCollection?.enabled === true) return section
-      if ((section as any).contentCollection?.enabled === false) return { ...section, items: [] }
+      const isCanonicalProjectsFeed = canonicalSlug === '/projects' && (
+        section.components?.[0] === 'project' || (section as any).contentCollection?.component === 'project'
+      )
+      if ((section as any).contentCollection?.enabled === false && !isCanonicalProjectsFeed) return { ...section, items: [] }
       const component = section.components?.[0] || 'project'
-      const entries = await getPublishedFeed([component], 100, canonicalSlug)
+      const entries = await getPublishedFeed([component], 100, canonicalSlug === '/projects' && component === 'project' ? undefined : canonicalSlug)
       return { ...section, components: [component], items: entries }
     })) }
   }
@@ -838,7 +975,7 @@ export async function getCmsEditorData(slug?: string) {
   const docs = await readDocuments([`page:${canonicalSlug}`])
   const rawOverride = docs.get(`page:${canonicalSlug}`) as Record<string, unknown> | undefined
   const meta = rawOverride?.__cmsMeta
-  const fallback = ensureLandingPageSections(getFallbackPage(canonicalSlug))
+  let fallback = ensureLandingPageSections(getFallbackPage(canonicalSlug))
   let override = rawOverride ? { ...rawOverride } : null
   if (override) {
     delete override.__cmsMeta
@@ -848,6 +985,14 @@ export async function getCmsEditorData(slug?: string) {
     const source = { ...(fallback || {}), ...(override || {}), slug: '/' } as PageData
     source.sections = Array.isArray(override?.sections) ? override!.sections as PageData['sections'] : (fallback?.sections || [])
     override = ensureLandingPageSections(source, !rawOverride) as unknown as Record<string, unknown>
+  }
+  if (canonicalSlug === '/projects' && db && !isProductionBuild() && process.env.CMS_STATIC_FALLBACK !== 'true') {
+    // Admin preview data is loaded from the same CMS catalogue as the public page.
+    // Draft/hidden records remain visible in the Collection manager, while only
+    // published records are inserted into the page's preview `items` array.
+    const projects = await getPublishedFeed(['project'], 100)
+    fallback = hydrateProjectsEditorPage(fallback, projects)
+    override = hydrateProjectsEditorPage(override as PageData | null, projects) as unknown as Record<string, unknown> | null
   }
   return { slug: canonicalSlug, fallback, override: override || null, meta: canonicalSlug === '/' ? { ...(meta || {}), status: 'published' } : (meta || null) }
 }

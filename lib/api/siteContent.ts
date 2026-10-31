@@ -11,3 +11,9 @@ export const createContent = async (component: ContentComponent, slug: string, v
 export const updateContent = async (id: number, slug: string, values: ContentValues, expectedUpdatedAt?: string) => (await adminRequest<{ item: ContentRecord }>(BASE, { method: 'PUT', json: { id, slug, values, expectedUpdatedAt } }, 'Unable to save the item.')).item
 export const setContentVisibility = async (id: number, status: ContentStatus) => (await adminRequest<{ item: ContentRecord }>(BASE, { method: 'PATCH', json: { id, status } }, 'Unable to change visibility.')).item
 export const deleteContent = (id: number) => adminRequest(`${BASE}?id=${id}`, { method: 'DELETE' }, 'Unable to delete the item.')
+
+/** Bulk actions are deliberately limited to selected IDs from the current CMS view. */
+export const hideContentItems = async (ids: number[]) =>
+  adminRequest<{ ok: boolean; items: ContentRecord[]; ids: number[]; affected: number }>(BASE, { method: 'PATCH', json: { ids, status: 'hidden' } }, 'Unable to hide the selected items.')
+export const deleteContentItems = async (ids: number[]) =>
+  adminRequest<{ ok: boolean; ids: number[]; affected: number }>(BASE, { method: 'DELETE', json: { ids } }, 'Unable to delete the selected items.')

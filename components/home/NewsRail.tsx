@@ -8,7 +8,7 @@ import { useInView } from '@/components/hooks/useInView'
 import Reveal from '@/components/containers/Reveal'
 import Container from '@/components/containers/Container'
 import SafeImage from '@/components/ui/SafeImage'
-import ConfiguredLink from '@/components/ui/ConfiguredLink'
+import Button from '@/components/ui/ActionButton'
 
 type CarouselSection = Extract<PageData['sections'][number], { type: 'carousel' }>
 
@@ -183,12 +183,12 @@ export default function NewsRail({ page, lang }: { page: PageData; lang: Lang })
       {items.length > 0 && <Container>
         <div className="sf-rail-actions sf-rail-actions--center">
           <button type="button" className="sf-round-btn" onClick={() => stepBy(-1)} aria-label={lang === 'en' ? 'Previous news' : 'আগের সংবাদ'}><ChevronLeft size={20} /></button>
-          {showNewsButton && newsLabel?.[lang] && <ConfiguredLink href={newsHref} action="route" className="sf-btn sf-btn--ghost">
+          {showNewsButton && newsLabel?.[lang] && <Button href={newsHref} action="route" variant="ghost">
             {newsLabel[lang]} <ArrowRight size={16} aria-hidden="true" />
-          </ConfiguredLink>}
-          {showNewsSecondaryButton && newsSecondaryHref && newsSecondaryLabel?.[lang] && <ConfiguredLink href={newsSecondaryHref} action={button?.secondaryAction ?? button?.action} className="sf-btn sf-btn--outline">
+          </Button>}
+          {showNewsSecondaryButton && newsSecondaryHref && newsSecondaryLabel?.[lang] && <Button href={newsSecondaryHref} action={button?.secondaryAction ?? button?.action} variant="outline">
             {newsSecondaryLabel[lang]} <ArrowRight size={16} aria-hidden="true" />
-          </ConfiguredLink>}
+          </Button>}
           <button type="button" className="sf-round-btn" onClick={() => stepBy(1)} aria-label={lang === 'en' ? 'Next news' : 'পরের সংবাদ'}><ChevronRight size={20} /></button>
         </div>
       </Container>}

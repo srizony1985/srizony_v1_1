@@ -1,6 +1,8 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { cmsPipelineRequest } from '@/lib/api/adminResources'
+
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { Activity, AlertTriangle, CheckCircle2, Database, RefreshCw, Save, Server, Workflow } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -8,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { PageLoading, SectionToolbar } from '../_components/AdminCommon'
 import type { SiteIdentity } from '@/types/site'
+import { useRegisterAdminActions } from '../_components/AdminActionContext'
 
 type DomainStatus = { id: string; label: string; table: string; records: number | null; state: string; href: string }
 type PipelineData = {
@@ -27,15 +30,17 @@ export default function CmsPipelinePage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
+  const baselineRef = useRef('')
 
   const load = useCallback(async () => {
     setLoading(true); setError('')
     try {
-      const response = await fetch('/api/admin/cms-pipeline', { cache: 'no-store' })
+      const response = await cmsPipelineRequest()
       const payload = await response.json()
       if (!response.ok) throw new Error(payload.error || 'Unable to inspect the CMS pipeline.')
       setData(payload)
-      setIdentity({ ...emptyIdentity, ...payload.identity })
+      const nextIdentity = { ...emptyIdentity, ...payload.identity }
+      setIdentity(nextIdentity); baselineRef.current = JSON.stringify(nextIdentity)
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Unable to load CMS pipeline.') }
     finally { setLoading(false) }
   }, [])
@@ -49,18 +54,21 @@ export default function CmsPipelinePage() {
   async function saveIdentity() {
     setSaving(true); setError(''); setNotice('')
     try {
-      const response = await fetch('/api/admin/cms-pipeline', {
+      const response = await cmsPipelineRequest({
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ siteIdentity: { ...identity, keywords: identity.keywords.map((item) => item.trim()).filter(Boolean) } }),
       })
       const payload = await response.json()
       if (!response.ok) throw new Error(payload.error || 'Unable to save site identity.')
-      setIdentity(payload.siteIdentity)
+      setIdentity(payload.siteIdentity); baselineRef.current = JSON.stringify(payload.siteIdentity)
       setNotice('Site identity saved to Neon PostgreSQL. Metadata and structured data have been revalidated.')
       await load()
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Unable to save site identity.') }
     finally { setSaving(false) }
   }
+
+  const dirty = useMemo(() => Boolean(data) && baselineRef.current !== JSON.stringify(identity), [data, identity])
+  useRegisterAdminActions('cms-pipeline-identity', { save: saveIdentity, reload: load, dirty, saving, label: 'Site identity' })
 
   return <>
     <SectionToolbar title="CMS Data Pipeline" description="Monitor the database-backed content domains, manage global site identity, and use the existing editors to change every published part of the website." onRefresh={() => void load()} refreshing={loading} />
@@ -104,7 +112,6 @@ export default function CmsPipelinePage() {
       <Card>
         <CardHeader><CardTitle>Content editing pipeline</CardTitle><CardDescription>Each CMS domain has a dedicated editor. These are the control points for updating live website data without code changes.</CardDescription></CardHeader>
         <CardContent><div className="cms-pipeline-links">
-          <Link href="/admin/dashboard/page-builder?slug=%2F">Landing page sections</Link>
           <Link href="/admin/dashboard/page-builder">Slug pages and sectional layouts</Link>
           <Link href="/admin/dashboard/navigation">Navigation and submenu management</Link>
           <Link href="/admin/dashboard/site-content">Projects, news, notices, reports and content collections</Link>

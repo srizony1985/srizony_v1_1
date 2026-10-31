@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { BriefcaseBusiness, CalendarDays, Clock3, MapPin, Users, Wallet } from 'lucide-react'
+import { createPortal } from 'react-dom'
+import { BriefcaseBusiness, CalendarDays, Clock3, MapPin, Users, Wallet, X } from 'lucide-react'
 import { useSite } from '@/components/containers/SiteProvider'
 import JobApplicationForm from '@/components/pages/JobApplicationForm'
 import SectionRenderer from '@/components/pages/SectionRenderer'
@@ -23,13 +24,80 @@ export default function JobPostingDetail({ page, sections, canonicalPath }: Prop
   const { lang } = useSite()
   const bn = lang === 'bn'
   const [applicationOpen, setApplicationOpen] = useState(false)
+  const [portalReady, setPortalReady] = useState(false)
   const applicationPanelRef = useRef<HTMLDivElement>(null)
 
+  // Render the application dialog outside animated page wrappers and all local
+  // stacking contexts (sticky navigation, maps, transformed sections, etc.).
+  useEffect(() => setPortalReady(true), [])
+
   useEffect(() => {
-    if (!applicationOpen) return
-    applicationPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-    applicationPanelRef.current?.focus({ preventScroll: true })
-  }, [applicationOpen])
+    if (!applicationOpen || !portalReady) return
+
+    const root = document.documentElement
+    const body = document.body
+    const previousRootOverflow = root.style.overflow
+    const previousBodyOverflow = body.style.overflow
+    const previousBodyPaddingRight = body.style.paddingRight
+    const previousFocus = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null
+    const scrollbarWidth = Math.max(0, window.innerWidth - root.clientWidth)
+
+    root.style.overflow = 'hidden'
+    body.style.overflow = 'hidden'
+    if (scrollbarWidth > 0) {
+      const currentPadding = Number.parseFloat(window.getComputedStyle(body).paddingRight) || 0
+      body.style.paddingRight = `${currentPadding + scrollbarWidth}px`
+    }
+
+    const panel = applicationPanelRef.current
+    panel?.focus()
+
+    const getFocusable = () => Array.from(panel?.querySelectorAll<HTMLElement>(
+      'a[href],button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),[tabindex]:not([tabindex="-1"])',
+    ) ?? []).filter((element) => (
+      element.getClientRects().length > 0 && window.getComputedStyle(element).visibility !== 'hidden'
+    ))
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        setApplicationOpen(false)
+        return
+      }
+      if (event.key !== 'Tab') return
+
+      const focusable = getFocusable()
+      if (!focusable.length) {
+        event.preventDefault()
+        panel?.focus()
+        return
+      }
+
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      if (!panel?.contains(document.activeElement)) {
+        event.preventDefault()
+        ;(event.shiftKey ? last : first).focus()
+      } else if (event.shiftKey && (document.activeElement === first || document.activeElement === panel)) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault()
+        first.focus()
+      }
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      root.style.overflow = previousRootOverflow
+      body.style.overflow = previousBodyOverflow
+      body.style.paddingRight = previousBodyPaddingRight
+      window.removeEventListener('keydown', onKeyDown)
+      if (previousFocus?.isConnected) previousFocus.focus()
+    }
+  }, [applicationOpen, portalReady])
   const job = page.jobDetails || {}
   const jobSlug = page.contentSlug || canonicalPath.split('/').filter(Boolean).at(-1) || ''
   const facts = [
@@ -62,16 +130,63 @@ export default function JobPostingDetail({ page, sections, canonicalPath }: Prop
 
     <section className="sf-job-apply-callout" aria-labelledby="sf-job-apply-title">
       <div className="sf-job-apply-copy">
-        <h2 id="sf-job-apply-title" className="sf-h3">{bn ? 'এই পদে আবেদন করতে প্রস্তুত?' : 'Ready to apply for this position?'}</h2>
-        <p className="sf-body">{bn ? 'আবেদন ফরম খুলতে নিচের বোতামে চাপ দিন। আপনার PDF জীবনবৃত্তান্ত প্রস্তুত রাখুন।' : 'Open the application form when you are ready. Please have your resume in PDF format ready.'}</p>
+        <p className="sf-eyebrow">{bn ? 'পরবর্তী ধাপ' : 'NEXT STEP'}</p>
+        <h2 id="sf-job-apply-title" className="sf-h3">{bn ? 'আবেদন শুরু করতে প্রস্তুত?' : 'Ready to take the next step?'}</h2>
+        <p className="sf-body">{bn ? 'আপনার তথ্য ও জীবনবৃত্তান্ত জমা দিন। আবেদন সফল হলে একটি রেফারেন্স নম্বর পাবেন।' : 'Submit your details and resume. You will receive a reference number when your application is complete.'}</p>
+        <ol className="sf-job-process" aria-label={bn ? 'আবেদনের ধাপ' : 'Application steps'}>
+          <li><span>1</span><strong>{bn ? 'তথ্য পূরণ' : 'Your details'}</strong></li>
+          <li><span>2</span><strong>{bn ? 'CV সংযুক্তি' : 'Attach CV'}</strong></li>
+          <li><span>3</span><strong>{bn ? 'জমা ও রেফারেন্স' : 'Submit & track'}</strong></li>
+        </ol>
       </div>
-      <button className="sf-btn sf-btn--primary sf-btn--lg sf-job-apply-button" type="button" aria-expanded={applicationOpen} aria-controls="sf-job-application-panel" onClick={() => setApplicationOpen((open) => !open)}>
-        {applicationOpen ? (bn ? 'ফরম বন্ধ করুন' : 'Close application form') : (bn ? 'আবেদন করুন' : 'Apply now')}
+      <button className="sf-btn sf-btn--primary sf-btn--lg sf-job-apply-button" type="button" aria-haspopup="dialog" onClick={() => setApplicationOpen(true)}>
+        {bn ? 'এখনই আবেদন করুন' : 'Apply for this role'}
       </button>
     </section>
 
-    {applicationOpen && <div ref={applicationPanelRef} id="sf-job-application-panel" className="sf-job-application-panel" role="region" tabIndex={-1} aria-label={bn ? 'চাকরির আবেদন ফরম' : 'Job application form'}>
-      <JobApplicationForm jobSlug={jobSlug} jobRouteParent={getContentRouteParent(canonicalPath)} />
-    </div>}
+    {applicationOpen && portalReady && createPortal(
+      <div
+        className="sf-job-modal-backdrop"
+        role="presentation"
+        onMouseDown={(event) => {
+          if (event.target === event.currentTarget) setApplicationOpen(false)
+        }}
+      >
+        <div
+          ref={applicationPanelRef}
+          id="sf-job-application-panel"
+          className="sf-job-modal"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="sf-job-modal-title"
+          tabIndex={-1}
+        >
+          <header className="sf-job-modal-header">
+            <div>
+              <p className="sf-eyebrow">{bn ? 'চাকরির আবেদন' : 'JOB APPLICATION'}</p>
+              <h2 id="sf-job-modal-title">{bn ? 'আপনার আবেদন জমা দিন' : 'Submit your application'}</h2>
+              <p>{page.title?.[lang] || page.title?.en || ''}</p>
+            </div>
+            <button
+              className="sf-job-modal-close"
+              type="button"
+              aria-label={bn ? 'ফরম বন্ধ করুন' : 'Close application form'}
+              onClick={() => setApplicationOpen(false)}
+            >
+              <X size={20} />
+            </button>
+          </header>
+          <div className="sf-job-modal-progress" aria-label={bn ? 'আবেদনের তিনটি ধাপ' : 'Three-step application process'}>
+            <span><b>1</b> {bn ? 'তথ্য' : 'Details'}</span><i />
+            <span><b>2</b> {bn ? 'CV' : 'Resume'}</span><i />
+            <span><b>3</b> {bn ? 'জমা' : 'Submit'}</span>
+          </div>
+          <div className="sf-job-modal-body">
+            <JobApplicationForm jobSlug={jobSlug} jobRouteParent={getContentRouteParent(canonicalPath)} />
+          </div>
+        </div>
+      </div>,
+      document.body,
+    )}
   </div>
 }

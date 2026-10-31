@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Eye, EyeOff, Pencil, Save, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
@@ -11,6 +12,7 @@ import { getPageBuilderIndex, type PageIndexItem } from '@/lib/api/pageBuilder'
 import { MediaField } from './MediaField'
 import { COMPONENTS, DEFAULT_CONTENT_PARENT, FIXED_CONTENT_PARENT, getDefaultContentParent, SLUG_PATTERN, type ContentComponent, type ContentRecord, type ContentValues, type FieldDef } from '@/lib/cms/components'
 import { buildContentRoute } from '@/lib/cms/routes'
+import { useRegisterAdminActions } from './AdminActionContext'
 
 type SlugState = 'idle' | 'checking' | 'ok' | 'taken' | 'invalid'
 const slugify = (v: string) => v.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 120)
@@ -25,21 +27,27 @@ function Input({ field, name, value, disabled, onChange, label, error }: { field
 }
 
 /** Slug-wise form container: header (title per slug + actions) and labelled attribute inputs. */
-export function ContentEditor({ component, record, onSaved, onDeleted, onClose, defaultRouteParent }: {
+export function ContentEditor({ component, record, onSaved, onDeleted, onClose, defaultRouteParent, presentation = 'inline' }: {
   component: ContentComponent
   record: ContentRecord | null
   onSaved: (record: ContentRecord) => void
   onDeleted: (id: number) => void
   onClose?: () => void
   defaultRouteParent?: string
+  presentation?: 'inline' | 'modal'
 }) {
   const def = COMPONENTS[component]
   const isNew = !record
+  const actionId = useId()
+  const initialValues = record ? { ...record.values, routeParent: FIXED_CONTENT_PARENT[component] || record.values.routeParent || DEFAULT_CONTENT_PARENT[component] } : blank(component, defaultRouteParent)
+  const initialSlug = record?.slug ?? ''
+  const initialStatus = record?.status ?? 'published'
   const [editing, setEditing] = useState(true)
-  const [values, setValues] = useState<ContentValues>(record ? { ...record.values, routeParent: FIXED_CONTENT_PARENT[component] || record.values.routeParent || DEFAULT_CONTENT_PARENT[component] } : blank(component, defaultRouteParent))
-  const [slug, setSlug] = useState(record?.slug ?? '')
+  const [values, setValues] = useState<ContentValues>(initialValues)
+  const [slug, setSlug] = useState(initialSlug)
   const [slugTouched, setSlugTouched] = useState(!isNew)
-  const [newStatus, setNewStatus] = useState<'published' | 'draft' | 'hidden'>(record?.status ?? 'published')
+  const [newStatus, setNewStatus] = useState<'published' | 'draft' | 'hidden'>(initialStatus)
+  const baselineRef = useRef(JSON.stringify({ values: initialValues, slug: initialSlug, newStatus: initialStatus }))
   const [availablePages, setAvailablePages] = useState<PageIndexItem[]>([])
   const [slugState, setSlugState] = useState<SlugState>('idle')
   const [busy, setBusy] = useState(false)
@@ -47,9 +55,22 @@ export function ContentEditor({ component, record, onSaved, onDeleted, onClose, 
   const [saveError, setSaveError] = useState('')
   const [saveFieldError, setSaveFieldError] = useState('')
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({})
+  const [isMounted, setIsMounted] = useState(false)
+  const modalRef = useRef<HTMLDivElement>(null)
+  const dirtyRef = useRef(false)
+  const onCloseRef = useRef(onClose)
   const checkId = useRef(0)
 
-  useEffect(() => { setValues(record ? { ...record.values, routeParent: FIXED_CONTENT_PARENT[component] || record.values.routeParent || DEFAULT_CONTENT_PARENT[component] } : blank(component, defaultRouteParent)); setSlug(record?.slug ?? ''); setSlugTouched(!!record); setNewStatus(record?.status ?? 'published'); setEditing(true); setSlugState('idle'); setSaveError(''); setSaveFieldError(''); setValidationErrors({}) }, [record, component, defaultRouteParent])
+  useEffect(() => { setIsMounted(true) }, [])
+
+  useEffect(() => {
+    const nextValues = record ? { ...record.values, routeParent: FIXED_CONTENT_PARENT[component] || record.values.routeParent || DEFAULT_CONTENT_PARENT[component] } : blank(component, defaultRouteParent)
+    const nextSlug = record?.slug ?? ''
+    const nextStatus = record?.status ?? 'published'
+    setValues(nextValues); setSlug(nextSlug); setSlugTouched(!!record); setNewStatus(nextStatus); setEditing(true)
+    baselineRef.current = JSON.stringify({ values: nextValues, slug: nextSlug, newStatus: nextStatus })
+    setSlugState('idle'); setSaveError(''); setSaveFieldError(''); setValidationErrors({})
+  }, [record, component, defaultRouteParent])
 
   useEffect(() => { let active = true; getPageBuilderIndex().then((result) => { if (active) setAvailablePages(result.availablePages.filter((page) => page.status !== 'archived')) }).catch(() => { if (active) setAvailablePages([]) }); return () => { active = false } }, [])
 
@@ -132,9 +153,61 @@ export function ContentEditor({ component, record, onSaved, onDeleted, onClose, 
     catch (e) { toast.error(e instanceof Error ? e.message : 'Unable to delete.') } finally { setBusy(false) }
   }
 
+  function reloadDraft() {
+    const nextValues = record ? { ...record.values, routeParent: FIXED_CONTENT_PARENT[component] || record.values.routeParent || DEFAULT_CONTENT_PARENT[component] } : blank(component, defaultRouteParent)
+    const nextSlug = record?.slug ?? ''
+    const nextStatus = record?.status ?? 'published'
+    setValues(nextValues); setSlug(nextSlug); setSlugTouched(!!record); setNewStatus(nextStatus); setEditing(true)
+    baselineRef.current = JSON.stringify({ values: nextValues, slug: nextSlug, newStatus: nextStatus })
+    setSlugState('idle'); setSaveError(''); setSaveFieldError(''); setValidationErrors({})
+  }
+
+  const dirty = editing && baselineRef.current !== JSON.stringify({ values, slug, newStatus })
+  dirtyRef.current = dirty
+  onCloseRef.current = onClose
+
+  useEffect(() => {
+    if (presentation !== 'modal' || !isMounted) return
+    const previousOverflow = document.body.style.overflow
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    document.body.style.overflow = 'hidden'
+
+    const getFocusable = () => Array.from(modalRef.current?.querySelectorAll<HTMLElement>(
+      'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    ) ?? []).filter((element) => element.offsetParent !== null)
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        if (!onCloseRef.current) return
+        if (dirtyRef.current && !window.confirm('Discard the unsaved changes in this editor?')) return
+        onCloseRef.current()
+        return
+      }
+      if (event.key !== 'Tab') return
+      const focusable = getFocusable()
+      if (!focusable.length) return
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus() }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus() }
+    }
+
+    document.addEventListener('keydown', handleKeyDown)
+    const firstFocusable = getFocusable()[0]
+    firstFocusable?.focus()
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown)
+      document.body.style.overflow = previousOverflow
+      previousFocus?.focus()
+    }
+  }, [presentation, isMounted])
+
+  useRegisterAdminActions(`content-editor-${actionId}`, { save: () => dirty ? save() : undefined, reload: reloadDraft, dirty, saving: busy, label: `${def.label} editor` })
+
   const slugHint = useMemo(() => ({ idle: '', checking: 'Checking availability…', ok: '✓ Slug is available', taken: '✗ Slug is already in use', invalid: '✗ Use lowercase letters, numbers and single hyphens' }[slugState]), [slugState])
 
-  return (
+  const editorCard = (
     <Card className="cms-form-card">
       <CardHeader>
         <div className="cms-form-header">
@@ -144,7 +217,7 @@ export function ContentEditor({ component, record, onSaved, onDeleted, onClose, 
             {record && !editing && <Button variant="outline" size="sm" onClick={() => setEditing(true)} disabled={busy}><Pencil size={14} /> Edit</Button>}
             {record && <Button variant="outline" size="sm" onClick={() => void toggleVisibility()} disabled={busy}>{record.status === 'published' ? <><EyeOff size={14} /> Hide</> : <><Eye size={14} /> Publish</>}</Button>}
             {record && <Button variant="outline" size="sm" className="cms-danger-outline" onClick={() => setConfirmDelete(true)} disabled={busy}><Trash2 size={14} /> Delete</Button>}
-            {onClose && <Button variant="outline" size="sm" onClick={onClose} aria-label="Close"><X size={14} /></Button>}
+            {onClose && <Button variant="outline" size="sm" onClick={() => { if (!dirty || window.confirm('Discard the unsaved changes in this editor?')) onClose() }} aria-label="Close"><X size={14} /></Button>}
           </div>
         </div>
       </CardHeader>
@@ -176,7 +249,7 @@ export function ContentEditor({ component, record, onSaved, onDeleted, onClose, 
         </div>
         {saveError && <div className="cms-save-error" role="alert"><strong>Changes were not saved.</strong><span>{saveError}</span><small>Your edits are still in this form. Correct the highlighted field or retry after resolving the issue.</small></div>}
         {editing && <div className="cms-form-footer">
-          <Button variant="outline" onClick={() => (record ? (setValues(record.values), setSlug(record.slug), setEditing(false)) : onClose?.())} disabled={busy}>Cancel</Button>
+          <Button variant="outline" onClick={() => { if (dirty && !window.confirm('Discard the unsaved changes in this editor?')) return; record ? (reloadDraft(), setEditing(false)) : onClose?.() }} disabled={busy}>Cancel</Button>
           <Button onClick={() => void save()} disabled={busy || slugState === 'taken' || slugState === 'invalid'}><Save size={15} /> {busy ? 'Saving…' : record ? 'Save changes' : `Create ${def.label.toLowerCase()}`}</Button>
         </div>}
       </CardContent>
@@ -186,4 +259,16 @@ export function ContentEditor({ component, record, onSaved, onDeleted, onClose, 
       </div></div>}
     </Card>
   )
+
+  if (presentation === 'modal') {
+    if (!isMounted) return null
+    return createPortal(
+      <div ref={modalRef} className="cms-modal cms-content-editor-modal" role="dialog" aria-modal="true" aria-label={`${record ? 'Edit' : 'Create'} ${def.label}`}>
+        <div className="cms-modal-card cms-content-editor-modal-card">{editorCard}</div>
+      </div>,
+      document.querySelector('.admin-theme-root') ?? document.body
+    )
+  }
+
+  return editorCard
 }

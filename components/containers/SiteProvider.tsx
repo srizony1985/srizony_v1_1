@@ -1,7 +1,7 @@
 'use client'
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
-import { usePathname, useRouter } from 'next/navigation'
+import { usePathname } from 'next/navigation'
 import type { ColorMode, Lang, ShapeName, ThemeName } from '@/types/entityType'
 import type { PublicSiteSnapshot } from '@/types/site'
 import { buildThemeCssVariables, parseThemeTokenOverrides, THEME_COLOR_TOKEN_KEYS, type RuntimeThemeMap } from '@/lib/themeRuntime'
@@ -55,7 +55,6 @@ export default function SiteProvider({
   initialLang?: Lang
 }) {
   const pathname = usePathname() || '/'
-  const router = useRouter()
 
   const [lang, setLang] = useState<Lang>(initialLang)
 
@@ -335,36 +334,34 @@ export default function SiteProvider({
    * Persist language.
    */
   useEffect(() => {
-    window.localStorage.setItem('sf-lang', lang)
-
-    document.cookie = `sf-lang=${lang};path=/;max-age=31536000;samesite=lax`
+    try {
+      window.localStorage.setItem('sf-lang', lang)
+      document.cookie = `sf-lang=${lang};path=/;max-age=31536000;samesite=lax`
+    } catch {
+      // The in-memory language preference remains available if storage is blocked.
+    }
 
     document.documentElement.lang = lang === 'bn' ? 'bn' : 'en'
   }, [lang])
 
   /**
-   * Change language while preserving the current canonical route.
+   * Change only the display language. Public page slugs are language-neutral,
+   * so switching languages must never navigate to a synthetic `/bn/...` URL:
+   * not every deployed CMS route is guaranteed to have a separately generated
+   * Bangla route, and changing the URL can otherwise turn a valid page into a
+   * 404. Persist the preference so the selected language survives refreshes.
    */
   const setLanguage = (value: Lang) => {
     setLang(value)
 
-    const currentIsBn =
-      pathname === '/bn' || pathname.startsWith('/bn/')
-
-    const canonical = currentIsBn
-      ? pathname.slice(3) || '/'
-      : pathname
-
-    const target =
-      value === 'bn'
-        ? canonical === '/'
-          ? '/bn'
-          : `/bn${canonical}`
-        : canonical
-
-    if (target !== pathname) {
-      router.push(target)
+    try {
+      window.localStorage.setItem('sf-lang', value)
+      document.cookie = `sf-lang=${value};path=/;max-age=31536000;samesite=lax`
+    } catch {
+      // Language switching still works for this session when storage is blocked.
     }
+
+    document.documentElement.lang = value === 'bn' ? 'bn' : 'en'
   }
 
   /**
@@ -402,6 +399,9 @@ export default function SiteProvider({
     document.cookie = `sf-mode=${value};path=/;max-age=31536000;samesite=lax`
 
     document.documentElement.dataset.mode = value
+    // Keep the browser chrome colour in step with the --sf-bg token of the new mode.
+    const chrome = getComputedStyle(document.body).backgroundColor
+    document.querySelectorAll('meta[name="theme-color"]').forEach((meta) => meta.setAttribute('content', chrome))
   }
 
   /**

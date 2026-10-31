@@ -3,6 +3,7 @@ import { sql } from 'drizzle-orm'
 import { getAdminSession } from '@/lib/adminAuth'
 import { db, withDbRetry } from '@/lib/db'
 import { ensureDonationsSchema } from '@/lib/db/ensureOperationalSchema'
+import { ensureCmsSchema } from '@/lib/cms/ensureSchema'
 
 function clampDays(value: number) {
   if (!Number.isFinite(value)) return 30
@@ -17,7 +18,7 @@ export async function GET(request: Request) {
 
   if (!database) {
     return NextResponse.json({
-      stats: { pages: 0, enquiries: 0, users: 0, visitors: 0, visits: 0, returningVisitors: 0, donations: 0, completedDonations: 0, donationTotal: 0, rangeDonationTotal: 0, conversionRate: 0, activeVisitors: 0 },
+      stats: { pages: 0, postedJobs: 0, openJobs: 0, applicants: 0, visitors: 0, visits: 0, returningVisitors: 0, donations: 0, donationTotal: 0, rangeDonationTotal: 0 },
       topPages: [],
       referrers: [],
       range: days,
@@ -26,44 +27,62 @@ export async function GET(request: Request) {
   }
 
   try {
-    await ensureDonationsSchema()
-    const [result, trendsResult, topPagesResult, referrersResult, conversionResult] = await Promise.all([
+    await Promise.all([ensureDonationsSchema(), ensureCmsSchema()])
+    const [result, trendsResult, topPagesResult, referrersResult] = await Promise.all([
       withDbRetry(() => database.execute(sql`
         SELECT
           (SELECT COUNT(*)::int FROM pages WHERE status = 'published') AS pages,
-          (SELECT COUNT(*)::int FROM submissions WHERE type = 'query') AS enquiries,
-          (SELECT COUNT(*)::int FROM submissions WHERE type = 'query' AND status = 'new') AS new_enquiries,
-          (SELECT COUNT(*)::int FROM form_users) AS users,
+          (SELECT COUNT(*)::int FROM cms_content_items WHERE component = 'job' AND status = 'published') AS posted_jobs,
+          (SELECT COUNT(*)::int FROM cms_content_items
+            WHERE component = 'job' AND status = 'published'
+              AND (NULLIF(attributes->>'deadline', '') IS NULL
+                OR (attributes->>'deadline') ~ '^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$'
+                  AND attributes->>'deadline' >= TO_CHAR((now() AT TIME ZONE 'Asia/Dhaka')::date, 'YYYY-MM-DD'))
+          ) AS open_jobs,
+          (SELECT COUNT(*)::int FROM job_applications) AS applicants,
           (SELECT COUNT(*)::int FROM site_visitors) AS visitors,
           (SELECT COUNT(*)::int FROM visitor_events) AS visits,
           (SELECT COUNT(*)::int FROM site_visitors WHERE page_views > 1) AS returning_visitors,
           (SELECT COUNT(*)::int FROM donations) AS donations,
-          (SELECT COUNT(*)::int FROM donations WHERE status IN ('paid', 'success')) AS completed_donations,
           COALESCE((SELECT SUM(amount::numeric) FROM donations WHERE status IN ('paid', 'success')), 0) AS donation_total,
-          COALESCE((SELECT SUM(amount::numeric) FROM donations WHERE status IN ('paid', 'success') AND (created_at AT TIME ZONE 'Asia/Dhaka')::date >= CURRENT_DATE - (${days - 1} * INTERVAL '1 day')), 0) AS range_donation_total
+          COALESCE((SELECT SUM(amount::numeric) FROM donations WHERE status IN ('paid', 'success') AND (created_at AT TIME ZONE 'Asia/Dhaka')::date >= (now() AT TIME ZONE 'Asia/Dhaka')::date - (${days - 1} * INTERVAL '1 day')), 0) AS range_donation_total
       `)),
       withDbRetry(() => database.execute(sql`
-        WITH days AS (
+        WITH date_bounds AS (
+          SELECT
+            (now() AT TIME ZONE 'Asia/Dhaka')::date AS today,
+            ((now() AT TIME ZONE 'Asia/Dhaka')::date - ${days - 1}::int) AS start_day
+        ), days AS (
           SELECT generate_series(
-            (CURRENT_DATE - (${days - 1} * INTERVAL '1 day'))::date,
-            CURRENT_DATE::date,
+            date_bounds.start_day::timestamp,
+            date_bounds.today::timestamp,
             INTERVAL '1 day'
           )::date AS day
+          FROM date_bounds
+        ), application_daily AS (
+          SELECT
+            (job_applications.created_at AT TIME ZONE 'Asia/Dhaka')::date AS day,
+            COUNT(*)::int AS applications
+          FROM job_applications
+          CROSS JOIN date_bounds
+          WHERE job_applications.created_at >= (date_bounds.start_day::timestamp AT TIME ZONE 'Asia/Dhaka')
+            AND job_applications.created_at < ((date_bounds.today + 1)::timestamp AT TIME ZONE 'Asia/Dhaka')
+          GROUP BY 1
         )
         SELECT
           to_char(days.day, 'YYYY-MM-DD') AS date,
           to_char(days.day, 'DD Mon') AS label,
           (SELECT COUNT(*)::int FROM visitor_events ve WHERE (ve.created_at AT TIME ZONE 'Asia/Dhaka')::date = days.day) AS visitors,
-          (SELECT COUNT(*)::int FROM submissions s WHERE s.type = 'query' AND (s.created_at AT TIME ZONE 'Asia/Dhaka')::date = days.day) AS enquiries,
+          COALESCE(application_daily.applications, 0)::int AS applications,
           (SELECT COUNT(*)::int FROM donations d WHERE (d.created_at AT TIME ZONE 'Asia/Dhaka')::date = days.day) AS donations,
           COALESCE((SELECT SUM(d.amount::numeric) FROM donations d WHERE d.status IN ('paid','success') AND (d.created_at AT TIME ZONE 'Asia/Dhaka')::date = days.day), 0) AS donation_amount
-        FROM days
+        FROM days LEFT JOIN application_daily ON application_daily.day = days.day
         ORDER BY days.day
       `)),
       withDbRetry(() => database.execute(sql`
         SELECT ve.path, COUNT(*)::int AS visits
         FROM visitor_events ve
-        WHERE (ve.created_at AT TIME ZONE 'Asia/Dhaka')::date >= CURRENT_DATE - (${days - 1} * INTERVAL '1 day')
+        WHERE (ve.created_at AT TIME ZONE 'Asia/Dhaka')::date >= (now() AT TIME ZONE 'Asia/Dhaka')::date - (${days - 1} * INTERVAL '1 day')
         GROUP BY ve.path
         ORDER BY visits DESC, ve.path ASC
         LIMIT 5
@@ -72,17 +91,10 @@ export async function GET(request: Request) {
         SELECT ve.referrer, COUNT(*)::int AS visits
         FROM visitor_events ve
         WHERE NULLIF(TRIM(ve.referrer), '') IS NOT NULL
-          AND (ve.created_at AT TIME ZONE 'Asia/Dhaka')::date >= CURRENT_DATE - (${days - 1} * INTERVAL '1 day')
+          AND (ve.created_at AT TIME ZONE 'Asia/Dhaka')::date >= (now() AT TIME ZONE 'Asia/Dhaka')::date - (${days - 1} * INTERVAL '1 day')
         GROUP BY ve.referrer
         ORDER BY visits DESC, ve.referrer ASC
         LIMIT 5
-      `)),
-      withDbRetry(() => database.execute(sql`
-        SELECT
-          COUNT(DISTINCT ve.visitor_id)::int AS active_visitors,
-          (SELECT COUNT(*)::int FROM submissions s WHERE (s.created_at AT TIME ZONE 'Asia/Dhaka')::date >= CURRENT_DATE - (${days - 1} * INTERVAL '1 day') AND s.type = 'query') AS enquiries
-        FROM visitor_events ve
-        WHERE (ve.created_at AT TIME ZONE 'Asia/Dhaka')::date >= CURRENT_DATE - (${days - 1} * INTERVAL '1 day')
       `)),
     ])
 
@@ -91,18 +103,15 @@ export async function GET(request: Request) {
     return NextResponse.json({
       stats: {
         pages: Number(row.pages ?? 0),
-        enquiries: Number(row.enquiries ?? 0),
-        newEnquiries: Number(row.new_enquiries ?? 0),
-        users: Number(row.users ?? 0),
+        postedJobs: Number(row.posted_jobs ?? 0),
+        openJobs: Number(row.open_jobs ?? 0),
+        applicants: Number(row.applicants ?? 0),
         visitors: Number(row.visitors ?? 0),
         visits: Number(row.visits ?? 0),
         returningVisitors: Number(row.returning_visitors ?? 0),
         donations: Number(row.donations ?? 0),
-        completedDonations: Number(row.completed_donations ?? 0),
         donationTotal: Number(row.donation_total ?? 0),
         rangeDonationTotal: Number(row.range_donation_total ?? 0),
-        conversionRate: Number((((Number((conversionResult.rows[0] as Record<string, unknown> | undefined)?.enquiries ?? 0)) / Math.max(1, Number((conversionResult.rows[0] as Record<string, unknown> | undefined)?.active_visitors ?? 0))) * 100).toFixed(2)),
-        activeVisitors: Number((conversionResult.rows[0] as Record<string, unknown> | undefined)?.active_visitors ?? 0),
       },
       range: days,
       trends: trendsResult.rows.map((trend) => {
@@ -111,7 +120,7 @@ export async function GET(request: Request) {
           date: String(point.date),
           label: String(point.label),
           visitors: Number(point.visitors ?? 0),
-          enquiries: Number(point.enquiries ?? 0),
+          applications: Number(point.applications ?? 0),
           donations: Number(point.donations ?? 0),
           donationAmount: Number(point.donation_amount ?? 0),
         }

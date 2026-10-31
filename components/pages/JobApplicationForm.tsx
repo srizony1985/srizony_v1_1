@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { AlertCircle, CheckCircle2, FileText, LoaderCircle, UploadCloud } from 'lucide-react'
 import { useSite } from '@/components/containers/SiteProvider'
@@ -22,6 +22,24 @@ export default function JobApplicationForm({ jobSlug, jobRouteParent }: { jobSlu
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [successRef, setSuccessRef] = useState('')
+  const [draftReady, setDraftReady] = useState(false)
+  const draftKey = `sf-job-application-draft:${jobSlug}`
+
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(draftKey)
+      if (raw) {
+        const draft = JSON.parse(raw) as { name?: string; email?: string; phone?: string; coverLetter?: string }
+        setName(draft.name || ''); setEmail(draft.email || ''); setPhone(draft.phone || ''); setCoverLetter(draft.coverLetter || '')
+      }
+    } catch { /* Ignore an unavailable or invalid local draft. */ }
+    setDraftReady(true)
+  }, [draftKey])
+
+  useEffect(() => {
+    if (!draftReady || successRef) return
+    try { sessionStorage.setItem(draftKey, JSON.stringify({ name, email, phone, coverLetter })) } catch { /* Storage is optional. */ }
+  }, [draftReady, draftKey, name, email, phone, coverLetter, successRef])
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -49,6 +67,7 @@ export default function JobApplicationForm({ jobSlug, jobRouteParent }: { jobSlu
         throw new Error(message)
       }
       setSuccessRef(response.data.reference)
+      try { sessionStorage.removeItem(draftKey) } catch { /* Storage is optional. */ }
       setName(''); setEmail(''); setPhone(''); setCoverLetter(''); setFile(null); setResumeToken(''); setHoneypot('')
       const input = document.getElementById(`job-resume-${jobSlug}`) as HTMLInputElement | null
       if (input) input.value = ''
@@ -64,6 +83,7 @@ export default function JobApplicationForm({ jobSlug, jobRouteParent }: { jobSlu
       <p className="sf-body">{bn ? 'আপনার তথ্য পূরণ করুন এবং PDF ফরম্যাটে জীবনবৃত্তান্ত সংযুক্ত করুন।' : 'Complete the form below and attach your resume in PDF format.'}</p>
     </div>
 
+    {!successRef && <p className="sf-job-draft-status" role="status">{bn ? 'আপনার খসড়া এই সেশনে স্বয়ংক্রিয়ভাবে সংরক্ষিত হচ্ছে।' : 'Your draft is automatically saved in this browser session.'}</p>}
     {successRef ? <div className="sf-job-application-success" role="status" aria-live="polite">
       <CheckCircle2 size={24} aria-hidden="true" />
       <div><h3>{bn ? 'আপনার আবেদন জমা হয়েছে' : 'Application submitted successfully'}</h3><p>{bn ? 'আপনার রেফারেন্স নম্বর:' : 'Your reference number:'} <strong>{successRef}</strong></p><p>{bn ? 'এই নম্বরটি সংরক্ষণ করুন।' : 'Please keep this reference for your records.'}</p></div>
