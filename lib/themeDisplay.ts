@@ -1,2 +1,2 @@
-import { systemData } from '../data/data'
-export function getThemeDisplay() { return { themes: systemData.themes } }
+import { getThemeConfig } from '@/lib/site'
+export async function getThemeDisplay() { return getThemeConfig() }

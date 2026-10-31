@@ -1,7 +1,6 @@
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { allPages, contentEntries, navGroups, primaryNav, contentDetails, homeHero, systemData } from '@/data/data'
-import { validateContentDetailsDataset } from '@/data/contentDetails'
+import { allPages, contentEntries, navGroups, primaryNav, contentDetails, homeHero, systemData, validateContentDetailsDataset } from '@/lib/cms/fallback-gateway'
 import type { PageData, Section } from '@/types/entityType'
 
 const problems: string[] = []

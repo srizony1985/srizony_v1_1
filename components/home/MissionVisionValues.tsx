@@ -2,10 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
 import { ChevronDown } from 'lucide-react'
-import { STORY, STORY_INTRO } from '@/data/homeContent'
 import { localizeDigits } from '@/lib/utils'
 import type { Lang, PageData } from '@/types/entityType'
-import Illustration from '@/components/home/Illustration'
+import CmsCardIllustration from '@/components/home/CmsCardIllustration'
+import type { IllustrationName } from '@/types/entityType'
 import HomeSectionActions from '@/components/home/HomeSectionActions'
 
 type MissionSection = Extract<PageData['sections'][number], { type: 'cards' }>
@@ -14,15 +14,16 @@ const normalizeHeading = (value?: string) => (value ?? '').trim().toLocaleLowerC
 export default function MissionVisionValues({ lang, page }: { lang: Lang; page: PageData }) {
   const source = page.sections.find((item): item is MissionSection => item.type === 'cards' && (item.homeComponent === 'missionVisionValues' || normalizeHeading(item.heading?.en) === 'mission, vision & values'))
   const sourceItems = Array.isArray(source?.items) ? source.items : []
-  const steps = source ? sourceItems.map((item, i) => ({
-    ...STORY[i % STORY.length],
+  const steps = sourceItems.map((item, i) => ({
+    id: item.illustration || 'area',
     stepKey: `cms-step-${i}`,
-    illustration: item.illustration,
-    kicker: item.title ?? STORY[i % STORY.length].kicker,
-    body: item.body ?? STORY[i % STORY.length].body,
-    chips: Array.isArray(item.chips) ? item.chips : item.tag ? [item.tag] : STORY[i % STORY.length].chips,
-  })) : STORY.map((step, i) => ({ ...step, stepKey: step.id, illustration: undefined }))
-  const intro = { eyebrow: source?.eyebrow ?? STORY_INTRO.eyebrow, title: source?.heading ?? STORY_INTRO.title }
+    illustration: item.illustration ?? (i === 0 ? 'mission' : i === 1 ? 'vision' : 'values'),
+    image: item.image?.src,
+    kicker: item.title,
+    body: item.body ?? { en: '', bn: '' },
+    chips: Array.isArray(item.chips) ? item.chips : item.tag ? [item.tag] : [],
+  }))
+  const intro = { eyebrow: source?.eyebrow, title: source?.heading }
   const wrapRef = useRef<HTMLElement | null>(null)
   const stageRef = useRef<HTMLDivElement | null>(null)
   const [index, setIndex] = useState(0)
@@ -67,7 +68,7 @@ export default function MissionVisionValues({ lang, page }: { lang: Lang; page: 
     window.scrollTo({ top, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })
   }, [])
 
-  if (source?.visible === false) return null
+  if (!source || source.visible === false || !intro.title || !intro.eyebrow || !steps.length) return null
 
   return (
     <section className="sf-story" ref={wrapRef} style={{ '--steps': count } as CSSProperties} aria-label={intro.title[lang]}>
@@ -89,7 +90,7 @@ export default function MissionVisionValues({ lang, page }: { lang: Lang; page: 
                 const state = i === index ? 'is-active' : i < index ? 'is-past' : 'is-next'
                 return (
                   <div key={step.stepKey} className={`sf-story-panel ${state}`}>
-                    {step.illustration ? <Illustration kind="area" icon={step.illustration} /> : <Illustration kind={step.id} label={step.kicker[lang]} />}
+                    <CmsCardIllustration name={step.illustration as IllustrationName} imageSrc={step.image} alt={step.kicker[lang]} />
                   </div>
                 )
               })}

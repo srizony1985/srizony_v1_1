@@ -14,10 +14,10 @@ export async function GET() {
   if (!(await getAdminSession())) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const database = db
-  if (!database) return NextResponse.json({ items: [] })
+  if (!database) return NextResponse.json({ error: 'DATABASE_URL is not configured.' }, { status: 503 })
 
   try {
-    const items = await withDbRetry(() => database.select().from(submissions).orderBy(desc(submissions.createdAt)).limit(200))
+    const items = await withDbRetry(() => database.select().from(submissions).where(eq(submissions.type, 'query')).orderBy(desc(submissions.createdAt)).limit(200))
     return NextResponse.json({ items }, { headers: { 'Cache-Control': 'no-store' } })
   } catch {
     return NextResponse.json({ error: 'Unable to load contact requests.' }, { status: 503 })

@@ -4,7 +4,7 @@ import { CMS_DDL } from './ddl'
 
 let ready: Promise<void> | null = null
 
-/** Applies the additive 0005 module DDL once per server instance. Index failures are logged, not fatal. */
+/** Applies idempotent CMS runtime schema repair once per server instance. Index failures are logged, not fatal. */
 export function ensureCmsSchema() {
   if (!db) return Promise.reject(new Error('Database is not configured.'))
   const database = db

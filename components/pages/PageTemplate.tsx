@@ -1,14 +1,17 @@
 'use client'
 
 import Link from 'next/link'
+import type { ReactNode } from 'react'
 import { useMemo } from 'react'
 import { ChevronRight, Home as HomeIcon } from 'lucide-react'
-import { dedupeLandingSections } from '@/data/landingImages'
-import type { Bilingual, NavGroup, NavItem, PageData, Section } from '@/types/entityType'
+import type { Bilingual, NavItem, PageData, Section } from '@/types/entityType'
 import SafeImage from '@/components/ui/SafeImage'
 import { useSite } from '@/components/containers/SiteProvider'
 import SectionRenderer from '@/components/pages/SectionRenderer'
 import LocationMaps from '@/components/home/LocationMaps'
+import JobPostingDetail from '@/components/pages/JobPostingDetail'
+import ManagementStaffContent from '@/components/pages/ManagementStaffContent'
+import ResourcesContent from '@/components/pages/ResourcesContent'
 import Container from '@/components/containers/Container'
 
 type Crumb = { label: Bilingual; href?: string }
@@ -50,65 +53,60 @@ function tidySections(sections: Section[], title: Bilingual, subtitle?: Bilingua
   return out
 }
 
-/** Menu group + ancestors leading to `path`, so the breadcrumb mirrors the navigation. */
-function findTrail(groups: NavGroup[], path: string): { group: NavGroup; chain: NavItem[] } | null {
-  const walk = (items: NavItem[], chain: NavItem[]): NavItem[] | null => {
-    for (const item of items) {
+/** Strip bundled/demo media from legacy content-detail snapshots; only CMS-selected media is shown. */
+function withoutUnmanagedDetailImages(section: Section): Section | null {
+  switch (section.type) {
+    case 'richText': return { ...section, image: undefined }
+    case 'cards': return { ...section, items: section.items.map((item) => ({ ...item, image: undefined })) }
+    case 'gallery':
+    case 'carousel':
+    case 'video': return null
+    default: return section
+  }
+}
+
+/** Finds the page in the one navigation tree; URL-less folders remain breadcrumb labels. */
+function findTrail(items: NavItem[], path: string): NavItem[] | null {
+  const walk = (nodes: NavItem[], chain: NavItem[]): NavItem[] | null => {
+    for (const item of nodes) {
       const next = [...chain, item]
-      if (item.href === path) return next
-      const hit = item.children ? walk(item.children, next) : null
-      if (hit) return hit
+      if (item.menuType !== 'folder' && item.href === path) return next
+      const found = item.children ? walk(item.children, next) : null
+      if (found) return found
     }
     return null
   }
-  for (const group of groups) {
-    const chain = walk(group.items, [])
-    if (chain) return { group, chain }
-  }
-  return null
+  return walk(items, [])
 }
 
-function findPageMenu(items: NavItem[], path: string): NavItem | null {
-  for (const item of items) {
-    if (item.href === path) return item
-    const nested = item.children ? findPageMenu(item.children, path) : null
-    if (nested) return nested
-  }
-  return null
-}
-
-export default function PageTemplate({ page, canonicalPath }: { page: PageData; canonicalPath: string }) {
+export default function PageTemplate({ page, canonicalPath, children }: { page: PageData; canonicalPath: string; children?: ReactNode }) {
   const { lang, site } = useSite()
   const isContactPage = `/${page.slug.replace(/^\/+|\/+$/g, '')}` === '/contact'
-  const navGroups = site?.global.navGroups ?? []
+  const primaryNav = site?.global.primaryNav ?? []
   const ui = site?.global.ui
 
-  const navigationRoots = [...(site?.global.primaryNav ?? []), ...(site?.global.navGroups ?? []).flatMap((group) => group.items)]
-  const pageMenu = findPageMenu(navigationRoots, canonicalPath)
-  const renderAllowlist = pageMenu?.renderedComponents?.length ? new Set(pageMenu.renderedComponents) : null
-  const sections = useMemo(
-    () => tidySections(
-      dedupeLandingSections(
-        page.sections.filter((section) => (section as { visible?: boolean }).visible !== false && (!renderAllowlist || renderAllowlist.has(section.type))),
-        page.heroImage ? [{ image: page.heroImage }] : [],
-        page.slug,
-      ),
-      page.title,
-      page.subtitle,
-    ),
-    [page, renderAllowlist],
-  )
+  const isContentDetail = Boolean(page.contentComponent && page.contentSlug)
+  const canShowContentImage = !isContentDetail || page.cmsMediaManaged === true
+  const heroImage = isContentDetail && !canShowContentImage ? undefined : page.heroImage
+  const sections = useMemo(() => {
+    const visible = page.sections.filter((section) => (section as { visible?: boolean }).visible !== false)
+    // Page sections are rendered from the persisted CMS document. Never synthesize
+    // missing images or section copy from bundled landing-page data.
+    const prepared = isContentDetail && !canShowContentImage
+      ? visible.map(withoutUnmanagedDetailImages).filter((section): section is Section => section !== null)
+      : visible
+    return tidySections(prepared, page.title, page.subtitle)
+  }, [page, isContentDetail, canShowContentImage, heroImage])
   if (!site || !ui) return null
 
-  const trail = findTrail(navGroups, canonicalPath)
+  const trail = findTrail(primaryNav, canonicalPath)
   const parts = canonicalPath.split('/').filter(Boolean)
 
   // Breadcrumb shows where you are, not the page title again (the banner already shows it).
   const crumbs: Crumb[] = [{ label: { en: ui.en.home, bn: ui.bn.home }, href: '/' }]
   if (trail) {
-    crumbs.push({ label: trail.group.label })
-    trail.chain.slice(0, -1).forEach((c) => crumbs.push({ label: c.label, href: c.href }))
-  } else if (canonicalPath.startsWith('/enterprise/')) {
+    trail.slice(0, -1).filter((item) => item.href !== '/').forEach((item) => crumbs.push({ label: item.label, href: item.menuType === 'folder' ? undefined : item.href }))
+  } else if (canonicalPath.startsWith('/enterprise-development/')) {
     crumbs.push({ label: { en: 'Enterprise Development', bn: 'এন্টারপ্রাইজ উন্নয়ন' }, href: '/enterprise-development' })
   } else if (parts.length > 1) {
     const label = parts[0].replace(/-/g, ' ')
@@ -119,14 +117,15 @@ export default function PageTemplate({ page, canonicalPath }: { page: PageData; 
   const wrapperClass = [
     'sf-page',
     `sf-page--${page.layout || 'standard'}`,
-    page.slug === '/social-development' || page.slug === '/social-enterprise' ? 'social-cards-page' : '',
+    `sf-page--padding-${page.contentPadding || 'normal'}`,
+    page.slug === '/social-development' || page.slug === '/enterprise-development' ? 'social-cards-page' : '',
     page.slug === '/enterprise-development' ? 'enterprise-development-page' : '',
   ].filter(Boolean).join(' ')
 
   return (
     <Container variant="page" className={wrapperClass}>
-      <section className="sf-banner">
-        {page.heroImage && <SafeImage src={page.heroImage} alt="" fill sizes="100vw" priority className="sf-cover" />}
+      <section className={`sf-banner ${heroImage ? '' : 'sf-banner--plain'}`}>
+        {heroImage && <SafeImage src={heroImage} alt="" fill sizes="100vw" priority className="sf-cover" />}
         <div className="sf-banner-shade" />
         <Container className="sf-banner-in">
           <nav className="sf-crumbs" aria-label={lang === 'en' ? 'Breadcrumb' : 'ব্রেডক্রাম্ব'}>
@@ -147,7 +146,20 @@ export default function PageTemplate({ page, canonicalPath }: { page: PageData; 
 
       <Container className="sf-page-grid">
         <div className="sf-page-main">
-          <SectionRenderer sections={sections} page={page} />
+          {page.contentComponent === 'job' && page.contentSlug
+            ? <JobPostingDetail page={page} sections={sections} canonicalPath={canonicalPath} />
+            : <>
+                <SectionRenderer
+                  sections={sections.filter((section) => !(section.type === 'contentFeed' && (
+                    (page.slug === '/management-staff' && section.components?.includes('team')) ||
+                    (page.slug === '/resources' && section.components?.includes('report'))
+                  )))}
+                  page={page}
+                />
+                {page.slug === '/management-staff' && <ManagementStaffContent />}
+                {page.slug === '/resources' && <ResourcesContent />}
+                {children}
+              </>}
           {isContactPage && <LocationMaps page={page} variant="contact" />}
         </div>
       </Container>

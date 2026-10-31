@@ -18,7 +18,13 @@
     "db:content:bootstrap": "npm run db:content:reset && npm run db:seed",
     "db:media:public-migrate": "tsx scripts/migrate-public-media.ts",
     "db:audit:dataset": "tsx scripts/audit-cms-dataset.ts",
-    "db:rebuild-cms": "npm run db:migrate && tsx scripts/reset-cms-content.ts && tsx seed-structural.ts --reset"
+    "cms:audit:static": "tsx scripts/audit-static-data-usage.ts",
+    "cms:pipeline": "npm run db:bootstrap && npm run cms:audit:static && npm run db:audit:dataset && npm run test:functional && npx tsc --noEmit",
+    "db:rebuild-cms": "npm run db:migrate && tsx scripts/reset-cms-content.ts && tsx seed-structural.ts --reset",
+    "test:functional": "tsx --test tests/*.test.ts && node --test tests/*.test.mjs",
+    "db:seed:demo": "tsx scripts/seed-demo-preview.ts",
+    "db:seed:demo:remove": "tsx scripts/remove-demo-preview.ts",
+    "backup:production": "bash scripts/backup-production.sh"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1146.0",

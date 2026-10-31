@@ -7,10 +7,10 @@ const baseSchema = z.object({
   email: z.email().max(254),
 })
 
-const requestSchema = baseSchema.extend({ action: z.literal('request'), purpose: z.enum(['enquiry', 'newsletter']) })
+const requestSchema = baseSchema.extend({ action: z.literal('request'), purpose: z.literal('enquiry') })
 const verifySchema = baseSchema.extend({
   action: z.literal('verify'),
-  purpose: z.enum(['enquiry', 'newsletter']),
+  purpose: z.literal('enquiry'),
   code: z.string().regex(/^\d{6}$/),
   name: z.string().trim().min(2).max(120).optional(),
   phone: z.string().trim().max(30).optional(),
@@ -32,7 +32,6 @@ export async function POST(req: Request) {
     if (!parsed.success) return NextResponse.json({ ok: false, error: { code: 'INVALID_INPUT', message: 'Please check the verification details.' } }, { status: 400 })
     await verifyEmailCode(parsed.data.email, parsed.data.purpose, parsed.data.code)
 
-    if (parsed.data.purpose === 'newsletter') return NextResponse.json({ ok: true, status: 'verified' })
     if (!parsed.data.name || !parsed.data.message || !parsed.data.consentAt) return NextResponse.json({ ok: false, error: { code: 'MISSING_ENQUIRY_DATA', message: 'The enquiry details are incomplete.' } }, { status: 400 })
 
     const row = await upsertFormUser({ email: parsed.data.email, name: parsed.data.name, provider: 'email', providerId: parsed.data.email.toLowerCase(), phone: parsed.data.phone, verified: true })

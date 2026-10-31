@@ -4,7 +4,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { Briefcase, Building2, ChevronDown, ChevronRight, Database, FileSpreadsheet, FileText, Inbox, LayoutDashboard, LogOut, Mail, Menu, Network, Palette, Settings, ShieldCheck, Users, X, PanelsTopLeft, House } from 'lucide-react'
+import { Briefcase, Building2, ChevronDown, ChevronRight, Database, Workflow, FileSpreadsheet, FileText, Inbox, LayoutDashboard, LogOut, Menu, Network, Settings, ShieldCheck, Users, X, PanelsTopLeft, House, Globe } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { adminLogout } from '@/lib/api/auth'
 
@@ -15,15 +15,16 @@ export type AdminNavGroup =
 
 const GROUPS: readonly AdminNavGroup[] = [
   { kind: 'link', key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, href: '/admin/dashboard/overview' },
+  { kind: 'link', key: 'contacts', label: 'Contact Requests', icon: Inbox, href: '/admin/dashboard/reports/submissions' },
   { kind: 'link', key: 'navigation', label: 'Site Navigation', icon: Network, href: '/admin/dashboard/navigation' },
   { kind: 'link', key: 'landing-page', label: 'Landing Page', icon: House, href: '/admin/dashboard/page-builder?slug=%2F' },
   { kind: 'link', key: 'content', label: 'Site Content', icon: FileText, href: '/admin/dashboard/site-content' },
   { kind: 'link', key: 'page-builder', label: 'Page Builder', icon: PanelsTopLeft, href: '/admin/dashboard/page-builder' },
   { kind: 'link', key: 'portfolio', label: 'Portfolio', icon: Building2, href: '/admin/dashboard/portfolio' },
   { kind: 'link', key: 'visitors', label: 'Visitors', icon: Users, href: '/admin/dashboard/reports/visitors' },
-  { kind: 'link', key: 'subscribers', label: 'Subscribers', icon: Mail, href: '/admin/dashboard/reports/newsletter' },
-  { kind: 'link', key: 'contacts', label: 'Contact Requests', icon: Inbox, href: '/admin/dashboard/reports/submissions' },
   { kind: 'link', key: 'jobs', label: 'Jobs', icon: Briefcase, href: '/admin/dashboard/jobs' },
+  { kind: 'link', key: 'website-essentials', label: 'Website Essentials', icon: Globe, href: '/admin/dashboard/website-essentials' },
+  { kind: 'link', key: 'cms-pipeline', label: 'CMS Data Pipeline', icon: Workflow, href: '/admin/dashboard/cms-pipeline' },
   {
     kind: 'group',
     key: 'settings',
@@ -31,7 +32,6 @@ const GROUPS: readonly AdminNavGroup[] = [
     icon: Settings,
     children: [
       { label: 'CMS Users', href: '/admin/dashboard/settings?view=users', icon: Users },
-      { label: 'Site Theme', href: '/admin/dashboard/settings?view=theme', icon: Palette },
       { label: 'Database & APIs', href: '/admin/dashboard/settings?view=database', icon: Database },
       { label: 'Reporting', href: '/admin/dashboard/settings?view=reporting', icon: FileSpreadsheet },
     ],
@@ -80,9 +80,6 @@ export default function Shell({ userEmail, children }: { userEmail?: string; chi
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [loggingOut, setLoggingOut] = useState(false)
-  const [dataProvider, setDataProvider] = useState<'neon' | 'google-drive'>('neon')
-  const [providerBusy, setProviderBusy] = useState(false)
-  const [providerMessage, setProviderMessage] = useState('')
   const [expanded, setExpanded] = useState<Record<string, boolean>>({ settings: true })
 
   useEffect(() => {
@@ -104,38 +101,6 @@ export default function Shell({ userEmail, children }: { userEmail?: string; chi
     }
   }, [collapsed, expanded])
 
-  useEffect(() => {
-    let cancelled = false
-    fetch('/api/admin/data-provider', { cache: 'no-store' })
-      .then(async (response) => {
-        const payload = await response.json()
-        if (!response.ok) throw new Error(payload.error || 'Unable to load data provider.')
-        if (!cancelled) setDataProvider(payload.selected === 'google-drive' ? 'google-drive' : 'neon')
-      })
-      .catch(() => { if (!cancelled) setProviderMessage('Provider status unavailable') })
-    return () => { cancelled = true }
-  }, [])
-
-  async function changeDataProvider(provider: 'neon' | 'google-drive') {
-    if (provider === dataProvider || providerBusy) return
-    setProviderBusy(true)
-    setProviderMessage('')
-    try {
-      const response = await fetch('/api/admin/data-provider', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ provider, verifyDrive: provider === 'google-drive' }),
-      })
-      const payload = await response.json()
-      if (!response.ok) throw new Error(payload.error || 'Unable to switch data provider.')
-      setDataProvider(provider)
-      setProviderMessage(provider === 'google-drive' ? 'Drive selected for document-store operations' : 'Neon selected for document-store operations')
-    } catch (error) {
-      setProviderMessage(error instanceof Error ? error.message : 'Unable to switch data provider.')
-    } finally {
-      setProviderBusy(false)
-    }
-  }
   useEffect(() => {
     setMobileOpen(false)
   }, [pathname, searchParams])
@@ -305,24 +270,15 @@ export default function Shell({ userEmail, children }: { userEmail?: string; chi
               </div>
           </div>
           <div className="admin-header-tools">
-            <label className="admin-provider-select" title="Choose the CMS document-store preference">
+            <div className="admin-provider-select" aria-label="CMS data source">
               <Database size={15} aria-hidden="true" />
-              <span className="admin-provider-label">Data store</span>
-              <select
-                aria-label="CMS data store"
-                value={dataProvider}
-                disabled={providerBusy}
-                onChange={(event) => void changeDataProvider(event.target.value as 'neon' | 'google-drive')}
-              >
-                <option value="neon">Neon PostgreSQL</option>
-                <option value="google-drive">Google Drive JSON</option>
-              </select>
-            </label>
+              <span className="admin-provider-label">Data source</span>
+              <strong>Neon PostgreSQL</strong>
+            </div>
             <div className="admin-header-user">
               <span className="admin-header-user-icon"><ShieldCheck size={15} /></span>
               <span>{userEmail || 'CMS administrator'}</span>
             </div>
-            {providerMessage && <span className="admin-provider-status" role="status">{providerMessage}</span>}
           </div>
         </header>
 

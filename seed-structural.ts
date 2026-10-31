@@ -1,8 +1,10 @@
 import { sql } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { ensureCmsSchema } from '@/lib/cms/ensureSchema'
-import { allPages, contentEntries, contentDetails, themes, homeHero, navGroups, primaryNav, ui, contactInfo, SDGsteps, donationInfo, systemData, openImageUrlForPath, imageForSlug } from '@/data/data'
-import { validateContentDetailsDataset } from '@/data/contentDetails'
+import { allPages, contentEntries, contentDetails, validateContentDetailsDataset, themes, homeHero, primaryNav, ui, contactInfo, SDGsteps, donationInfo, systemData, openImageUrlForPath, imageForSlug, BRANCHES } from '@/lib/cms/fallback-gateway'
+import { DEFAULT_WEBSITE_ESSENTIALS } from '@/lib/websiteEssentials'
+import { CONTENT_COLLECTION_ROUTES, DEFAULT_CONTENT_PARENT } from '@/lib/cms/components'
+import { canonicalizeCmsRoute } from '@/lib/cms/routes'
 
 const database = db
 if (!database) { throw new Error('DATABASE_URL is not configured. Set DATABASE_URL in .env.local before running database commands.') }
@@ -204,9 +206,10 @@ function sectionKey(section: any): string {
   if (section?.type === 'richText' && heading.includes('development with dignity')) return 'journey'
   if (section?.type === 'richText' && heading.includes('legacy of srizony foundation')) return 'legacy'
   if (section?.type === 'diagram' && section?.variant === 'sdg') return 'sdg'
+  if (section?.type === 'carousel' && (section?.homeComponent === 'successStories' || (section?.collectionKind === 'success-stories' && heading.includes('success stories')))) return 'success-stories'
   if (section?.type === 'cards' && section?.variant === 'impact') return 'who-we-are'
-  if (section?.type === 'cards' && (heading === 'srizony enterprises' || (section?.items || []).some((item: any) => String(item?.href || '').startsWith('/enterprise/')))) return 'enterprises'
-  if (section?.type === 'carousel' && (heading.includes('news') || section?.collectionKind === 'news' || (section?.items || []).some((item: any) => String(item?.href || '').startsWith('/news/')))) return 'field-news'
+  if (section?.type === 'cards' && (heading === 'srizony enterprises' || (section?.items || []).some((item: any) => String(item?.href || '').startsWith('/enterprise-development/')))) return 'enterprises'
+  if (section?.type === 'carousel' && (section?.homeComponent === 'stories' || heading.includes('news') || section?.collectionKind === 'news' || (section?.items || []).some((item: any) => String(item?.href || '').startsWith('/news/') || String(item?.href || '').startsWith('/what-we-do/news/')))) return 'field-news'
   return `${String(section?.type || 'unknown')}:${heading}`
 }
 
@@ -241,13 +244,16 @@ function repairSeededPage(existingRaw: any, baselineRaw: any, slug: string): any
   if (!Array.isArray(current.sections)) return { ...baseline, ...current, sections: baseline.sections || [] }
   if (slug === '/') {
     const sections = [...current.sections]
-    const requiredKeys = new Set(['legacy', 'journey', 'sdg', 'who-we-are', 'enterprises', 'field-news'])
+    const requiredKeys = new Set(['legacy', 'journey', 'sdg', 'who-we-are', 'enterprises', 'field-news', 'success-stories'])
     const required = (baseline.sections || []).filter((section: any) => requiredKeys.has(sectionKey(section)))
     for (const seedSection of required) {
       const key = sectionKey(seedSection)
       const index = sections.findIndex((section: any) => sectionKey(section) === key)
       if (index < 0) {
-        sections.push(seedSection)
+        const donateIndex = key === 'success-stories'
+          ? sections.findIndex((section: any) => section?.homeComponent === 'donate' || (section?.type === 'cta' && String(section?.heading?.en || '').trim().toLowerCase() === 'support srizony'))
+          : -1
+        sections.splice(donateIndex >= 0 ? donateIndex : sections.length, 0, seedSection)
         continue
       }
       const present: any = sections[index]
@@ -290,9 +296,24 @@ function repairSeededPage(existingRaw: any, baselineRaw: any, slug: string): any
         sections[index] = {
           ...present,
           heading: usableHeading ? present.heading : seedSection.heading,
+          homeComponent: 'news',
           presentation: 'scroller',
           collectionKind: 'news',
-          items: mergeUniqueItems(Array.isArray(present.items) ? present.items : [], seedSection.items || [], Math.min(6, (seedSection.items || []).length)),
+          dataSource: 'published-news',
+          items: Array.isArray(present.items) ? present.items : (seedSection.items || []),
+        }
+      } else if (key === 'success-stories') {
+        const usableHeading = String(present.heading?.en || present.heading?.bn || '').trim()
+        sections[index] = {
+          ...seedSection,
+          ...present,
+          heading: usableHeading ? present.heading : seedSection.heading,
+          homeComponent: 'successStories',
+          presentation: 'collection',
+          collectionKind: 'success-stories',
+          dataSource: 'published-success-stories',
+          items: Array.isArray(present.items) ? present.items : [],
+          buttonConfig: present.buttonConfig || seedSection.buttonConfig,
         }
       }
     }
@@ -567,46 +588,300 @@ async function ensureGroup(key: string, labelEn: string, labelBn: string, sort: 
 }
 
 async function seedCmsContentItems() {
-  // Canonical contentDetails rows repair legacy-imported seed records once. After the
-  // seedSource marker is present, later seed runs preserve CMS edits and publication status.
+  // Content is seeded by component + slug, but public detail slugs are scoped to the
+  // selected parent route. Avoid `ON CONFLICT(component, slug)` because route-scoped
+  // uniqueness is now enforced by cms_content_items_route_slug_uq.
   for (const entry of contentDetails as any[]) {
-    const attributes = { ...(entry.attributes || {}), seedSource: 'contentDetails-v1' }
-    await database!.execute(sql`
-      INSERT INTO cms_content_items
-        (component,slug,title_en,title_bn,summary_en,summary_bn,body_en,body_bn,image_src,published_at,status,attributes,sort_order)
-      VALUES
-        (${String(entry.component)},${String(entry.slug)},${String(entry.title_en)},${String(entry.title_bn)},
-         ${String(entry.summary_en || '')},${String(entry.summary_bn || '')},${String(entry.body_en || '')},${String(entry.body_bn || '')},
-         ${entry.image_src ? openImageUrlForPath(String(entry.image_src)) : null},${normalizeSeedDate(entry.published_at)}::date,
-         ${String(entry.status || 'published')},${JSON.stringify(attributes)}::jsonb,${Number(entry.sort_order || 0)})
-      ON CONFLICT (component,slug) DO UPDATE SET
-        title_en=EXCLUDED.title_en, title_bn=EXCLUDED.title_bn,
-        summary_en=EXCLUDED.summary_en, summary_bn=EXCLUDED.summary_bn,
-        body_en=EXCLUDED.body_en, body_bn=EXCLUDED.body_bn, image_src=EXCLUDED.image_src,
-        published_at=EXCLUDED.published_at, status=EXCLUDED.status,
-        attributes=cms_content_items.attributes || EXCLUDED.attributes,
-        sort_order=EXCLUDED.sort_order, updated_at=now()
-      WHERE cms_content_items.attributes->>'seedSource' IS DISTINCT FROM 'contentDetails-v1'
-    `)
+    const component = String(entry.component)
+    const slug = String(entry.slug)
+    const attributes = {
+      routeParent: DEFAULT_CONTENT_PARENT[component as keyof typeof DEFAULT_CONTENT_PARENT] || '/',
+      ...(entry.attributes || {}),
+      seedSource: 'contentDetails-v1',
+    }
+    const existing = (await database!.execute(sql`
+      SELECT id, attributes, image_src FROM cms_content_items WHERE component = ${component} AND slug = ${slug} LIMIT 1
+    `)).rows[0] as any
+    const existingAttributes = existing?.attributes && typeof existing.attributes === 'object' ? existing.attributes : {}
+    // Once marked as a seeded catalogue record, later seed runs deliberately preserve
+    // administrator edits (including route parent and visibility). Backfill only missing /
+    // unmanaged project artwork from the original local asset paths; never overwrite an image
+    // explicitly selected in the CMS (imageManaged=true).
+    if (existing && existingAttributes.seedSource === 'contentDetails-v1') {
+      const isCmsImage = String(existingAttributes.imageManaged || '').toLowerCase() === 'true'
+      const wantedProjectArt = component === 'project' ? String(entry.image_src || '') : ''
+      if (wantedProjectArt && !isCmsImage && String(existing.image_src || '') !== wantedProjectArt) {
+        await database!.execute(sql`UPDATE cms_content_items SET image_src = ${wantedProjectArt}, updated_at = now() WHERE id = ${Number(existing.id)}`)
+      }
+      continue
+    }
+
+    const values = {
+      titleEn: String(entry.title_en), titleBn: String(entry.title_bn),
+      summaryEn: String(entry.summary_en || ''), summaryBn: String(entry.summary_bn || ''),
+      bodyEn: String(entry.body_en || ''), bodyBn: String(entry.body_bn || ''),
+      // Use the locally bundled curated artwork for project cards; do not transform it
+      // into a generated/stock photo URL. Detail-page media remains hidden unless CMS-managed.
+      image: entry.image_src ? String(entry.image_src) : null,
+      date: normalizeSeedDate(entry.published_at), status: String(entry.status || 'published'),
+      attributes: JSON.stringify(existing ? { ...existingAttributes, ...attributes, routeParent: existingAttributes.routeParent || attributes.routeParent } : attributes),
+      sortOrder: Number(entry.sort_order || 0),
+    }
+    if (existing) {
+      await database!.execute(sql`
+        UPDATE cms_content_items SET title_en=${values.titleEn}, title_bn=${values.titleBn},
+          summary_en=${values.summaryEn}, summary_bn=${values.summaryBn}, body_en=${values.bodyEn}, body_bn=${values.bodyBn},
+          image_src=${values.image}, published_at=${values.date}::date, status=${values.status},
+          attributes=${values.attributes}::jsonb, sort_order=${values.sortOrder}, updated_at=now()
+        WHERE id=${Number(existing.id)}
+      `)
+    } else {
+      await database!.execute(sql`
+        INSERT INTO cms_content_items
+          (component,slug,title_en,title_bn,summary_en,summary_bn,body_en,body_bn,image_src,published_at,status,attributes,sort_order)
+        VALUES
+          (${component},${slug},${values.titleEn},${values.titleBn},${values.summaryEn},${values.summaryBn},
+           ${values.bodyEn},${values.bodyBn},${values.image},${values.date}::date,${values.status},${values.attributes}::jsonb,${values.sortOrder})
+      `)
+    }
   }
 
-  // Keep support for any separately-authored career entries in the older catalogue.
-  // The four legacy collections are not authoritative for CMS seeding any more.
+  // Keep support for separately-authored career entries from the legacy catalogue.
   for (const entry of contentEntries as any[]) {
     if (String(entry.category) !== 'career') continue
+    const slug = String(entry.slug)
+    const existingCareer = await database!.execute(sql`SELECT id FROM cms_content_items WHERE component = 'job' AND slug = ${slug} LIMIT 1`)
+    if (existingCareer.rows.length) continue
     const bodyEn = (entry.body || []).map((paragraph: any) => paragraph.en).filter(Boolean).join('\n\n')
     const bodyBn = (entry.body || []).map((paragraph: any) => paragraph.bn).filter(Boolean).join('\n\n')
     const imageUrl = entry.image?.src ? openImageUrlForPath(String(entry.image.src)) : null
-    const attributes = { ...(entry.deadline ? { deadline: String(entry.deadline) } : {}), detailPath: `/job-circular/${entry.slug}` }
+    const attributes = { routeParent: '/carrer-job', ...(entry.deadline ? { deadline: String(entry.deadline) } : {}), detailPath: `/job-circular/${slug}` }
     await database!.execute(sql`
       INSERT INTO cms_content_items
         (component,slug,title_en,title_bn,summary_en,summary_bn,body_en,body_bn,image_src,published_at,status,attributes,sort_order)
-      VALUES ('job',${String(entry.slug)},${String(entry.title.en)},${String(entry.title.bn || entry.title.en)},
+      VALUES ('job',${slug},${String(entry.title.en)},${String(entry.title.bn || entry.title.en)},
         ${String(entry.excerpt?.en || '')},${String(entry.excerpt?.bn || '')},${bodyEn},${bodyBn},${imageUrl},
         ${normalizeSeedDate(entry.date)}::date,'published',${JSON.stringify(attributes)}::jsonb,${Number(entry.sortOrder || 0)})
-      ON CONFLICT (component,slug) DO NOTHING
     `)
   }
+}
+
+function normalizeRouteValues(value: any): any {
+  if (typeof value === 'string') return value.startsWith('/') ? canonicalizeCmsRoute(value) : value
+  if (Array.isArray(value)) return value.map(normalizeRouteValues)
+  if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key, child]) => [key.startsWith('/') ? canonicalizeCmsRoute(key) : key, normalizeRouteValues(child)]))
+  return value
+}
+
+const hiddenNavigationPaths = new Set([
+  '/executive-secretariat', '/executive-secratariat', '/senior-management',
+  '/public-relation', '/public-relations', '/public-relations-office', '/public-relations-unit', '/social-enterprise',
+])
+const hiddenNavigationLabels = new Set([
+  'executive secretariat', 'senior management', 'public relation', 'public relations', 'social enterprise',
+  'নির্বাহী সচিবালয়', 'নির্বাহী সচিবালয়', 'সিনিয়র ম্যানেজমেন্ট', 'সিনিয়র ম্যানেজমেন্ট', 'জনসংযোগ', 'সামাজিক উদ্যোগ',
+])
+const normalizeNavigationLabel = (value: unknown) => String(value ?? '').trim().toLocaleLowerCase().replace(/[\s_-]+/g, ' ')
+
+function walkNavigation(items: any[], paths: Set<string>, labels = new Map<string, { en: string; bn: string }>(), parentHidden = false) {
+  for (const item of items || []) {
+    const href = typeof item.href === 'string' ? item.href : ''
+    const rawPath = href.split(/[?#]/, 1)[0].replace(/\/+$/, '').toLocaleLowerCase() || '/'
+    const hidden = parentHidden || hiddenNavigationPaths.has(rawPath)
+      || hiddenNavigationLabels.has(normalizeNavigationLabel(item.label?.en))
+      || hiddenNavigationLabels.has(normalizeNavigationLabel(item.label?.bn))
+    if (!hidden && href.startsWith('/') && item.menuType !== 'external') {
+      const path = canonicalizeCmsRoute(href)
+      paths.add(path)
+      labels.set(path, { en: String(item.label?.en || path), bn: String(item.label?.bn || item.label?.en || path) })
+    }
+    if (!hidden && Array.isArray(item.children)) walkNavigation(item.children, paths, labels)
+  }
+  return labels
+}
+
+function bundledNavigationPaths() {
+  // Canonical content collection pages remain valid even when not linked from navigation.
+  const paths = new Set<string>(['/', ...CONTENT_COLLECTION_ROUTES.map((route) => route.slug)])
+  const labels = new Map<string, { en: string; bn: string }>()
+  walkNavigation(primaryNav, paths, labels)
+  return { paths, labels }
+}
+
+async function migrateLegacyRoutes() {
+  // Canonicalize old page slugs and route-bearing links in cached page JSON. If both
+  // the old and new page exist, preserve the canonical target and remove the alias row.
+  const pageRows = (await database!.execute(sql`SELECT id, slug, render_cache FROM pages ORDER BY id`)).rows as any[]
+  const rowBySlug = new Map(pageRows.map((row) => [String(row.slug), row]))
+  for (const row of pageRows) {
+    const oldSlug = String(row.slug)
+    const nextSlug = canonicalizeCmsRoute(oldSlug)
+    const normalizedCache = row.render_cache ? normalizeRouteValues(row.render_cache) : null
+    if (normalizedCache && typeof normalizedCache === 'object') normalizedCache.slug = nextSlug
+    if (oldSlug !== nextSlug) {
+      const target = rowBySlug.get(nextSlug)
+      if (target) {
+        if (normalizedCache) {
+          const targetCache = target.render_cache && typeof target.render_cache === 'object' ? target.render_cache as Record<string, any> : {}
+          const sourceCache = normalizedCache as Record<string, any>
+          const targetSections = Array.isArray(targetCache.sections) ? [...targetCache.sections] : []
+          const sourceSections = Array.isArray(sourceCache.sections) ? sourceCache.sections : []
+          const collectionComponent = nextSlug === '/news' ? 'news' : nextSlug === '/success-stories' ? 'success-story' : undefined
+          const isCollectionSection = (section: any) => {
+            if (!collectionComponent) return false
+            const configured = section?.contentCollection?.component
+            const feed = Array.isArray(section?.components) ? section.components[0] : undefined
+            const kind = section?.collectionKind
+            return configured === collectionComponent || feed === collectionComponent
+              || (collectionComponent === 'news' && kind === 'news')
+              || (collectionComponent === 'success-story' && kind === 'success-stories')
+          }
+          const missingCollectionSections = sourceSections.filter((section: any) => isCollectionSection(section) && !targetSections.some((current: any) => isCollectionSection(current)))
+          if (!target.render_cache || missingCollectionSections.length) {
+            const isBlankPlaceholder = (section: any) => section?.type === 'richText'
+              && !section?.image?.src
+              && Array.isArray(section?.body)
+              && section.body.every((paragraph: any) => !String(paragraph?.en || paragraph?.bn || '').trim())
+            const onlyBlankPlaceholders = targetSections.length > 0 && targetSections.every(isBlankPlaceholder)
+            const mergedSections = onlyBlankPlaceholders && missingCollectionSections.length
+              ? missingCollectionSections
+              : [...targetSections, ...missingCollectionSections]
+            const mergedCache = { ...sourceCache, ...targetCache, slug: nextSlug, sections: mergedSections.length ? mergedSections : targetSections }
+            await database!.execute(sql`UPDATE pages SET render_cache = ${JSON.stringify(mergedCache)}::jsonb, updated_at = now() WHERE id = ${Number(target.id)}`)
+            rowBySlug.set(nextSlug, { ...target, render_cache: mergedCache })
+          }
+        }
+        await database!.execute(sql`DELETE FROM pages WHERE id = ${Number(row.id)}`)
+      } else {
+        await database!.execute(sql`UPDATE pages SET slug = ${nextSlug}, render_cache = ${normalizedCache ? JSON.stringify(normalizedCache) : null}::jsonb, updated_at = now() WHERE id = ${Number(row.id)}`)
+        rowBySlug.delete(oldSlug); rowBySlug.set(nextSlug, { ...row, slug: nextSlug, render_cache: normalizedCache })
+      }
+    } else if (normalizedCache && JSON.stringify(normalizedCache) !== JSON.stringify(row.render_cache)) {
+      await database!.execute(sql`UPDATE pages SET render_cache = ${JSON.stringify(normalizedCache)}::jsonb, updated_at = now() WHERE id = ${Number(row.id)}`)
+    }
+  }
+
+  // Normalize internal menu URLs immediately so route gating works even before the
+  // bundled navigation sync finishes. External destinations are never rewritten.
+  const menuRows = (await database!.execute(sql`SELECT id, href, menu_type FROM nav_items`)).rows as any[]
+  for (const row of menuRows) {
+    const href = String(row.href || '')
+    if (row.menu_type !== 'external' && href.startsWith('/')) {
+      const canonical = canonicalizeCmsRoute(href)
+      if (canonical !== href) await database!.execute(sql`UPDATE nav_items SET href = ${canonical} WHERE id = ${Number(row.id)}`)
+    }
+  }
+
+  // Rewrite routeParent/detailPath metadata while keeping duplicate legacy records out
+  // of public URLs. A duplicate route is hidden and assigned a private archive key;
+  // no published content is allowed to claim the same canonical URL twice.
+  const contentRows = (await database!.execute(sql`SELECT id, component, slug, status, attributes FROM cms_content_items ORDER BY id`)).rows as any[]
+  const normalized = contentRows.map((row) => {
+    const attrs = row.attributes && typeof row.attributes === 'object' ? { ...row.attributes } : {}
+    const component = String(row.component || '') as keyof typeof DEFAULT_CONTENT_PARENT
+    const rawParent = typeof attrs.routeParent === 'string' && attrs.routeParent ? attrs.routeParent : (DEFAULT_CONTENT_PARENT[component] || '/')
+    attrs.routeParent = canonicalizeCmsRoute(String(rawParent))
+    // News and Success Stories are separate collections with fixed detail routes.
+    // Rehome every legacy row, including previously customized/root-assigned URLs.
+    const fixedParent = component === 'news' ? '/news' : component === 'success-story' ? '/success-stories' : undefined
+    if (fixedParent) {
+      attrs.routeParent = fixedParent
+      attrs.detailType = component
+      attrs.detailPath = `${fixedParent}/${String(row.slug || '').trim()}`
+    } else if (typeof attrs.detailPath === 'string' && attrs.detailPath) {
+      attrs.detailPath = canonicalizeCmsRoute(attrs.detailPath)
+    }
+    return { ...row, attrs, canonicalParent: String(attrs.routeParent), canonicalSlug: String(row.slug || '') }
+  })
+  const groups = new Map<string, any[]>()
+  for (const row of normalized) {
+    const key = `${row.canonicalParent}\u0000${row.canonicalSlug}`
+    const group = groups.get(key) || []
+    group.push(row); groups.set(key, group)
+  }
+  const priority: Record<string, number> = { project: 1, news: 2, enterprise: 3, 'partner-agency': 4, 'health-service': 5, 'loan-product': 6, product: 7, team: 8, notice: 9, report: 10, job: 11, 'success-story': 12, stat: 13 }
+  for (const group of groups.values()) {
+    group.sort((a, b) => {
+      const aSeed = a.attrs.seedSource === 'contentDetails-v1' ? 0 : 1
+      const bSeed = b.attrs.seedSource === 'contentDetails-v1' ? 0 : 1
+      return aSeed - bSeed || (priority[String(a.component)] || 99) - (priority[String(b.component)] || 99) || Number(a.id) - Number(b.id)
+    })
+    // Move duplicate losers to private unique parents first. This avoids a transient
+    // unique-index conflict when one record is already on the new root parent and
+    // another record is being migrated from the old nested parent.
+    for (let index = 1; index < group.length; index++) {
+      const row = group[index]
+      row.attrs.routeParent = `/__legacy-content-${Number(row.id)}`
+      await database!.execute(sql`UPDATE cms_content_items SET status = 'hidden', attributes = ${JSON.stringify(row.attrs)}::jsonb, updated_at = now() WHERE id = ${Number(row.id)}`)
+    }
+    const canonical = group[0]
+    await database!.execute(sql`UPDATE cms_content_items SET attributes = ${JSON.stringify(canonical.attrs)}::jsonb, updated_at = now() WHERE id = ${Number(canonical.id)}`)
+  }
+}
+
+async function ensureAndPruneMenuPages() {
+  const excludedPaths = new Set(['/executive-secretariat', '/executive-secratariat', '/senior-management', '/public-relation', '/public-relations', '/public-relations-office', '/public-relations-unit', '/social-enterprise'])
+  const excludedLabels = new Set(['executive secretariat', 'senior management', 'public relation', 'public relations', 'social enterprise', 'নির্বাহী সচিবালয়', 'নির্বাহী সচিবালয়', 'সিনিয়র ম্যানেজমেন্ট', 'সিনিয়র ম্যানেজমেন্ট', 'জনসংযোগ', 'সামাজিক উদ্যোগ'])
+  const normalizeLabel = (value: unknown) => String(value ?? '').trim().toLocaleLowerCase().replace(/[\s_-]+/g, ' ')
+  const rows = (await database!.execute(sql`SELECT id, parent_id, href, menu_type, label_en, label_bn FROM nav_items ORDER BY sort_order, id`)).rows as any[]
+  const excludedIds = new Set<number>()
+  let changed = true
+  while (changed) {
+    changed = false
+    for (const row of rows) {
+      const id = Number(row.id)
+      if (excludedIds.has(id)) continue
+      const href = String(row.href || '')
+      const path = href.startsWith('/') ? canonicalizeCmsRoute(href) : href
+      const excludedByLabel = excludedLabels.has(normalizeLabel(row.label_en)) || excludedLabels.has(normalizeLabel(row.label_bn))
+      const parentId = row.parent_id == null ? null : Number(row.parent_id)
+      if (excludedPaths.has(path) || excludedByLabel || (parentId != null && excludedIds.has(parentId))) {
+        excludedIds.add(id)
+        changed = true
+      }
+    }
+  }
+
+  // Canonical content collection pages remain valid even when not linked from navigation.
+  const paths = new Set<string>(['/', ...CONTENT_COLLECTION_ROUTES.map((route) => route.slug)])
+  const labels = new Map<string, { en: string; bn: string }>()
+  for (const row of rows) {
+    const href = String(row.href || '')
+    if (row.menu_type === 'external' || !href.startsWith('/') || excludedIds.has(Number(row.id))) continue
+    const path = canonicalizeCmsRoute(href)
+    paths.add(path)
+    labels.set(path, { en: String(row.label_en || path), bn: String(row.label_bn || row.label_en || path) })
+  }
+
+  for (const path of paths) {
+    const exists = (await database!.execute(sql`SELECT id FROM pages WHERE slug = ${path} LIMIT 1`)).rows.length > 0
+    if (exists) continue
+    const collection = CONTENT_COLLECTION_ROUTES.find((route) => route.slug === path)
+    const title = collection?.title || labels.get(path) || (path === '/' ? { en: 'Srizony Foundation', bn: 'সৃজনী ফাউন্ডেশন' } : { en: path.split('/').pop()!.replace(/-/g, ' '), bn: path.split('/').pop()!.replace(/-/g, ' ') })
+    const page = allPages[path] || { slug: path, title, ...(collection ? { subtitle: collection.subtitle } : {}), status: 'published', sortOrder: path === '/' ? -1 : 0, sections: collection ? [{ type: 'contentFeed', visible: true, heading: collection.heading, components: [collection.component], items: [], columns: 3 }] : [{ type: 'richText', visible: true, heading: title, body: [{ en: '', bn: '' }] }] }
+    await database!.execute(sql`INSERT INTO pages (slug, title_en, title_bn, subtitle_en, subtitle_bn, render_cache, status, sort_order, updated_at) VALUES (${path}, ${title.en}, ${title.bn}, '', '', ${JSON.stringify(page)}::jsonb, 'published', ${path === '/' ? -1 : 0}, now()) ON CONFLICT (slug) DO NOTHING`)
+  }
+  const pageRows = (await database!.execute(sql`SELECT slug FROM pages`)).rows as any[]
+  let removed = 0
+  for (const row of pageRows) {
+    const storedSlug = String(row.slug)
+    const slug = canonicalizeCmsRoute(storedSlug)
+    // A legacy alias may redirect to a valid canonical page, but it must never remain
+    // as a second page row. The earlier migration merges its sections into the root.
+    if (storedSlug !== slug || !paths.has(slug)) {
+      await database!.execute(sql`DELETE FROM pages WHERE slug = ${storedSlug}`)
+      removed++
+    }
+  }
+  console.log(`Navigation route cleanup complete: ${paths.size} visible menu pages retained, ${removed} unlinked page rows removed.`)
+}
+async function seedWebsiteEssentials() {
+  const key = 'cms-document:website-essentials.json'
+  const existing = await database!.execute(sql`SELECT key FROM site_settings WHERE key = ${key} LIMIT 1`)
+  if (existing.rows.length) return
+  const initial = { ...DEFAULT_WEBSITE_ESSENTIALS, locations: BRANCHES }
+  await database!.execute(sql`INSERT INTO site_settings(key, value, updated_at) VALUES(${key}, ${JSON.stringify(initial)}::jsonb, now()) ON CONFLICT(key) DO NOTHING`)
+  console.log(`Seeded Website Essentials with ${BRANCHES.length} bootstrap locations. Future location changes are managed only in PostgreSQL.`)
 }
 
 async function main() {
@@ -624,11 +899,21 @@ async function main() {
     await database!.execute(sql`TRUNCATE site_global_state,hero_data,hero_slides,hero_stats,nav_items,nav_groups,themes,ui_content,contact_info,contact_phones,contact_socials,contact_footprint,sdg_steps,payment_info,content_entry_video,content_entry_gallery,content_entry_related,content_entry_tags,content_entry_bodies,content_entries RESTART IDENTITY CASCADE`)
   }
 
+  await migrateLegacyRoutes()
   const mediaCache = new Map<string, number>()
-  for (const page of Object.values(allPages)) await seedPage(page, mediaCache)
+  const { paths: bundledMenuPaths, labels: bundledMenuLabels } = bundledNavigationPaths()
+  for (const path of bundledMenuPaths) {
+    const page = allPages[path]
+    if (page) await seedPage(page, mediaCache)
+    else {
+      const title = bundledMenuLabels.get(path) || { en: 'Page', bn: 'পেজ' }
+      await seedPage({ slug: path, title, status: 'published', sortOrder: 0, sections: [{ type: 'richText', visible: true, heading: title, body: [{ en: '', bn: '' }] }] }, mediaCache)
+    }
+  }
 
   const globalState = { ...systemDataForSeed() }
   await seedGlobalState(globalState)
+  await seedWebsiteEssentials()
 
   await database!.execute(sql`INSERT INTO hero_data(id,eyebrow_en,eyebrow_bn,heading_line_one_en,heading_line_one_bn,heading_line_two_en,heading_line_two_bn,description_en,description_bn,primary_action_label_en,primary_action_label_bn,primary_action_href,secondary_action_label_en,secondary_action_label_bn,secondary_action_href,autoplay,autoplay_interval,video_href)
     VALUES(1,${homeHero.eyebrow.en},${homeHero.eyebrow.bn},${homeHero.headingLineOne.en},${homeHero.headingLineOne.bn},${homeHero.headingLineTwo.en},${homeHero.headingLineTwo.bn},${homeHero.description.en},${homeHero.description.bn},${homeHero.primaryAction.label.en},${homeHero.primaryAction.label.bn},${homeHero.primaryAction.href},${homeHero.secondaryAction.label.en},${homeHero.secondaryAction.label.bn},${homeHero.secondaryAction.href},${homeHero.autoplay??true},${homeHero.autoplayInterval??null},${homeHero.videoHref??null})
@@ -643,28 +928,15 @@ async function main() {
     await database!.execute(sql`INSERT INTO hero_stats(id,icon,value_en,value_bn,label_en,label_bn,sort_order) VALUES(${x.id},${x.icon},${x.value.en},${x.value.bn},${x.label.en},${x.label.bn},${i}) ON CONFLICT(id) DO NOTHING`)
   }
 
-  for (let i = 0; i < navGroups.length; i++) {
-    const group = navGroups[i]
-    const key = group.label.en.toLowerCase().replace(/\W+/g, '-')
-    const groupId = await ensureGroup(key, group.label.en, group.label.bn, i)
-    for (let j = 0; j < group.items.length; j++) await seedNav(group.items[j], groupId, null, j)
-  }
-  const primaryId = await ensureGroup('primary', 'Main Navigation', 'প্রধান নেভিগেশন', -1)
-  for (let i = 0; i < primaryNav.length; i++) await seedNav(primaryNav[i], primaryId, null, i)
-  // Ensure a legacy database menu is migrated to the requested About Us > Governing Body hierarchy.
-  const whoGroup = await database!.execute(sql`SELECT id FROM nav_groups WHERE key = 'who-we-are' LIMIT 1`)
-  if (whoGroup.rows[0]) {
-    const groupId = Number((whoGroup.rows[0] as any).id)
-    const about = await database!.execute(sql`SELECT id FROM nav_items WHERE group_id = ${groupId} AND href = '/about-us' ORDER BY id LIMIT 1`)
-    if (about.rows[0]) {
-      const body = await database!.execute(sql`SELECT id FROM nav_items WHERE group_id = ${groupId} AND href = '/governing-body' ORDER BY id LIMIT 1`)
-      if (body.rows[0]) {
-        const bodyId = Number((body.rows[0] as any).id)
-        await database!.execute(sql`UPDATE nav_items SET parent_id = ${Number((about.rows[0] as any).id)} WHERE group_id = ${groupId} AND id = ${bodyId}`)
-        await database!.execute(sql`DELETE FROM nav_items WHERE group_id = ${groupId} AND href = '/governing-body' AND id <> ${bodyId}`)
-      }
-    }
-  }
+  // The website has one navigation tree: Home is fixed at the root, and every
+  // editable item (folders and page slugs) is stored beneath that same row.
+  const primaryId = await ensureGroup('primary', 'Site Navigation', 'সাইট নেভিগেশন', 0)
+  const landingSeed = primaryNav.find((item) => item.href === '/')
+  if (!landingSeed) throw new Error('The static navigation must contain the Home route /.')
+  // seedNav recursively writes the complete one-tree structure, including URL-less folders.
+  await seedNav(landingSeed, primaryId, null, 0)
+
+  await enforceLandingRootHierarchy()
 
   for (const [name, t] of Object.entries(themes)) await database!.execute(sql`
     INSERT INTO themes(name,label_en,label_bn,primary_color,secondary_color,accent_color,background,surface,surface_alt,surface_raised,border,ink,muted,header_bg,header_ink,footer_bg,footer_ink,success,warning,danger,focus,dark_background,dark_surface,dark_surface_alt,dark_surface_raised,dark_border,dark_ink,dark_muted,dark_header_bg,dark_header_ink,dark_footer_bg,dark_footer_ink,typography_body,typography_display,typography_tracking,typography_radius)
@@ -737,28 +1009,58 @@ async function main() {
   }
 
   await seedCmsContentItems()
+  await ensureAndPruneMenuPages()
   await migrateLegacyImageSources()
   const [pageCount, cmsItemCount] = await Promise.all([rowCount('pages'), rowCount('cms_content_items')])
   console.log(`Database bootstrap complete (${RESET_SEED ? 'reset/reseed' : 'non-destructive seed'}): ${pageCount} pages, ${cmsItemCount} CMS content items.`)
 }
 
-async function seedNav(item: any, groupId: number, parentId: number | null, sort: number) {
-  const existing = await database!.execute(sql`SELECT id,parent_id,sort_order,label_en,label_bn,featured FROM nav_items WHERE group_id = ${groupId} AND href = ${item.href} ORDER BY id LIMIT 1`)
+/** Idempotent data migration: Landing is the only row with parent_id = NULL. */
+async function enforceLandingRootHierarchy() {
+  const primary = (await database!.execute(sql`SELECT id FROM nav_groups WHERE key = 'primary' LIMIT 1`)).rows[0] as any
+  if (!primary) throw new Error('Primary navigation group is missing while enforcing the Landing root.')
+  const primaryId = Number(primary.id)
+  let landing = (await database!.execute(sql`SELECT id FROM nav_items WHERE group_id = ${primaryId} AND href = '/' ORDER BY id LIMIT 1`)).rows[0] as any
+  if (!landing) {
+    const inserted = await database!.execute(sql`INSERT INTO nav_items(group_id,parent_id,label_en,label_bn,href,content_types,menu_type,sort_order,is_visible) VALUES(${primaryId},NULL,'Home','হোম','/','[]'::jsonb,'page',0,true) RETURNING id`)
+    landing = inserted.rows[0] as any
+  }
+  const landingId = Number(landing.id)
+  const duplicateHomes = (await database!.execute(sql`SELECT id FROM nav_items WHERE href = '/' AND id <> ${landingId}`)).rows as any[]
+  for (const duplicate of duplicateHomes) {
+    const duplicateId = Number(duplicate.id)
+    await database!.execute(sql`UPDATE nav_items SET parent_id = ${landingId} WHERE parent_id = ${duplicateId}`)
+    await database!.execute(sql`DELETE FROM nav_items WHERE id = ${duplicateId}`)
+  }
+  await database!.execute(sql`UPDATE nav_items SET parent_id = ${landingId} WHERE parent_id IS NULL AND id <> ${landingId}`)
+  await database!.execute(sql`UPDATE nav_items SET parent_id = NULL, sort_order = 0 WHERE id = ${landingId}`)
+}
+
+async function seedNav(item: any, groupId: number, parentId: number | null, sort: number): Promise<number> {
+  const menuType = item.menuType === 'folder' ? 'folder' : item.menuType === 'external' ? 'external' : 'page'
+  const href = menuType === 'folder' ? '' : String(item.href || '')
+  const fields = 'id,parent_id,sort_order,label_en,label_bn,featured,href,menu_type'
+  let existing = menuType === 'folder'
+    ? await database!.execute(sql`SELECT ${sql.raw(fields)} FROM nav_items WHERE group_id = ${groupId} AND parent_id IS NOT DISTINCT FROM ${parentId} AND menu_type = 'folder' AND label_en = ${item.label.en} ORDER BY id LIMIT 1`)
+    : await database!.execute(sql`SELECT ${sql.raw(fields)} FROM nav_items WHERE group_id = ${groupId} AND href = ${href} AND COALESCE(menu_type, 'page') = ${menuType} ORDER BY id LIMIT 1`)
+  // If an older row has a changed destination, reuse a same-parent item with the same bilingual label.
+  if (!existing.rows[0]) {
+    existing = await database!.execute(sql`SELECT ${sql.raw(fields)} FROM nav_items WHERE group_id = ${groupId} AND parent_id IS NOT DISTINCT FROM ${parentId} AND COALESCE(menu_type, 'page') = ${menuType} AND (label_en = ${item.label.en} OR label_bn = ${item.label.bn}) ORDER BY id LIMIT 1`)
+  }
   let id: number
   if (existing.rows[0]) {
     const row = existing.rows[0] as any
     id = Number(row.id)
     const existingParent = row.parent_id == null ? null : Number(row.parent_id)
-    if (existingParent !== parentId || Number(row.sort_order ?? 0) !== sort || row.label_en !== item.label.en || row.label_bn !== item.label.bn || Boolean(row.featured) !== Boolean(item.featured ?? false)) {
-      // Repair the required current menu labels, ordering and nesting in the database itself.
-      // This is why the public header can read only from the CMS/database after db:seed.
-      await database!.execute(sql`UPDATE nav_items SET parent_id = ${parentId}, label_en = ${item.label.en}, label_bn = ${item.label.bn}, sort_order = ${sort}, featured = ${item.featured ?? false} WHERE id = ${id}`)
+    if (String(row.href ?? '') !== href || existingParent !== parentId || Number(row.sort_order ?? 0) !== sort || row.label_en !== item.label.en || row.label_bn !== item.label.bn || Boolean(row.featured) !== Boolean(item.featured ?? false) || row.menu_type !== menuType) {
+      await database!.execute(sql`UPDATE nav_items SET href = ${href}, parent_id = ${parentId}, label_en = ${item.label.en}, label_bn = ${item.label.bn}, sort_order = ${sort}, featured = ${item.featured ?? false}, menu_type = ${menuType} WHERE id = ${id}`)
     }
   } else {
-    const inserted = await database!.execute(sql`INSERT INTO nav_items(group_id,parent_id,label_en,label_bn,href,featured,sort_order) VALUES(${groupId},${parentId},${item.label.en},${item.label.bn},${item.href},${item.featured??false},${sort}) RETURNING id`)
+    const inserted = await database!.execute(sql`INSERT INTO nav_items(group_id,parent_id,label_en,label_bn,href,featured,sort_order,menu_type) VALUES(${groupId},${parentId},${item.label.en},${item.label.bn},${href},${item.featured??false},${sort},${menuType}) RETURNING id`)
     id = Number((inserted.rows[0] as any).id)
   }
   for (let i = 0; i < (item.children ?? []).length; i++) await seedNav(item.children[i], groupId, id, i)
+  return id
 }
 
 main().then(()=>console.log('Structural database seed complete.')).catch((error)=>{console.error(error);process.exit(1)})

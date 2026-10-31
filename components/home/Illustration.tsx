@@ -1,15 +1,30 @@
-import type { CSSProperties } from 'react'
+import type { CSSProperties, ReactElement } from 'react'
+import { LoanIllustration } from 'react-undraw-illustrations'
+import type { IllustrationName } from '@/types/entityType'
 
 export type AreaIcon = 'heart' | 'book' | 'users' | 'coins' | 'sprout' | 'store'
 export const delay = (ms: number) => ({ '--d': `${ms}ms` }) as CSSProperties
 
 type IllustrationProps =
+  | { name: IllustrationName; label?: string }
   | { kind: 'area'; icon: AreaIcon }
   | { kind: 'growth'; label: string; year: string }
   | { kind: 'mission' | 'vision' | 'values'; label: string }
 
 /** A single prop-driven SVG illustration component shared by homepage sections. */
-export default function Illustration(props: IllustrationProps) {
+export default function Illustration(props: IllustrationProps): ReactElement {
+  // Named illustrations are the shared CMS-facing registry. Legacy `kind` props
+  // remain supported so existing homepage compositions do not need a rewrite.
+  if ('name' in props) {
+    const name = props.name
+    if (name === 'mission' || name === 'vision' || name === 'values') {
+      return <Illustration kind={name} label={props.label || name} />
+    }
+    if (['heart', 'book', 'users', 'coins', 'sprout', 'store'].includes(name)) {
+      return <Illustration kind="area" icon={name as AreaIcon} />
+    }
+    return <LoanIllustration name={name as 'women-business' | 'small-enterprise' | 'agriculture' | 'migrant-household' | 'rural-development' | 'career' | 'education'} className="cms-undraw-illustration" />
+  }
   if (props.kind === 'area') {
     const { icon } = props
     switch (icon) {

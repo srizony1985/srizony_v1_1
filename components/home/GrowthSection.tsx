@@ -3,7 +3,6 @@
 import ConfiguredLink from '@/components/ui/ConfiguredLink'
 import { ArrowRight } from 'lucide-react'
 import type { Lang, PageData } from '@/types/entityType'
-import { COUNTERS, GROWTH_INTRO } from '@/data/homeContent'
 import Illustration from '@/components/home/Illustration'
 import { useInView } from '@/components/hooks/useInView'
 import Container from '@/components/containers/Container'
@@ -14,19 +13,19 @@ const normalizeHeading = (value?: string) => (value ?? '').trim().toLocaleLowerC
 
 export default function GrowthSection({ lang, page }: { lang: Lang; page: PageData }) {
   const section = page.sections.find((item): item is GrowthSectionData => item.type === 'stats' && (item.homeComponent === 'growth' || normalizeHeading(item.heading?.en) === 'growing together'))
-  const counters = section ? (Array.isArray(section.items) ? section.items : []).map((item, index) => {
+  const counters = (Array.isArray(section?.items) ? section.items : []).map((item, index) => {
     const raw = String(item.value ?? '')
     const numeric = raw.replace(/[\s,]/g, '')
-    return { id: `home-stat-${index}`, value: /^\d+$/.test(numeric) ? Number(numeric) : raw, label: item.label, note: item.note, icon: item.icon ?? COUNTERS[index % COUNTERS.length]?.icon }
-  }) : COUNTERS
-  const eyebrow = section?.eyebrow ?? GROWTH_INTRO.eyebrow
-  const heading = section?.heading ?? GROWTH_INTRO.title
+    return { id: `home-stat-${index}`, value: /^\d+$/.test(numeric) ? Number(numeric) : raw, label: item.label, note: item.note, icon: item.icon ?? 'users', illustration: item.illustration, image: item.image }
+  })
+  const eyebrow = section?.eyebrow
+  const heading = section?.heading
   const button = section?.buttonConfig
   const [ref, inView] = useInView<HTMLElement>(0.25)
-  if (section?.visible === false) return null
+  if (!section || section.visible === false || !heading || !eyebrow) return null
   const isSecondaryOnly = button?.mode === 'secondary'
-  const aboutLabel = button?.visible ? (isSecondaryOnly ? (button.secondaryLabel ?? button.label) : button.label) : GROWTH_INTRO.about
-  const aboutHref = button?.visible ? (isSecondaryOnly ? (button.secondaryHref ?? button.href) : button.href) : '/about-us'
+  const aboutLabel = button?.visible ? (isSecondaryOnly ? (button.secondaryLabel ?? button.label) : button.label) : undefined
+  const aboutHref = button?.visible ? (isSecondaryOnly ? (button.secondaryHref ?? button.href) : button.href) : undefined
   const aboutAction = button?.visible ? (isSecondaryOnly ? (button.secondaryAction ?? button.action) : button.action) : 'route'
   const showPrimary = button?.visible && (button.mode === 'primary' || button.mode === 'both')
   const showSecondary = Boolean(button?.visible && button.mode === 'both' && button.secondaryLabel && button.secondaryHref)
@@ -39,8 +38,8 @@ export default function GrowthSection({ lang, page }: { lang: Lang; page: PageDa
           <h2 id="sf-growth-title" className="sf-h2">{heading[lang]}</h2>
           {section?.introBody?.[lang] && <p className="sf-growth-lead">{section.introBody[lang]}</p>}
           <Stats items={counters} lang={lang} animated showIcons className="sf-growth-stats" />
-          {(button?.visible !== false || !button) && <div className="sf-cta-actions">
-            {(!button || showPrimary || isSecondaryOnly) && <ConfiguredLink href={aboutHref} action={aboutAction} className={`sf-btn ${button?.mode === 'both' ? 'sf-btn--primary' : button?.mode === 'secondary' ? 'sf-btn--outline' : 'sf-btn--ghost'}`}>
+          {button?.visible && <div className="sf-cta-actions">
+            {aboutLabel && aboutHref && (showPrimary || isSecondaryOnly) && <ConfiguredLink href={aboutHref} action={aboutAction} className={`sf-btn ${button.mode === 'both' ? 'sf-btn--primary' : button.mode === 'secondary' ? 'sf-btn--outline' : 'sf-btn--ghost'}`}>
               {aboutLabel[lang]} <ArrowRight size={16} aria-hidden="true" />
             </ConfiguredLink>}
             {showSecondary && button?.secondaryLabel && button.secondaryHref && <ConfiguredLink href={button.secondaryHref} action={button.secondaryAction} className="sf-btn sf-btn--outline">

@@ -46,7 +46,7 @@ function codeHash(email: string, code: string) {
   return createHash('sha256').update(`${email.toLowerCase()}:${code}:${requiredSecret('AUTH_SECRET')}`).digest('hex')
 }
 
-export async function requestEmailVerification(email: string, purpose: 'enquiry' | 'newsletter') {
+export async function requestEmailVerification(email: string, purpose: 'enquiry') {
   if (!db) throw new Error('DATABASE_URL is not configured')
   const normalized = email.toLowerCase()
   const recent = await db.execute(sql`SELECT created_at FROM auth_email_challenges WHERE email = ${normalized} AND purpose = ${purpose} AND created_at > now() - interval '5 minutes' ORDER BY created_at DESC LIMIT 1`)
@@ -55,14 +55,12 @@ export async function requestEmailVerification(email: string, purpose: 'enquiry'
   await db.execute(sql`DELETE FROM auth_email_challenges WHERE email = ${normalized} AND purpose = ${purpose}`)
   await db.insert(authEmailChallenges).values({ email: normalized, codeHash: codeHash(normalized, code), purpose, expiresAt: new Date(Date.now() + 10 * 60 * 1000) })
 
-  const subject = purpose === 'newsletter' ? 'Confirm your Srizony Foundation newsletter subscription' : 'Verify your Srizony Foundation enquiry email'
-  const body = purpose === 'newsletter'
-    ? `<p>Confirm your newsletter subscription with this code:</p><p style="font-size:28px;font-weight:700;letter-spacing:6px">${code}</p><p>This code expires in 10 minutes. If you did not request this, ignore this email.</p>`
-    : `<p>Use this verification code to continue your Srizony Foundation enquiry:</p><p style="font-size:28px;font-weight:700;letter-spacing:6px">${code}</p><p>This code expires in 10 minutes. If you did not request this, ignore this email.</p>`
+  const subject = 'Verify your Srizony Foundation enquiry email'
+  const body = `<p>Use this verification code to continue your Srizony Foundation enquiry:</p><p style="font-size:28px;font-weight:700;letter-spacing:6px">${code}</p><p>This code expires in 10 minutes. If you did not request this, ignore this email.</p>`
   await sendEmail({ to: normalized, subject, html: body })
 }
 
-export async function verifyEmailCode(email: string, purpose: 'enquiry' | 'newsletter', code: string) {
+export async function verifyEmailCode(email: string, purpose: 'enquiry', code: string) {
   if (!db) throw new Error('DATABASE_URL is not configured')
   const normalized = email.toLowerCase()
   const rows = await db.select().from(authEmailChallenges).where(eq(authEmailChallenges.email, normalized)).limit(10)

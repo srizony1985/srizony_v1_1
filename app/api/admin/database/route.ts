@@ -43,7 +43,6 @@ const tables = [
   ['content_entry_related', 'Related content'],
   ['content_entry_gallery', 'Content galleries'],
   ['content_entry_video', 'Content videos'],
-  ['themes', 'Themes'],
   ['ui_content', 'UI content'],
   ['contact_info', 'Contact information'],
   ['contact_phones', 'Contact phones'],
@@ -60,9 +59,11 @@ const tables = [
   ['cookie_consents', 'Enquiry consent records'],
   ['newsletter_subscribers', 'Newsletter subscriptions'],
   ['donations', 'Donation transactions'],
-  ['site_settings', 'Legacy site settings'],
+  ['site_settings', 'CMS document data'],
   ['cms_content_items', 'Managed content (projects, products, team, notices, reports, jobs)'],
   ['job_applications', 'Job applications'],
+  ['job_resume_uploads', 'Temporary private resume-upload tokens'],
+  ['job_public_rate_limits', 'Public job form rate limits'],
   ['cms_users', 'CMS users'],
 ] as const
 

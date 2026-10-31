@@ -7,7 +7,7 @@
   background: var(--sf-card);
   color: var(--sf-ink);
   border: 1px solid var(--sf-border);
-  border-radius: calc(var(--sf-radius-shape) + 4px);
+  border-radius: var(--sf-radius-panel);
   box-shadow: var(--sf-shadow);
   /* NOT clip/hidden: that would cut off dropdown popovers at the card edge */
   overflow: visible;
@@ -18,7 +18,7 @@
   position: absolute;
   inset: 0 0 auto 0;
   height: 4px;
-  border-radius: calc(var(--sf-radius-shape) + 4px) calc(var(--sf-radius-shape) + 4px) 0 0;
+  border-radius: var(--sf-radius-panel) var(--sf-radius-panel) 0 0;
   background: linear-gradient(90deg, var(--sf-primary), var(--sf-secondary), var(--sf-accent));
   background-size: 200% 100%;
   animation: flow 8s linear infinite;
@@ -32,7 +32,7 @@
   padding: calc(var(--pad) + 4px) var(--pad) 18px;
   border-bottom: 1px solid var(--sf-border);
   background: linear-gradient(180deg, color-mix(in srgb, var(--sf-primary) 6%, transparent), transparent);
-  border-radius: calc(var(--sf-radius-shape) + 4px) calc(var(--sf-radius-shape) + 4px) 0 0;
+  border-radius: var(--sf-radius-panel) var(--sf-radius-panel) 0 0;
 }
 .art {
   position: relative;
@@ -42,7 +42,7 @@
   place-items: center;
   background: var(--sf-soft);
   border: 1px solid var(--sf-border);
-  border-radius: 20px;
+  border-radius: var(--sf-radius-control);
   overflow: hidden;
 }
 .artCard {
@@ -56,7 +56,7 @@
   background: var(--sf-card);
   color: var(--sf-link);
   border: 1px solid var(--sf-border);
-  border-radius: 10px;
+  border-radius: var(--sf-radius-control);
   box-shadow: var(--sf-shadow-soft);
   transform: rotate(-6deg);
   animation: bob 4s ease-in-out infinite;
@@ -215,7 +215,7 @@ legend.legend + * { clear: both; }
   background: var(--sf-input);
   color: var(--sf-ink);
   border: 1.5px solid var(--sf-border);
-  border-radius: 12px;
+  border-radius: var(--sf-radius-control);
   font-size: 12.5px;
   font-weight: 800;
   transition: transform 0.2s, border-color 0.2s, background-color 0.2s, box-shadow 0.2s;
@@ -235,7 +235,7 @@ legend.legend + * { clear: both; }
   place-items: center;
   background: var(--sf-soft);
   color: var(--sf-link);
-  border-radius: 9px;
+  border-radius: var(--sf-radius-small);
   transition: background-color 0.2s, color 0.2s;
 }
 .methodOn .methodIcon { background: var(--sf-primary); color: var(--sf-on-primary); }
@@ -248,7 +248,7 @@ legend.legend + * { clear: both; }
   margin: 2px 0 0;
   padding: 9px 11px;
   background: var(--sf-soft);
-  border-radius: 10px;
+  border-radius: var(--sf-radius-control);
   font-size: 12px;
   line-height: 1.5;
   color: var(--sf-muted);
@@ -263,7 +263,7 @@ legend.legend + * { clear: both; }
   padding: 12px 14px;
   background: var(--sf-input);
   border: 1px solid var(--sf-border);
-  border-radius: 14px;
+  border-radius: var(--sf-radius-card);
   cursor: pointer;
   transition: border-color 0.2s, background-color 0.2s;
 }
@@ -323,7 +323,7 @@ legend.legend + * { clear: both; }
   overflow: hidden;
   background: linear-gradient(160deg, var(--sf-soft), color-mix(in srgb, var(--sf-primary) 8%, var(--sf-soft)));
   border: 1px solid var(--sf-border);
-  border-radius: 18px;
+  border-radius: var(--sf-radius-card);
   box-shadow: var(--sf-shadow-soft);
   animation: rise 0.5s 0.2s cubic-bezier(0.2, 0.7, 0.2, 1) both;
 }
@@ -387,7 +387,7 @@ legend.legend + * { clear: both; }
   gap: 8px;
   margin: 0 var(--pad);
   padding: 11px 13px;
-  border-radius: 12px;
+  border-radius: var(--sf-radius-control);
   color: var(--sf-danger);
   background: color-mix(in srgb, var(--sf-danger) 10%, var(--sf-card));
   border: 1px solid color-mix(in srgb, var(--sf-danger) 30%, transparent);
@@ -406,7 +406,7 @@ legend.legend + * { clear: both; }
   gap: 14px;
   margin-top: 6px;
   padding: 14px var(--pad);
-  border-radius: 0 0 calc(var(--sf-radius-shape) + 4px) calc(var(--sf-radius-shape) + 4px);
+  border-radius: 0 0 var(--sf-radius-panel) var(--sf-radius-panel);
   background: color-mix(in srgb, var(--sf-card) 92%, transparent);
   backdrop-filter: blur(12px);
   border-top: 1px solid var(--sf-border);
@@ -433,7 +433,7 @@ legend.legend + * { clear: both; }
   content: "";
   position: absolute;
   inset: 0;
-  background: linear-gradient(110deg, transparent 30%, color-mix(in srgb, #fff 28%, transparent) 50%, transparent 70%);
+  background: linear-gradient(110deg, transparent 30%, var(--sf-shine) 50%, transparent 70%);
   transform: translateX(-120%);
 }
 .submit:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 14px 30px color-mix(in srgb, var(--sf-primary) 38%, transparent); }
@@ -465,7 +465,7 @@ legend.legend + * { clear: both; }
   background: var(--sf-card);
   color: var(--sf-ink);
   border: 1px solid var(--sf-border);
-  border-radius: calc(var(--sf-radius-shape) + 4px);
+  border-radius: var(--sf-radius-panel);
   box-shadow: var(--sf-shadow);
   animation: rise 0.45s ease both;
 }
@@ -530,7 +530,7 @@ legend.legend + * { clear: both; }
 @media (max-width: 620px) {
   .form { --pad: 14px; }
   .head { gap: 12px; padding-top: 22px; }
-  .art { flex-basis: 64px; height: 58px; border-radius: 15px; }
+  .art { flex-basis: 64px; height: 58px; border-radius: var(--sf-radius-control); }
   .artCard { transform: scale(0.82) rotate(-6deg); }
   .intro p { font-size: 12px; }
   .amounts { grid-template-columns: repeat(2, minmax(0, 1fr)); }

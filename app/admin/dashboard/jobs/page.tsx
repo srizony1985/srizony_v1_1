@@ -27,7 +27,7 @@ export default function JobsPage() {
   }
 
   return <>
-    <SectionToolbar title="Job Management" description="Create job posts and review the applications received for each one."
+    <SectionToolbar title="Job Management" description="Create job posts and review applications. New posts are published when saved and appear on the public Career / Jobs page (/carrer-job). Hidden posts and jobs past their deadline are excluded from the public listing."
       count={jobs.data?.length ?? 0} onRefresh={() => void jobs.reload()} refreshing={jobs.loading}
       actions={<Button onClick={() => { setRecord(null); setMode({ kind: 'new' }) }}><CirclePlus size={15} /> Create new job</Button>} />
     {jobs.loading && !jobs.data ? <PageLoading rows={3} /> : jobs.error ? <AdminErrorState message={jobs.error} onRetry={() => void jobs.reload()} /> : (

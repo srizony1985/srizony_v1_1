@@ -8,7 +8,6 @@ import {
   useState,
 } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
-import { prepareHeroSlides } from '@/data/landingImages'
 import type {
   HeroData,
   HeroSlide,
@@ -43,10 +42,9 @@ export default function Hero({
     ? slidesOverride
     : (hero.slides ?? [])
 
-  const slides = useMemo(
-    () => prepareHeroSlides(slideSource),
-    [slideSource],
-  )
+  // Slides arrive already normalized by the database gateway. Images and slide
+  // copy are CMS content, not client-side defaults from the data directory.
+  const slides = useMemo(() => slideSource, [slideSource])
 
   const count = slides.length
 

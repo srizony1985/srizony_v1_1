@@ -6,7 +6,6 @@ import { Mail, MapPin, Phone } from 'lucide-react'
 import { FaLinkedin } from 'react-icons/fa'
 import { localizeDigits } from '@/lib/utils'
 import { FALLBACK_CONTACT, FALLBACK_LOGO } from '@/lib/siteFallback'
-import NewsletterForm from '@/components/ui/NewsletterForm'
 import { useSite } from '@/components/containers/SiteProvider'
 
 export default function Footer() {
@@ -16,7 +15,10 @@ export default function Footer() {
 
   const { ui } = data
   const primaryNav = data.primaryNav ?? []
-  const navGroups = data.navGroups ?? []
+  const home = primaryNav.find((item) => item.href === '/')
+  const navigationItems = home?.children ?? primaryNav.filter((item) => item.href !== '/')
+  const flattenPages = (items: typeof navigationItems): typeof navigationItems => items.flatMap((item) => item.menuType === 'folder' ? flattenPages(item.children ?? []) : [item, ...flattenPages(item.children ?? [])])
+  const primaryLinks = flattenPages(navigationItems).filter((item) => Boolean(item.href) && item.href !== '/donate')
   const contactInfo = data.contactInfo ?? FALLBACK_CONTACT
   const logo = data.images?.logo ?? FALLBACK_LOGO
   const tr = (en: string, bn: string) => (lang === 'en' ? en : bn)
@@ -35,11 +37,7 @@ export default function Footer() {
   const claim = <T extends { href: string }>(items: T[], max = 99) =>
     items.filter((i) => (placed.has(i.href) ? false : (placed.add(i.href), true))).slice(0, max)
 
-  const groupCols = navGroups.slice(0, 2).map((group) => ({ label: group.label, items: claim(group.items, 6) }))
-  const useful = claim([
-    ...primaryNav.filter((i) => i.href !== '/donate'),
-    { label: { en: 'Privacy & Cookies', bn: 'গোপনীয়তা ও কুকিজ' }, href: '/privacy' },
-  ])
+  const useful = claim(primaryLinks.filter((i) => i.href !== '/donate'), 12)
   const phones = Array.from(new Set((contactInfo.phones ?? []).map((p) => p.replace(/\s+/g, '')))).slice(0, 3)
 
   return (
@@ -70,19 +68,6 @@ export default function Footer() {
           </ul>
         </div>
 
-        {groupCols.map((group) => (
-          <div key={group.label.en} className="sf-footer-col">
-            <h3>{group.label[lang]}</h3>
-            <ul>
-              {group.items.map((item) => (
-                <li key={item.href}>
-                  <Link href={item.href}>{item.label[lang]}</Link>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ))}
-
         <div className="sf-footer-col sf-footer-contact">
           <h3>{tr('Contact', 'যোগাযোগ')}</h3>
           <ul>
@@ -104,9 +89,6 @@ export default function Footer() {
         </div>
       </div>
 
-      <div className="sf-container sf-footer-news">
-        <NewsletterForm />
-      </div>
 
       <div className="sf-footer-bottom">
         <div className="sf-container">

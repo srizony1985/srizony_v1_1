@@ -1,5 +1,5 @@
 /** Shared (client + server) definition of every manageable content component. */
-export type ContentComponent = 'project' | 'news' | 'enterprise' | 'partner-agency' | 'health-service' | 'loan-product' | 'product' | 'team' | 'notice' | 'report' | 'job' | 'success-story'
+export type ContentComponent = 'project' | 'news' | 'enterprise' | 'partner-agency' | 'health-service' | 'loan-product' | 'product' | 'team' | 'notice' | 'report' | 'job' | 'success-story' | 'stat'
 export type FieldType = 'text' | 'textarea' | 'date' | 'number' | 'select' | 'url' | 'image' | 'email'
 export type FieldDef = {
   key: string            // bilingual fields are stored as `${key}_en` / `${key}_bn`
@@ -35,6 +35,7 @@ export const COMPONENTS: Record<ContentComponent, ComponentDef> = {
   news: {
     key: 'news', label: 'News item', plural: 'News', description: 'Bilingual news articles and field updates.', fields: [
       ...core('Publication date'),
+      { key: 'displayOrder', label: 'Landing card order (optional)', type: 'number', help: 'Lower numbers appear first in the homepage News Rail. Leave blank to sort by publication date.' },
       { key: 'category', label: 'News category', type: 'text', bilingual: true, max: 120 },
       { key: 'source', label: 'Source / reference', type: 'text', max: 200 },
     ]
@@ -112,10 +113,21 @@ export const COMPONENTS: Record<ContentComponent, ComponentDef> = {
     ]
   },
   'success-story': {
-    key: 'success-story', label: 'Success Story', plural: 'Success Stories', description: 'Tails of the successful life.', fields: [
-      ...core(),
+    key: 'success-story', label: 'Success Story', plural: 'Success Stories', description: 'Stories of people and communities whose lives have changed.', fields: [
+      ...core().map((field) => field.key === 'image' ? { ...field, required: true, help: 'Required: choose an approved organizational photograph from the media library. The homepage Success Stories Gallery displays image-and-title cards only.' } : field),
+      { key: 'displayOrder', label: 'Landing gallery order (optional)', type: 'number', help: 'Lower numbers appear first in the homepage Success Stories Gallery. Leave blank to sort by publication date.' },
       { key: 'category', label: 'Story category', type: 'text', bilingual: true, max: 120 },
       { key: 'source', label: 'Source / reference', type: 'text', max: 200 },
+    ]
+  },
+  stat: {
+    key: 'stat', label: 'Statistic', plural: 'Statistics', description: 'A reusable metric for statistics sections and impact dashboards.', fields: [
+      ...core('Metric date').filter((field) => field.key !== 'body' && field.key !== 'image'),
+      { key: 'value', label: 'Display value', type: 'text', required: true, max: 40, help: 'Examples: 125+, 92%, 1.2M. Enter the exact display format.' },
+      { key: 'icon', label: 'Icon', type: 'select', options: ['', 'heart', 'leaf', 'book', 'scale', 'users', 'sun', 'droplets', 'briefcase', 'coins', 'building', 'megaphone', 'shield', 'play', 'arrow', 'check', 'home'] },
+      { key: 'illustration', label: 'Illustration preset', type: 'select', options: ['', 'mission', 'vision', 'values', 'heart', 'book', 'users', 'coins', 'sprout', 'store', 'women-business', 'small-enterprise', 'agriculture', 'migrant-household', 'rural-development', 'career', 'education'] },
+      { key: 'image', label: 'Custom illustration image', type: 'image', help: 'Optional image that replaces the selected icon or illustration.' },
+      { key: 'displayOrder', label: 'Display order', type: 'number' },
     ]
   }
 }
@@ -125,7 +137,54 @@ export const MENU_COMPONENTS: ContentComponent[] = ['project', 'product', 'team'
 /** "News" is the date-sorted collection of these components. */
 export const NEWS_COMPONENTS: ContentComponent[] = ['news', 'project', 'notice', 'report', 'job']
 
-export const SUCCESS_STORY_COMPONENTS: ContentComponent[] = ['news', 'project', 'success-story']
+export const SUCCESS_STORY_COMPONENTS: ContentComponent[] = ['success-story']
+
+/**
+ * Each content type has a stable, editable collection page. Content editors may
+ * choose another CMS page as the parent, in which case links inherit that menu
+ * hierarchy (for example /about-us/our-team/field-worker).
+ */
+export type ContentCollectionRoute = {
+  slug: string
+  component: ContentComponent
+  title: { en: string; bn: string }
+  heading: { en: string; bn: string }
+  subtitle: { en: string; bn: string }
+}
+
+export const CONTENT_COLLECTION_ROUTES: ContentCollectionRoute[] = [
+  { slug: '/projects', component: 'project', title: { en: 'Projects', bn: 'প্রকল্পসমূহ' }, heading: { en: 'Projects', bn: 'প্রকল্পসমূহ' }, subtitle: { en: 'Explore published projects and programmes.', bn: 'প্রকাশিত প্রকল্প ও কর্মসূচি দেখুন।' } },
+  { slug: '/news', component: 'news', title: { en: 'News', bn: 'সংবাদ' }, heading: { en: 'Latest News', bn: 'সর্বশেষ সংবাদ' }, subtitle: { en: 'Updates and stories from Srizony Foundation.', bn: 'সৃজনী ফাউন্ডেশনের খবর ও গল্প।' } },
+  { slug: '/enterprise-development', component: 'enterprise', title: { en: 'Enterprise Development', bn: 'এন্টারপ্রাইজ উন্নয়ন' }, heading: { en: 'Enterprises', bn: 'উদ্যোগসমূহ' }, subtitle: { en: 'Explore foundation enterprise profiles.', bn: 'ফাউন্ডেশনের উদ্যোগসমূহ দেখুন।' } },
+  { slug: '/about-us/partners-networks', component: 'partner-agency', title: { en: 'Partners & Networks', bn: 'অংশীদার ও নেটওয়ার্ক' }, heading: { en: 'Partner Agencies', bn: 'অংশীদার সংস্থা' }, subtitle: { en: 'Our partners and institutional networks.', bn: 'আমাদের অংশীদার ও প্রাতিষ্ঠানিক নেটওয়ার্ক।' } },
+  { slug: '/social-development/health-program', component: 'health-service', title: { en: 'Health Program', bn: 'স্বাস্থ্য কর্মসূচি' }, heading: { en: 'Health Services', bn: 'স্বাস্থ্যসেবা' }, subtitle: { en: 'Health services and community guidance.', bn: 'স্বাস্থ্যসেবা ও কমিউনিটি নির্দেশনা।' } },
+  { slug: '/organizational-development', component: 'loan-product', title: { en: 'Organizational Development', bn: 'প্রাতিষ্ঠানিক উন্নয়ন' }, heading: { en: 'Loan Products', bn: 'ঋণ পণ্য' }, subtitle: { en: 'Loan products, eligibility and guidance.', bn: 'ঋণ পণ্য, যোগ্যতা ও নির্দেশনা।' } },
+  { slug: '/enterprise-development', component: 'product', title: { en: 'Enterprise Development', bn: 'এন্টারপ্রাইজ উন্নয়ন' }, heading: { en: 'Products & Services', bn: 'পণ্য ও সেবা' }, subtitle: { en: 'Products, services and enterprise offerings.', bn: 'পণ্য, সেবা ও উদ্যোগের প্রস্তাবনা।' } },
+  { slug: '/management-staff', component: 'team', title: { en: 'Management Staff', bn: 'ব্যবস্থাপনা কর্মকর্তা' }, heading: { en: 'Our Team', bn: 'আমাদের টিম' }, subtitle: { en: 'Meet the published team and staff.', bn: 'প্রকাশিত টিম ও কর্মীদের সঙ্গে পরিচিত হোন।' } },
+  { slug: '/notice', component: 'notice', title: { en: 'Notices', bn: 'নোটিশ' }, heading: { en: 'Notices', bn: 'নোটিশ' }, subtitle: { en: 'Official notices and announcements.', bn: 'অফিসিয়াল নোটিশ ও ঘোষণা।' } },
+  { slug: '/resources', component: 'report', title: { en: 'Documents & Resources', bn: 'ডকুমেন্ট ও রিসোর্স' }, heading: { en: 'Reports', bn: 'প্রতিবেদন' }, subtitle: { en: 'Published reports and documents.', bn: 'প্রকাশিত প্রতিবেদন ও নথি।' } },
+  { slug: '/carrer-job', component: 'job', title: { en: 'Career / Jobs', bn: 'ক্যারিয়ার / চাকরি' }, heading: { en: 'Current Vacancies', bn: 'চলমান চাকরির সুযোগ' }, subtitle: { en: 'Build your career with a purpose-driven organization.', bn: 'উদ্দেশ্যভিত্তিক প্রতিষ্ঠানের সঙ্গে আপনার ক্যারিয়ার গড়ুন।' } },
+  { slug: '/success-stories', component: 'success-story', title: { en: 'Success Stories of Srizony', bn: 'সৃজনীর সাফল্যের গল্পসমূহ' }, heading: { en: 'Success Stories of Srizony', bn: 'সৃজনীর সাফল্যের গল্পসমূহ' }, subtitle: { en: 'Stories of people and communities whose lives have changed.', bn: 'মানুষ ও কমিউনিটির জীবনে ইতিবাচক পরিবর্তনের সাফল্যের গল্প।' } },
+  { slug: '/impact/statistics', component: 'stat', title: { en: 'Impact Statistics', bn: 'প্রভাবের পরিসংখ্যান' }, heading: { en: 'Our Impact', bn: 'আমাদের প্রভাব' }, subtitle: { en: 'Verified impact figures and organizational metrics.', bn: 'যাচাইকৃত প্রভাবের পরিসংখ্যান ও সাংগঠনিক সূচক।' } },
+]
+
+export const DEFAULT_CONTENT_PARENT: Record<ContentComponent, string> = Object.fromEntries(
+  CONTENT_COLLECTION_ROUTES.map((route) => [route.component, route.slug]),
+) as Record<ContentComponent, string>
+
+/** Canonical root collection routes are also the fixed parents for their detail records. */
+export const FIXED_CONTENT_PARENT: Partial<Record<ContentComponent, string>> = {
+  news: '/news',
+  'success-story': '/success-stories',
+}
+
+export function getDefaultContentParent(component: ContentComponent): string {
+  return FIXED_CONTENT_PARENT[component] || DEFAULT_CONTENT_PARENT[component] || '/'
+}
+
+export function getContentCollectionRoute(slug: string) {
+  return CONTENT_COLLECTION_ROUTES.find((route) => route.slug === slug)
+}
 
 export const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 
@@ -136,4 +195,4 @@ export function storageKeys(def: ComponentDef) {
 export const CORE_KEYS = ['title_en', 'title_bn', 'summary_en', 'summary_bn', 'body_en', 'body_bn', 'image', 'date']
 export type ContentValues = Record<string, string>
 export type ContentRecord = { id: number; component: ContentComponent; slug: string; status: 'published' | 'draft' | 'hidden'; values: ContentValues; publishedAt: string; updatedAt: string }
-export type FeedItem = { id: number; component: ContentComponent; slug: string; title: { en: string; bn: string }; summary: { en: string; bn: string }; image?: string; date: string; href?: string; deadline?: string }
+export type FeedItem = { id: number; component: ContentComponent; slug: string; title: { en: string; bn: string }; summary: { en: string; bn: string }; image?: string; date: string; href?: string; deadline?: string; projectStatus?: string; location?: { en: string; bn: string }; employmentType?: string; vacancies?: string; salary?: string; attachment?: string; category?: { en: string; bn: string }; metricValue?: string; icon?: string; illustration?: string }

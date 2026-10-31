@@ -33,18 +33,30 @@ export const API_REGISTRY: ApiEndpoint[] = [
  },
  {
   "method": "GET",
+  "path": "/api/admin/database/export",
+  "access": "Admin session",
+  "description": "Export editable CMS and public site data as structured JSON"
+ },
+ {
+  "method": "POST",
+  "path": "/api/admin/database/import",
+  "access": "Admin session",
+  "description": "Validate and merge CMS site-data JSON by primary key; omitted records are preserved"
+ },
+ {
+  "method": "GET",
   "path": "/api/admin/donations",
   "access": "CMS session",
   "description": "Donation report"
  },
  {
-  "method": "GET",
+  "method": "DELETE",
   "path": "/api/admin/entities",
   "access": "CMS session",
   "description": "Read-only table browser"
  },
  {
-  "method": "POST",
+  "method": "GET",
   "path": "/api/admin/entities",
   "access": "CMS session",
   "description": "Read-only table browser"
@@ -56,7 +68,7 @@ export const API_REGISTRY: ApiEndpoint[] = [
   "description": "Read-only table browser"
  },
  {
-  "method": "DELETE",
+  "method": "POST",
   "path": "/api/admin/entities",
   "access": "CMS session",
   "description": "Read-only table browser"
@@ -92,7 +104,19 @@ export const API_REGISTRY: ApiEndpoint[] = [
   "description": "Media upload"
  },
  {
+  "method": "DELETE",
+  "path": "/api/admin/navigation",
+  "access": "CMS session",
+  "description": "Menu tree: add, rename, remove, drag-and-drop order"
+ },
+ {
   "method": "GET",
+  "path": "/api/admin/navigation",
+  "access": "CMS session",
+  "description": "Menu tree: add, rename, remove, drag-and-drop order"
+ },
+ {
+  "method": "PATCH",
   "path": "/api/admin/navigation",
   "access": "CMS session",
   "description": "Menu tree: add, rename, remove, drag-and-drop order"
@@ -110,37 +134,31 @@ export const API_REGISTRY: ApiEndpoint[] = [
   "description": "Menu tree: add, rename, remove, drag-and-drop order"
  },
  {
+  "method": "DELETE",
+  "path": "/api/admin/session",
+  "access": "CMS session",
+  "description": "CMS sign-out"
+ },
+ {
+  "method": "GET",
+  "path": "/api/admin/session",
+  "access": "CMS session",
+  "description": "CMS sign-out"
+ },
+ {
+  "method": "DELETE",
+  "path": "/api/admin/site-content",
+  "access": "CMS session",
+  "description": "Slug-managed content (projects, products, team, notices, reports, jobs)"
+ },
+ {
+  "method": "GET",
+  "path": "/api/admin/site-content",
+  "access": "CMS session",
+  "description": "Slug-managed content (projects, products, team, notices, reports, jobs)"
+ },
+ {
   "method": "PATCH",
-  "path": "/api/admin/navigation",
-  "access": "CMS session",
-  "description": "Menu tree: add, rename, remove, drag-and-drop order"
- },
- {
-  "method": "DELETE",
-  "path": "/api/admin/navigation",
-  "access": "CMS session",
-  "description": "Menu tree: add, rename, remove, drag-and-drop order"
- },
- {
-  "method": "GET",
-  "path": "/api/admin/newsletter",
-  "access": "CMS session",
-  "description": "Subscriber report"
- },
- {
-  "method": "GET",
-  "path": "/api/admin/session",
-  "access": "CMS session",
-  "description": "CMS sign-out"
- },
- {
-  "method": "DELETE",
-  "path": "/api/admin/session",
-  "access": "CMS session",
-  "description": "CMS sign-out"
- },
- {
-  "method": "GET",
   "path": "/api/admin/site-content",
   "access": "CMS session",
   "description": "Slug-managed content (projects, products, team, notices, reports, jobs)"
@@ -153,18 +171,6 @@ export const API_REGISTRY: ApiEndpoint[] = [
  },
  {
   "method": "PUT",
-  "path": "/api/admin/site-content",
-  "access": "CMS session",
-  "description": "Slug-managed content (projects, products, team, notices, reports, jobs)"
- },
- {
-  "method": "PATCH",
-  "path": "/api/admin/site-content",
-  "access": "CMS session",
-  "description": "Slug-managed content (projects, products, team, notices, reports, jobs)"
- },
- {
-  "method": "DELETE",
   "path": "/api/admin/site-content",
   "access": "CMS session",
   "description": "Slug-managed content (projects, products, team, notices, reports, jobs)"
@@ -182,25 +188,13 @@ export const API_REGISTRY: ApiEndpoint[] = [
   "description": "Contact requests"
  },
  {
-  "method": "GET",
-  "path": "/api/admin/theme",
-  "access": "CMS session",
-  "description": "Theme palettes"
- },
- {
-  "method": "PUT",
-  "path": "/api/admin/theme",
-  "access": "CMS session",
-  "description": "Theme palettes"
- },
- {
-  "method": "GET",
+  "method": "DELETE",
   "path": "/api/admin/users",
   "access": "CMS session",
   "description": "CMS user management"
  },
  {
-  "method": "POST",
+  "method": "GET",
   "path": "/api/admin/users",
   "access": "CMS session",
   "description": "CMS user management"
@@ -212,7 +206,7 @@ export const API_REGISTRY: ApiEndpoint[] = [
   "description": "CMS user management"
  },
  {
-  "method": "DELETE",
+  "method": "POST",
   "path": "/api/admin/users",
   "access": "CMS session",
   "description": "CMS user management"
@@ -236,13 +230,13 @@ export const API_REGISTRY: ApiEndpoint[] = [
   "description": ""
  },
  {
-  "method": "GET",
+  "method": "DELETE",
   "path": "/api/auth/me",
   "access": "Public",
   "description": ""
  },
  {
-  "method": "DELETE",
+  "method": "GET",
   "path": "/api/auth/me",
   "access": "Public",
   "description": ""
@@ -260,13 +254,13 @@ export const API_REGISTRY: ApiEndpoint[] = [
   "description": ""
  },
  {
-  "method": "POST",
+  "method": "GET",
   "path": "/api/donations/callback",
   "access": "Public",
   "description": ""
  },
  {
-  "method": "GET",
+  "method": "POST",
   "path": "/api/donations/callback",
   "access": "Public",
   "description": ""
@@ -294,6 +288,12 @@ export const API_REGISTRY: ApiEndpoint[] = [
   "path": "/api/jobs/apply",
   "access": "Public",
   "description": "Public job application"
+ },
+ {
+  "method": "POST",
+  "path": "/api/jobs/resume",
+  "access": "Public, rate-limited; stores private PDF resumes",
+  "description": "Upload a PDF resume and receive a short-lived one-time token for the job application form"
  },
  {
   "method": "GET",
@@ -326,30 +326,6 @@ export const API_REGISTRY: ApiEndpoint[] = [
   "description": "Public news feed (projects, notices, reports, jobs by date)"
  },
  {
-  "method": "POST",
-  "path": "/api/newsletter",
-  "access": "Public",
-  "description": "Newsletter subscribe / verify"
- },
- {
-  "method": "GET",
-  "path": "/api/newsletter",
-  "access": "Public",
-  "description": "Newsletter subscribe / verify"
- },
- {
-  "method": "GET",
-  "path": "/api/newsletter/unsubscribe",
-  "access": "Public",
-  "description": ""
- },
- {
-  "method": "POST",
-  "path": "/api/newsletter/unsubscribe",
-  "access": "Public",
-  "description": ""
- },
- {
   "method": "GET",
   "path": "/api/pages",
   "access": "Public",
@@ -378,5 +354,17 @@ export const API_REGISTRY: ApiEndpoint[] = [
   "path": "/api/visitors",
   "access": "Public",
   "description": "Visitor tracking beacon"
+ },
+ {
+  "method": "GET",
+  "path": "/api/website-essentials",
+  "access": "Public read",
+  "description": "Public social links, published PDFs, staff and working locations"
+ },
+ {
+  "method": "PUT",
+  "path": "/api/website-essentials",
+  "access": "Admin / editor session",
+  "description": "Update public social links, PDFs, staff directory and map locations"
  }
 ]

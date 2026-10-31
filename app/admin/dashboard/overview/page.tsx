@@ -40,7 +40,6 @@ type DashboardResponse = {
     visitors: number
     visits: number
     returningVisitors: number
-    subscribers: number
     donations: number
     completedDonations: number
     donationTotal: number
@@ -192,24 +191,34 @@ export default function OverviewPage() {
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState('')
+  const [contactError, setContactError] = useState('')
+  const [donationError, setDonationError] = useState('')
+  const [actualExecutionMs, setActualExecutionMs] = useState<number | null>(null)
 
   async function loadDashboard(showRefresh = false) {
     if (showRefresh) setRefreshing(true)
     else setLoading(true)
     setError('')
+    setContactError('')
+    setDonationError('')
+    const startedAt = performance.now()
 
     try {
-      const [dashboard, recentSubmissions, recentDonations] = await Promise.all([
+      const [dashboardResult, contactsResult, donationsResult] = await Promise.allSettled([
         getDashboard<DashboardResponse>(days),
-        getRecentSubmissions().catch(() => []),
-        getRecentDonations().catch(() => []),
+        getRecentSubmissions(),
+        getRecentDonations(),
       ])
-      setData(dashboard)
-      setSubmissions(recentSubmissions.slice(0, 6))
-      setDonations(recentDonations.slice(0, 6))
+      if (dashboardResult.status === 'rejected') throw dashboardResult.reason
+      setData(dashboardResult.value)
+      if (contactsResult.status === 'fulfilled') setSubmissions(contactsResult.value.slice(0, 6))
+      else { setSubmissions([]); setContactError(contactsResult.reason instanceof Error ? contactsResult.reason.message : 'Unable to load contact requests.') }
+      if (donationsResult.status === 'fulfilled') setDonations(donationsResult.value.slice(0, 6))
+      else { setDonations([]); setDonationError(donationsResult.reason instanceof Error ? donationsResult.reason.message : 'Unable to load donations.') }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Unable to load dashboard data.')
     } finally {
+      setActualExecutionMs(Math.max(0, Math.round(performance.now() - startedAt)))
       setLoading(false)
       setRefreshing(false)
     }
@@ -231,7 +240,7 @@ export default function OverviewPage() {
 
   const stats = data?.stats ?? {
     pages: 0, enquiries: 0, newEnquiries: 0, users: 0, visitors: 0, visits: 0,
-    returningVisitors: 0, subscribers: 0, donations: 0, completedDonations: 0,
+    returningVisitors: 0, donations: 0, completedDonations: 0,
     donationTotal: 0, rangeDonationTotal: 0, conversionRate: 0, activeVisitors: 0,
   }
   const recentSubmissions = useMemo(() => submissions.slice(0, 6), [submissions])
@@ -260,7 +269,6 @@ export default function OverviewPage() {
     { label: 'Visits', value: stats.visits, icon: BarChart3, href: '/admin/dashboard/reports/visitors', note: `${days} day activity` },
     { label: 'Enquiries', value: stats.enquiries, icon: Mail, href: '/admin/dashboard/reports/submissions', note: `${stats.newEnquiries.toLocaleString()} new` },
     { label: 'Form users', value: stats.users, icon: Users, href: '/admin/dashboard/reports/submissions', note: 'Known identities' },
-    { label: 'Subscribers', value: stats.subscribers, icon: Megaphone, href: '/admin/dashboard/reports/newsletter', note: 'Currently subscribed' },
     { label: 'Donations', value: stats.donations, icon: CircleDollarSign, href: '/admin/dashboard/reports/donations', note: `${stats.completedDonations.toLocaleString()} completed` },
     { label: 'Published pages', value: stats.pages, icon: FileText, href: '/admin/dashboard/navigation', note: 'Public CMS pages' },
     { label: 'Completed donations', value: stats.completedDonations, icon: CheckCircle2, href: '/admin/dashboard/reports/donations', note: `৳ ${stats.donationTotal.toLocaleString('en-BD', { maximumFractionDigits: 0 })} lifetime` },
@@ -282,7 +290,11 @@ export default function OverviewPage() {
         }
       />
 
-      {error && <div className="dashboard-error-strip"><Activity size={14} />{error}</div>}
+      {error && <div className="dashboard-error-strip" role="alert"><Activity size={14} />{error}</div>}
+      <section className="dashboard-execution-strip" aria-label="Dashboard request execution timing" aria-live="polite">
+        <div><span>Estimated target</span><strong>≤ 2.0 s</strong><small>Parallel dashboard data load</small></div>
+        <div><span>Actual execution</span><strong>{actualExecutionMs === null ? '—' : actualExecutionMs >= 1000 ? `${(actualExecutionMs / 1000).toFixed(2)} s` : `${actualExecutionMs} ms`}</strong><small>Observed in this browser</small></div>
+      </section>
 
       <section className="dashboard-metrics" aria-label="Website metrics">
         {metricGroups.map((metric) => <Metric key={metric.label} {...metric} />)}
@@ -307,6 +319,7 @@ export default function OverviewPage() {
             <div><h2>Recent contact requests</h2><p>Update request status without leaving the dashboard.</p></div>
             <Link href="/admin/dashboard/reports/submissions">View all <ChevronRight size={13} /></Link>
           </div>
+          {contactError && <div className="dashboard-error-strip dashboard-panel-error" role="alert"><Activity size={14} />{contactError}</div>}
           <div className="dashboard-table-scroll">
             <table className="dashboard-table">
               <thead><tr><th>Contact</th><th>Type</th><th>Created</th><th>Status</th></tr></thead>
@@ -334,6 +347,7 @@ export default function OverviewPage() {
             <div><h2>Recent donations</h2><p>Latest gateway records and transaction status.</p></div>
             <Link href="/admin/dashboard/reports/donations">View all <ChevronRight size={13} /></Link>
           </div>
+          {donationError && <div className="dashboard-error-strip dashboard-panel-error" role="alert"><Activity size={14} />{donationError}</div>}
           <div className="dashboard-table-scroll">
             <table className="dashboard-table">
               <thead><tr><th>Transaction</th><th>Amount</th><th>Status</th><th>Created</th></tr></thead>
@@ -364,7 +378,6 @@ export default function OverviewPage() {
             ['/admin/dashboard/jobs', 'Jobs', Megaphone],
             ['/admin/dashboard/reports/visitors', 'Visitors', Eye],
             ['/admin/dashboard/reports/submissions', 'Contact Requests', Mail],
-            ['/admin/dashboard/reports/newsletter', 'Subscribers', Megaphone],
             ['/admin/dashboard/reports/donations', 'Donations', CircleDollarSign],
           ].map(([href, label, Icon]) => (
             <Link key={String(href)} href={String(href)} className="dashboard-quick-link">

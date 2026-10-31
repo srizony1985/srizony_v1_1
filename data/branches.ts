@@ -1,7 +1,9 @@
 import type { Bilingual } from '@/types/entityType'
 
 /**
- * Office / branch directory used by the National Footprint map on the landing page.
+ * Legacy bootstrap/recovery copy for the office directory. Runtime display and editing
+ * read the canonical Website Essentials record in PostgreSQL. Keep this file limited
+ * to migration and first-run fallback use through lib/cms/fallback-gateway.ts.
  *
  * HOW TO COMPLETE THIS FILE
  *  - Each entry is one map pin. `lat` / `lng` place it on the map automatically.

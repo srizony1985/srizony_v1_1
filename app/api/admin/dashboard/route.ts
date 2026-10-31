@@ -17,7 +17,7 @@ export async function GET(request: Request) {
 
   if (!database) {
     return NextResponse.json({
-      stats: { pages: 0, enquiries: 0, users: 0, visitors: 0, visits: 0, returningVisitors: 0, subscribers: 0, donations: 0, completedDonations: 0, donationTotal: 0, rangeDonationTotal: 0, conversionRate: 0, activeVisitors: 0 },
+      stats: { pages: 0, enquiries: 0, users: 0, visitors: 0, visits: 0, returningVisitors: 0, donations: 0, completedDonations: 0, donationTotal: 0, rangeDonationTotal: 0, conversionRate: 0, activeVisitors: 0 },
       topPages: [],
       referrers: [],
       range: days,
@@ -31,13 +31,12 @@ export async function GET(request: Request) {
       withDbRetry(() => database.execute(sql`
         SELECT
           (SELECT COUNT(*)::int FROM pages WHERE status = 'published') AS pages,
-          (SELECT COUNT(*)::int FROM submissions) AS enquiries,
-          (SELECT COUNT(*)::int FROM submissions WHERE status = 'new') AS new_enquiries,
+          (SELECT COUNT(*)::int FROM submissions WHERE type = 'query') AS enquiries,
+          (SELECT COUNT(*)::int FROM submissions WHERE type = 'query' AND status = 'new') AS new_enquiries,
           (SELECT COUNT(*)::int FROM form_users) AS users,
           (SELECT COUNT(*)::int FROM site_visitors) AS visitors,
           (SELECT COUNT(*)::int FROM visitor_events) AS visits,
           (SELECT COUNT(*)::int FROM site_visitors WHERE page_views > 1) AS returning_visitors,
-          (SELECT COUNT(*)::int FROM newsletter_subscribers WHERE status = 'subscribed') AS subscribers,
           (SELECT COUNT(*)::int FROM donations) AS donations,
           (SELECT COUNT(*)::int FROM donations WHERE status IN ('paid', 'success')) AS completed_donations,
           COALESCE((SELECT SUM(amount::numeric) FROM donations WHERE status IN ('paid', 'success')), 0) AS donation_total,
@@ -55,7 +54,7 @@ export async function GET(request: Request) {
           to_char(days.day, 'YYYY-MM-DD') AS date,
           to_char(days.day, 'DD Mon') AS label,
           (SELECT COUNT(*)::int FROM visitor_events ve WHERE (ve.created_at AT TIME ZONE 'Asia/Dhaka')::date = days.day) AS visitors,
-          (SELECT COUNT(*)::int FROM submissions s WHERE (s.created_at AT TIME ZONE 'Asia/Dhaka')::date = days.day) AS enquiries,
+          (SELECT COUNT(*)::int FROM submissions s WHERE s.type = 'query' AND (s.created_at AT TIME ZONE 'Asia/Dhaka')::date = days.day) AS enquiries,
           (SELECT COUNT(*)::int FROM donations d WHERE (d.created_at AT TIME ZONE 'Asia/Dhaka')::date = days.day) AS donations,
           COALESCE((SELECT SUM(d.amount::numeric) FROM donations d WHERE d.status IN ('paid','success') AND (d.created_at AT TIME ZONE 'Asia/Dhaka')::date = days.day), 0) AS donation_amount
         FROM days
@@ -98,7 +97,6 @@ export async function GET(request: Request) {
         visitors: Number(row.visitors ?? 0),
         visits: Number(row.visits ?? 0),
         returningVisitors: Number(row.returning_visitors ?? 0),
-        subscribers: Number(row.subscribers ?? 0),
         donations: Number(row.donations ?? 0),
         completedDonations: Number(row.completed_donations ?? 0),
         donationTotal: Number(row.donation_total ?? 0),

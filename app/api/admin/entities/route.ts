@@ -10,10 +10,10 @@ const TABLES = [
   'video_sections','cta_sections','notice_list_sections','notice_items','contact_sections','contact_locations',
   'donation_sections','carousel_sections','carousel_items','hero_data','hero_slides','hero_stats',
   'nav_groups','nav_items','content_entries','content_entry_bodies','content_entry_tags','content_entry_related',
-  'content_entry_gallery','content_entry_video','themes','ui_content','site_global_state','contact_info','contact_phones',
+  'content_entry_gallery','content_entry_video','ui_content','site_global_state','contact_info','contact_phones',
   'contact_socials','contact_footprint','sdg_steps','payment_info',
   'site_visitors','visitor_events','form_users','enquiry_daily_limits','submissions','cookie_consents',
-  'newsletter_subscribers','donations','site_settings',
+  'donations','site_settings',
 ] as const
 type TableName = typeof TABLES[number]
 

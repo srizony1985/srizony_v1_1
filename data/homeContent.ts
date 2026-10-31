@@ -89,12 +89,12 @@ export const AREAS_INTRO = {
 }
 
 export const AREAS: AreaCard[] = [
-  { href: '/health-program', icon: 'heart', image: poolUrl('clinic'), title: { en: 'Health & Nutrition', bn: 'স্বাস্থ্য ও পুষ্টি' }, body: { en: 'Primary healthcare and nutrition for communities.', bn: 'কমিউনিটির জন্য প্রাথমিক স্বাস্থ্যসেবা ও পুষ্টি।' } },
+  { href: '/social-development/health-program', icon: 'heart', image: poolUrl('clinic'), title: { en: 'Health & Nutrition', bn: 'স্বাস্থ্য ও পুষ্টি' }, body: { en: 'Primary healthcare and nutrition for communities.', bn: 'কমিউনিটির জন্য প্রাথমিক স্বাস্থ্যসেবা ও পুষ্টি।' } },
   { href: '/social-development', icon: 'users', image: poolUrl('communityAction'), title: { en: 'Social Development', bn: 'সামাজিক উন্নয়ন' }, body: { en: 'Rights, inclusion and community leadership.', bn: 'অধিকার, অন্তর্ভুক্তি ও কমিউনিটি নেতৃত্ব।' } },
   { href: '/microfinance-program', icon: 'coins', image: poolUrl('sewing'), title: { en: 'Microfinance & Loans', bn: 'ক্ষুদ্রঋণ ও ঋণ সেবা' }, body: { en: 'Savings and loans built around livelihoods.', bn: 'জীবিকাকেন্দ্রিক সঞ্চয় ও ঋণসেবা।' } },
-  { href: '/agriculture-livelihood', icon: 'sprout', image: poolUrl('agriculture'), title: { en: 'Agriculture & Livelihood', bn: 'কৃষি ও জীবিকা' }, body: { en: 'Climate-aware farming and rural income.', bn: 'জলবায়ু-সচেতন কৃষি ও গ্রামীণ আয়।' } },
+  { href: '/social-development/agriculture-livelihood', icon: 'sprout', image: poolUrl('agriculture'), title: { en: 'Agriculture & Livelihood', bn: 'কৃষি ও জীবিকা' }, body: { en: 'Climate-aware farming and rural income.', bn: 'জলবায়ু-সচেতন কৃষি ও গ্রামীণ আয়।' } },
   { href: '/enterprise-development', icon: 'store', image: poolUrl('localMarket'), title: { en: 'Enterprise Development', bn: 'এন্টারপ্রাইজ উন্নয়ন' }, body: { en: 'Social enterprises linking people to markets.', bn: 'মানুষকে বাজারের সঙ্গে যুক্ত করা সামাজিক উদ্যোগ।' } },
-  { href: '/education-program', icon: 'book', image: poolUrl('localSchool'), title: { en: 'Education & Skills', bn: 'শিক্ষা ও দক্ষতা' }, body: { en: 'Learning and practical skills for young people.', bn: 'তরুণদের জন্য শিক্ষা ও ব্যবহারিক দক্ষতা।' } },
+  { href: '/social-development/education-program', icon: 'book', image: poolUrl('localSchool'), title: { en: 'Education & Skills', bn: 'শিক্ষা ও দক্ষতা' }, body: { en: 'Learning and practical skills for young people.', bn: 'তরুণদের জন্য শিক্ষা ও ব্যবহারিক দক্ষতা।' } },
 ]
 
 export const STORIES_INTRO = {

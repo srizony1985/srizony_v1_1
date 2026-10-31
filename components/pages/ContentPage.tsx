@@ -1,13 +1,14 @@
 'use client'
 
 import { usePathname } from 'next/navigation'
+import type { ReactNode } from 'react'
 import { useSite } from '@/components/containers/SiteProvider'
 import HomePage from '@/components/home/HomePage'
 import PageTemplate from '@/components/pages/PageTemplate'
 import LogoLoader from '@/components/ui/LogoLoader'
 import StatePage from '@/components/pages/StatePage'
 
-export default function ContentPage({ slug }: { slug: string }) {
+export default function ContentPage({ slug, children }: { slug: string; children?: ReactNode }) {
   const pathname = usePathname() || slug || '/'
   const { lang, site, loading, error, refresh } = useSite()
 
@@ -54,5 +55,5 @@ export default function ContentPage({ slug }: { slug: string }) {
 
   // The route decides which template renders, so navigating back to / never shows the previous page.
   if (canonicalPath === '/') return <HomePage page={page} />
-  return <PageTemplate page={page} canonicalPath={canonicalPath} />
+  return <PageTemplate page={page} canonicalPath={canonicalPath}>{children}</PageTemplate>
 }

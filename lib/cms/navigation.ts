@@ -3,22 +3,63 @@ import { revalidatePath, revalidateTag } from 'next/cache'
 import { db, withDbRetry } from '@/lib/db'
 import { saveDocument } from '@/lib/site'
 import type { PageData, PageSection, Section } from '@/types/entityType'
+import { CONTENT_COLLECTION_ROUTES } from './components'
 import { ensureCmsSchema } from './ensureSchema'
+import { canonicalizeCmsRoute, getContentRouteParent } from '@/lib/cms/routes'
 
 type Row = Record<string, any>
-export type MenuType = 'page' | 'external'
+export type MenuType = 'page' | 'external' | 'folder'
 export type SectionButtonType = 'none' | 'primary' | 'secondary' | 'both'
-export type NavNode = { id: number; labelEn: string; labelBn: string; slug: string; isLandingPage?: boolean; renderedComponents: Section['type'][]; menuType: MenuType; sectionCount: number; sectionContentType: Section['type']; sectionButtonType: SectionButtonType; children: NavNode[] }
-export type NavGroupTree = { id: number; key: string; labelEn: string; labelBn: string; items: NavNode[] }
+export type NavNode = { id: number; parentId?: number | null; labelEn: string; labelBn: string; slug: string; visible: boolean; isLandingPage?: boolean; renderedComponents: Section['type'][]; menuType: MenuType; sectionCount: number; sectionContentType: Section['type']; sectionButtonType: SectionButtonType; children: NavNode[] }
+export type NavGroupTree = { id: number; key: string; labelEn: string; labelBn: string; landingId: number; items: NavNode[] }
 export class NavError extends Error { constructor(message: string, public status = 400) { super(message) } }
 
-const MAX_DEPTH = 3
+// One navigation tree: Home is fixed, followed by up to three editable levels.
+// This accommodates Who We Are -> About Us -> About Us child pages.
+const MENU_LEVELS_BELOW_LANDING = 3
+const MAX_DEPTH = MENU_LEVELS_BELOW_LANDING + 1
 const SLUG = /^\/[a-z0-9]+(?:-[a-z0-9]+)*(?:\/[a-z0-9]+(?:-[a-z0-9]+)*)*$/
-const RESERVED = /^\/(admin|api|bn|_next|search|unsubscribe)(\/|$)/
+const RESERVED = /^\/(admin|api|bn|_next|search|unsubscribe|home)(\/|$)/
 const SECTION_TYPES: Section['type'][] = ['richText', 'stats', 'cards', 'gallery', 'timeline', 'diagram', 'table', 'video', 'cta', 'noticeList', 'contact', 'donation', 'carousel', 'contentFeed', 'reports']
 const BUTTON_TYPES: SectionButtonType[] = ['none', 'primary', 'secondary', 'both']
 const database = () => { if (!db) throw new NavError('DATABASE_URL is not configured', 503); return db }
 const run = (q: ReturnType<typeof sql>) => withDbRetry(() => database().execute(q))
+
+/**
+ * Normalize legacy multi-group data into one navigation tree. Home is the only
+ * root; all previous group records are merged into the primary navigation.
+ * The explicit hierarchy itself is installed by migration 0016.
+ */
+async function ensureLandingRootHierarchy() {
+  await run(sql`INSERT INTO nav_groups (key, label_en, label_bn, sort_order)
+    VALUES ('primary', 'Site Navigation', 'সাইট নেভিগেশন', 0)
+    ON CONFLICT (key) DO NOTHING`)
+  const primary = (await run(sql`SELECT id FROM nav_groups WHERE key = 'primary' LIMIT 1`)).rows[0] as Row | undefined
+  if (!primary) throw new NavError('The single navigation tree could not be initialized.', 503)
+  const primaryId = Number(primary.id)
+
+  let landing = (await run(sql`SELECT id FROM nav_items WHERE href = '/' AND COALESCE(menu_type, 'page') = 'page' ORDER BY CASE WHEN group_id = ${primaryId} THEN 0 ELSE 1 END, id LIMIT 1`)).rows[0] as Row | undefined
+  if (!landing) {
+    const inserted = await run(sql`INSERT INTO nav_items (group_id, parent_id, label_en, label_bn, href, menu_type, sort_order, is_visible)
+      VALUES (${primaryId}, NULL, 'Home', 'হোম', '/', 'page', 0, true) RETURNING id`)
+    landing = inserted.rows[0] as Row
+  }
+  const landingId = Number(landing.id)
+
+  const duplicateHomes = (await run(sql`SELECT id FROM nav_items WHERE href = '/' AND id <> ${landingId} ORDER BY id`)).rows as Row[]
+  for (const duplicate of duplicateHomes) {
+    const duplicateId = Number(duplicate.id)
+    await run(sql`UPDATE nav_items SET parent_id = ${landingId} WHERE parent_id = ${duplicateId}`)
+    await run(sql`DELETE FROM nav_items WHERE id = ${duplicateId}`)
+  }
+
+  await run(sql`UPDATE nav_items SET group_id = ${primaryId} WHERE group_id <> ${primaryId}`)
+  await run(sql`UPDATE nav_items SET parent_id = ${landingId} WHERE parent_id IS NULL AND id <> ${landingId}`)
+  await run(sql`UPDATE nav_items SET group_id = ${primaryId}, parent_id = NULL, sort_order = 0, is_visible = true, label_en = 'Home', label_bn = 'হোম' WHERE id = ${landingId}`)
+  await run(sql`DELETE FROM nav_groups WHERE id <> ${primaryId}`)
+  return landingId
+}
+
 const refresh = () => {
   revalidatePath('/', 'layout')
   revalidatePath('/api/navigation')
@@ -37,12 +78,14 @@ function parseRenderedComponents(value: unknown): Section['type'][] {
 }
 
 export function normalizeSlug(input: string) {
-  const slug = '/' + input.trim().toLowerCase().replace(/^\/+|\/+$/g, '')
+  const rawSlug = '/' + input.trim().toLowerCase().replace(/^\/+|\/+$/g, '')
+  const slug = canonicalizeCmsRoute(rawSlug)
   if (!SLUG.test(slug) || RESERVED.test(slug) || slug.length > 160) throw new NavError('Slug must look like /our-work using lowercase letters, numbers and hyphens, and cannot use a reserved path.')
   return slug
 }
 
 function normalizeMenuHref(input: string, menuType: MenuType) {
+  if (menuType === 'folder') return ''
   if (menuType === 'external') {
     let url: URL
     try { url = new URL(input.trim()) } catch { throw new NavError('Enter a valid absolute external URL, beginning with https://.') }
@@ -50,6 +93,11 @@ function normalizeMenuHref(input: string, menuType: MenuType) {
     return url.toString()
   }
   return normalizeSlug(input)
+}
+
+/** Menu routes are explicit page paths, not values inferred from their menu parent. */
+function normalizeStoredMenuHref(input: string, menuType: MenuType) {
+  return normalizeMenuHref(input, menuType)
 }
 function cleanSectionCount(value: unknown) {
   const count = Number(value)
@@ -83,12 +131,16 @@ function defaultSection(type: Section['type'], titleEn: string, titleBn: string,
       case 'contact': return { type, heading, address: blank, phones: [], emails: [], locations: [] }
       case 'donation': return { type, heading, body: blank }
       case 'carousel': return { type, heading, items: [], presentation: 'collection' }
-      case 'contentFeed': return { type, heading, components: ['project'], items: [] }
+      case 'contentFeed': return { type, heading, components: ['project'], items: [], columns: 3 }
       case 'reports': return { type, heading, items: [] }
       default: return { type: 'richText', heading, body: [{ ...blank }] }
     }
   })()
   section.visible = true
+  section.sectionId = `section-${slug.replace(/[^a-z0-9]+/gi, '-')}-${index + 1}`
+  const defaultContentComponent = type === 'stats' ? 'stat' : type === 'reports' ? 'report' : type === 'noticeList' ? 'notice' : type === 'carousel' ? 'news' : 'project'
+  const defaultLayout = type === 'carousel' ? 'carousel' : type === 'gallery' ? 'masonry' : type === 'cards' || type === 'contentFeed' || type === 'stats' ? 'grid' : 'list'
+  section.contentCollection = { enabled: !['contact', 'diagram', 'video'].includes(type), component: defaultContentComponent, maxItems: type === 'cta' || type === 'donation' ? 1 : 12, layout: defaultLayout, columns: 3, gap: 24, viewportItems: 3 }
   section.buttonConfig = buttonType === 'none' ? { visible: false, mode: 'primary', label: { en: 'Learn more', bn: 'আরও জানুন' }, href: '/contact', action: 'route' } : {
     visible: true, mode: buttonType === 'both' ? 'both' : buttonType, label: { en: 'Learn more', bn: 'আরও জানুন' }, secondaryLabel: { en: 'Contact us', bn: 'যোগাযোগ করুন' }, href: '/contact', secondaryHref: '/contact', action: 'route',
   }
@@ -109,9 +161,10 @@ function checkRenderedComponents(value: unknown): Section['type'][] {
 
 export async function getNavigationTree(): Promise<NavGroupTree[]> {
   await ensureCmsSchema()
+  const landingId = await ensureLandingRootHierarchy()
   const rows = (await run(sql`
-    SELECT g.id AS gid, g.key, g.label_en AS g_en, g.label_bn AS g_bn, g.sort_order AS g_sort,
-           i.id, i.parent_id, i.label_en, i.label_bn, i.href, i.sort_order, i.content_types, i.menu_type,
+    SELECT g.id AS gid, g.key, g.label_en AS g_en, g.label_bn AS g_bn,
+           i.id, i.parent_id, i.label_en, i.label_bn, i.href, i.sort_order, i.content_types, i.menu_type, i.is_visible,
            COALESCE(CASE WHEN jsonb_typeof(p.render_cache->'sections') = 'array' THEN jsonb_array_length(p.render_cache->'sections') END, i.section_count, 1) AS actual_section_count,
            COALESCE(p.render_cache->'sections'->0->>'type', i.section_content_type, 'richText') AS actual_section_content_type,
            CASE WHEN p.render_cache->'sections'->0->'buttonConfig' IS NOT NULL
@@ -120,38 +173,66 @@ export async function getNavigationTree(): Promise<NavGroupTree[]> {
              WHEN p.render_cache->'sections'->0->>'type' = 'cta' AND p.render_cache->'sections'->0->'secondary' IS NOT NULL THEN 'both'
              WHEN p.render_cache->'sections'->0->>'type' = 'cta' AND p.render_cache->'sections'->0->'primary' IS NOT NULL THEN 'primary'
              ELSE COALESCE(i.section_button_type, 'none') END AS actual_section_button_type
-    FROM nav_groups g LEFT JOIN nav_items i ON i.group_id = g.id
+    FROM nav_groups g
+    LEFT JOIN nav_items i ON i.group_id = g.id
     LEFT JOIN pages p ON p.slug = i.href AND COALESCE(i.menu_type, 'page') = 'page'
-    ORDER BY g.sort_order, i.sort_order, i.id`)).rows as Row[]
-  const groups = new Map<number, NavGroupTree & { flat: Row[] }>()
-  for (const r of rows) {
-    const gid = Number(r.gid)
-    if (!groups.has(gid)) groups.set(gid, { id: gid, key: r.key, labelEn: r.g_en, labelBn: r.g_bn, items: [], flat: [] })
-    if (r.id != null) groups.get(gid)!.flat.push(r)
-  }
-  const build = (flat: Row[], parent: number | null): NavNode[] => flat
-    .filter((r) => (r.parent_id == null ? parent === null : Number(r.parent_id) === parent))
-    .map((r) => ({ id: Number(r.id), labelEn: r.label_en, labelBn: r.label_bn, slug: r.href, isLandingPage: String(r.href) === '/', renderedComponents: parseRenderedComponents(r.content_types), menuType: (r.menu_type === 'external' ? 'external' : 'page') as MenuType, sectionCount: Math.max(1, Math.min(12, Number(r.actual_section_count || r.section_count || 1))), sectionContentType: (SECTION_TYPES.includes(r.actual_section_content_type as Section['type']) ? r.actual_section_content_type : 'richText') as Section['type'], sectionButtonType: (BUTTON_TYPES.includes(r.actual_section_button_type as SectionButtonType) ? r.actual_section_button_type : 'none') as SectionButtonType, children: build(flat, Number(r.id)) }))
-  return Array.from(groups.values()).map(({ flat, ...g }) => ({ ...g, items: build(flat, null) }))
+    WHERE g.key = 'primary'
+    ORDER BY i.parent_id NULLS FIRST, i.sort_order, i.id`)).rows as Row[]
+  const primary = rows[0]
+  if (!primary) throw new NavError('The Site Navigation tree is empty. Run database migration 0016 and seed the requested routes.', 409)
+  const flat = rows.filter((row) => row.id != null)
+  const build = (parent: number | null): NavNode[] => flat
+    .filter((row) => (row.parent_id == null ? parent === null : Number(row.parent_id) === parent))
+    .map((row) => ({
+      id: Number(row.id),
+      parentId: row.parent_id == null ? null : Number(row.parent_id),
+      labelEn: String(row.label_en),
+      labelBn: String(row.label_bn || ''),
+      slug: String(row.href || ''),
+      visible: row.is_visible !== false,
+      isLandingPage: String(row.href) === '/' && row.menu_type !== 'folder',
+      renderedComponents: parseRenderedComponents(row.content_types),
+      menuType: (['external', 'folder'].includes(String(row.menu_type)) ? row.menu_type : 'page') as MenuType,
+      sectionCount: Math.max(1, Math.min(12, Number(row.actual_section_count || row.section_count || 1))),
+      sectionContentType: (SECTION_TYPES.includes(row.actual_section_content_type as Section['type']) ? row.actual_section_content_type : 'richText') as Section['type'],
+      sectionButtonType: (BUTTON_TYPES.includes(row.actual_section_button_type as SectionButtonType) ? row.actual_section_button_type : 'none') as SectionButtonType,
+      children: build(Number(row.id)),
+    }))
+  return [{ id: Number(primary.gid), key: 'primary', labelEn: 'Site Navigation', labelBn: 'সাইট নেভিগেশন', landingId, items: build(null) }]
 }
 
-
-export async function updateNavigationGroup(groupKey: string, labelEnInput: string, labelBnInput: string) {
+export async function setMenuVisibility(id: number, visible: boolean) {
   await ensureCmsSchema()
-  const labelEn = labelEnInput.trim()
-  const labelBn = labelBnInput.trim() || labelEn
-  if (!labelEn) throw new NavError('Navigation group title (English) is required.')
-  const result = await run(sql`UPDATE nav_groups SET label_en = ${labelEn}, label_bn = ${labelBn} WHERE key = ${groupKey} RETURNING id`)
-  if (!result.rows.length) throw new NavError('Navigation group not found.', 404)
+  await ensureLandingRootHierarchy()
+  const current = (await run(sql`SELECT href FROM nav_items WHERE id = ${id} LIMIT 1`)).rows[0] as Row | undefined
+  if (!current) throw new NavError('Menu not found.', 404)
+  if (String(current.href) === '/') throw new NavError('Landing is fixed and cannot be hidden from navigation.', 409)
+  const result = await run(sql`UPDATE nav_items SET is_visible = ${visible} WHERE id = ${id} RETURNING id, is_visible`)
+  if (!result.rows[0]) throw new NavError('Menu not found.', 404)
   refresh()
-  return { groupKey, labelEn, labelBn }
+  return { id, visible: Boolean((result.rows[0] as Row).is_visible) }
 }
 
-async function assertSlugFree(slug: string, excludeItemId?: number) {
+
+async function assertSlugFree(slug: string, excludeItemId?: number, allowedExistingPageSlug?: string) {
   const nav = await run(sql`SELECT id FROM nav_items WHERE href = ${slug} ${excludeItemId ? sql`AND id <> ${excludeItemId}` : sql``} LIMIT 1`)
   if (nav.rows.length) throw new NavError(`The slug ${slug} is already used by another menu.`, 409)
   const page = await run(sql`SELECT id FROM pages WHERE slug = ${slug} LIMIT 1`)
-  if (page.rows.length && !excludeItemId) throw new NavError(`A page already exists at ${slug}.`, 409)
+  if (page.rows.length && slug !== allowedExistingPageSlug) throw new NavError(`A page already exists at ${slug}.`, 409)
+  const segments = slug.split('/').filter(Boolean)
+  if (segments.length) {
+    const parentPath = getContentRouteParent(slug)
+    const content = await run(sql`SELECT id FROM cms_content_items
+      WHERE slug = ${segments[segments.length - 1]}
+        AND COALESCE(NULLIF(attributes->>'routeParent', ''), CASE component
+          WHEN 'project' THEN '/projects' WHEN 'news' THEN '/news' WHEN 'enterprise' THEN '/enterprise-development'
+          WHEN 'partner-agency' THEN '/about-us/partners-networks' WHEN 'health-service' THEN '/social-development/health-program'
+          WHEN 'loan-product' THEN '/organizational-development' WHEN 'product' THEN '/enterprise-development' WHEN 'team' THEN '/management-staff'
+          WHEN 'notice' THEN '/notice' WHEN 'report' THEN '/resources' WHEN 'job' THEN '/carrer-job'
+          WHEN 'success-story' THEN '/success-stories' ELSE '/' END) = ${parentPath}
+      LIMIT 1`)
+    if (content.rows.length) throw new NavError(`A published or draft content item already owns ${slug}. Choose another menu slug or move the content first.`, 409)
+  }
 }
 
 function menuPage(slug: string, labelEn: string, labelBn: string, base?: Partial<PageData>, settings?: { sectionCount: number; sectionContentType: Section['type']; sectionButtonType: SectionButtonType; retypeFirst?: boolean; applyButtonSetting?: boolean }): PageData {
@@ -183,54 +264,67 @@ async function loadPage(slug: string) {
 
 export async function createMenu(input: { groupKey: string; parentId: number | null; labelEn: string; labelBn: string; slug: string; renderedComponents: unknown; menuType?: unknown; sectionCount?: unknown; sectionContentType?: unknown; sectionButtonType?: unknown }, actor: string) {
   await ensureCmsSchema()
+  await ensureLandingRootHierarchy()
   const labelEn = input.labelEn.trim(); const labelBn = (input.labelBn || '').trim() || labelEn
   if (!labelEn) throw new NavError('Menu name (English) is required.')
-  const menuType: MenuType = input.menuType === 'external' ? 'external' : 'page'
-  const slug = normalizeMenuHref(input.slug || labelEn.toLowerCase().replace(/[^a-z0-9]+/g, '-'), menuType)
+  const group = (await run(sql`SELECT id FROM nav_groups WHERE key = 'primary' LIMIT 1`)).rows[0] as Row | undefined
+  if (!group || input.groupKey !== 'primary') throw new NavError('Only the single Site Navigation tree is supported.', 409)
+  if (input.parentId == null) throw new NavError('Home is the only root. Add every other menu under Home or an existing menu.', 409)
+  const parent = (await run(sql`SELECT id, group_id, href, menu_type FROM nav_items WHERE id = ${input.parentId} LIMIT 1`)).rows[0] as Row | undefined
+  if (!parent || Number(parent.group_id) !== Number(group.id)) throw new NavError('Choose a parent from the single Site Navigation tree.', 409)
+  const p = (await run(sql`WITH RECURSIVE ancestors AS (
+    SELECT id, parent_id, 1 AS depth FROM nav_items WHERE id = ${input.parentId}
+    UNION ALL SELECT parent.id, parent.parent_id, ancestors.depth + 1 FROM nav_items parent JOIN ancestors ON parent.id = ancestors.parent_id
+  ) SELECT MAX(depth)::int AS depth FROM ancestors`)).rows[0] as Row
+  if (!p?.depth) throw new NavError('Parent menu not found.', 404)
+  if (Number(p.depth) >= MAX_DEPTH) throw new NavError(`Menus can have at most ${MENU_LEVELS_BELOW_LANDING} editable levels beneath Home.`, 409)
+  if (parent.menu_type === 'external') throw new NavError('A submenu cannot be nested under an external URL.')
+
+  const menuType: MenuType = input.menuType === 'folder' ? 'folder' : input.menuType === 'external' ? 'external' : 'page'
+  const requestedSlug = input.slug || (menuType === 'page' ? labelEn.toLowerCase().replace(/[^a-z0-9]+/g, '-') : '')
+  const slug = normalizeStoredMenuHref(requestedSlug, menuType)
   const sectionCount = cleanSectionCount(input.sectionCount ?? 1)
   const sectionContentType = cleanSectionType(input.sectionContentType ?? 'richText')
   const sectionButtonType = cleanButtonType(input.sectionButtonType ?? 'none')
-  const renderedComponents = menuType === 'external' ? [] : checkRenderedComponents(input.renderedComponents)
-  if (menuType === 'page') await assertSlugFree(slug)
-  const group = (await run(sql`SELECT id FROM nav_groups WHERE key = ${input.groupKey} LIMIT 1`)).rows[0] as Row | undefined
-  if (!group) throw new NavError('Navigation group not found.', 404)
-  if (input.parentId) {
-    const p = (await run(sql`WITH RECURSIVE up AS (SELECT id, parent_id, 1 AS depth FROM nav_items WHERE id = ${input.parentId} UNION ALL SELECT n.id, n.parent_id, up.depth + 1 FROM nav_items n JOIN up ON n.id = up.parent_id) SELECT MAX(depth)::int AS depth FROM up`)).rows[0] as Row
-    if (!p?.depth) throw new NavError('Parent menu not found.', 404)
-    if (Number(p.depth) >= MAX_DEPTH) throw new NavError(`Menus can be nested ${MAX_DEPTH} levels deep at most.`)
-  }
+  const renderedComponents = menuType === 'page' ? checkRenderedComponents(input.renderedComponents) : []
+  if (menuType === 'page') await assertSlugFree(slug, undefined, slug)
+  const existingPage = menuType === 'page' ? await loadPage(slug) : undefined
+  const preserveExistingSections = Boolean(existingPage?.sections?.length)
   const inserted = (await run(sql`
     INSERT INTO nav_items (group_id, parent_id, label_en, label_bn, href, content_types, menu_type, section_count, section_content_type, section_button_type, sort_order)
     VALUES (${Number(group.id)}, ${input.parentId}, ${labelEn}, ${labelBn}, ${slug}, ${JSON.stringify(renderedComponents)}::jsonb, ${menuType}, ${sectionCount}, ${sectionContentType}, ${sectionButtonType},
-      COALESCE((SELECT MAX(sort_order) + 1 FROM nav_items WHERE group_id = ${Number(group.id)} AND parent_id IS NOT DISTINCT FROM ${input.parentId}), 0))
+      COALESCE((SELECT MAX(sort_order) + 1 FROM nav_items WHERE group_id = ${Number(group.id)} AND parent_id = ${input.parentId}), 0))
     RETURNING id`)).rows[0] as Row
   try {
-    if (menuType === 'page') await saveDocument(`page:${slug}`, menuPage(slug, labelEn, labelBn, undefined, { sectionCount, sectionContentType, sectionButtonType, retypeFirst: true, applyButtonSetting: true }), 'page', actor)
+    if (menuType === 'page') {
+      const preservedCount = Math.max(sectionCount, existingPage?.sections?.length || 0)
+      await saveDocument(`page:${slug}`, menuPage(slug, labelEn, labelBn, existingPage, { sectionCount: preservedCount, sectionContentType, sectionButtonType, retypeFirst: !preserveExistingSections, applyButtonSetting: !preserveExistingSections }), 'page', actor)
+    }
+  } catch (error) {
+    await run(sql`DELETE FROM nav_items WHERE id = ${Number(inserted.id)}`)
+    throw error
   }
-  catch (error) { await run(sql`DELETE FROM nav_items WHERE id = ${Number(inserted.id)}`); throw error }
   refresh()
-  return { id: Number(inserted.id), slug }
+  return { id: Number(inserted.id), slug, menuType }
 }
 
 export async function updateMenu(id: number, input: { labelEn: string; labelBn: string; slug: string; renderedComponents: unknown; menuType?: unknown; sectionCount?: unknown; sectionContentType?: unknown; sectionButtonType?: unknown }, actor: string) {
   await ensureCmsSchema()
+  await ensureLandingRootHierarchy()
   const item = (await run(sql`SELECT * FROM nav_items WHERE id = ${id} LIMIT 1`)).rows[0] as Row | undefined
   if (!item) throw new NavError('Menu not found.', 404)
-  if (String(item.href) === '/') throw new NavError('Home is the landing page. Edit its content in CMS → Landing Page; it cannot be changed as a navigation slug.', 409)
+  if (String(item.href) === '/' && item.menu_type !== 'folder') throw new NavError('Home is fixed. Edit its content in CMS → Landing Page.', 409)
   const labelEn = input.labelEn.trim(); const labelBn = (input.labelBn || '').trim() || labelEn
   if (!labelEn) throw new NavError('Menu name (English) is required.')
-  const menuType: MenuType = input.menuType === 'external' ? 'external' : 'page'
-  const slug = normalizeMenuHref(input.slug, menuType)
+  const menuType: MenuType = input.menuType === 'folder' ? 'folder' : input.menuType === 'external' ? 'external' : 'page'
+  const oldSlug = String(item.href || '')
+  const slug = normalizeStoredMenuHref(input.slug || (menuType === 'page' ? oldSlug : ''), menuType)
   const sectionCount = cleanSectionCount(input.sectionCount ?? item.section_count ?? 1)
   const sectionContentType = cleanSectionType(input.sectionContentType ?? item.section_content_type ?? 'richText')
   const sectionButtonType = cleanButtonType(input.sectionButtonType ?? item.section_button_type ?? 'none')
-  const renderedComponents = menuType === 'external' ? [] : checkRenderedComponents(input.renderedComponents)
-  const oldSlug = String(item.href)
-  const oldMenuType: MenuType = item.menu_type === 'external' ? 'external' : 'page'
-  if (menuType === 'page' && (slug !== oldSlug || oldMenuType !== 'page')) {
-    await assertSlugFree(slug, id)
-    if ((await run(sql`SELECT id FROM pages WHERE slug = ${slug} LIMIT 1`)).rows.length && slug !== oldSlug) throw new NavError(`A page already exists at ${slug}.`, 409)
-  }
+  const renderedComponents = menuType === 'page' ? checkRenderedComponents(input.renderedComponents) : []
+  const oldMenuType: MenuType = item.menu_type === 'folder' ? 'folder' : item.menu_type === 'external' ? 'external' : 'page'
+  if (menuType === 'page' && (slug !== oldSlug || oldMenuType !== 'page')) await assertSlugFree(slug, id, oldSlug)
   const base = oldMenuType === 'page' ? await loadPage(oldSlug) : undefined
   await run(sql`UPDATE nav_items SET label_en = ${labelEn}, label_bn = ${labelBn}, href = ${slug}, content_types = ${JSON.stringify(renderedComponents)}::jsonb, menu_type = ${menuType}, section_count = ${sectionCount}, section_content_type = ${sectionContentType}, section_button_type = ${sectionButtonType} WHERE id = ${id}`)
   try {
@@ -249,6 +343,7 @@ export async function updateMenu(id: number, input: { labelEn: string; labelBn: 
 /** Removes the menu, its submenus and the pages created for them. */
 export async function deleteMenu(id: number) {
   await ensureCmsSchema()
+  await ensureLandingRootHierarchy()
   const removed = (await run(sql`
     WITH RECURSIVE tree AS (SELECT id, href FROM nav_items WHERE id = ${id} UNION ALL SELECT n.id, n.href FROM nav_items n JOIN tree t ON n.parent_id = t.id)
     SELECT id, href FROM tree`)).rows as Row[]
@@ -256,7 +351,8 @@ export async function deleteMenu(id: number) {
   if (removed.some((row) => String(row.href) === '/')) throw new NavError('Home is the landing page and cannot be removed from Site Navigation. Edit its content in CMS → Landing Page.', 409)
   const ids = sql.join(removed.map((r) => sql`${Number(r.id)}`), sql`, `)
   await run(sql`DELETE FROM nav_items WHERE id IN (${ids})`)
-  const slugs = removed.map((r) => String(r.href)).filter((s) => s !== '/')
+  const protectedCollectionPaths = new Set(CONTENT_COLLECTION_ROUTES.map((route) => route.slug))
+  const slugs = removed.map((r) => String(r.href || '')).filter((s) => s.startsWith('/') && s !== '/' && !protectedCollectionPaths.has(canonicalizeCmsRoute(s)))
   let pages = 0
   if (slugs.length) {
     const list = sql.join(slugs.map((s) => sql`${s}`), sql`, `)
@@ -268,40 +364,60 @@ export async function deleteMenu(id: number) {
 
 export type MoveNode = { id: number; children?: MoveNode[] }
 
-/** Persists the whole drag-and-drop tree of a group (parent/child + order). */
+/** Persists the single Site Navigation tree (parent/child + order). */
 export async function saveNavigationOrder(groupKey: string, tree: MoveNode[]) {
   await ensureCmsSchema()
-  const group = (await run(sql`SELECT id FROM nav_groups WHERE key = ${groupKey} LIMIT 1`)).rows[0] as Row | undefined
-  if (!group) throw new NavError('Navigation group not found.', 404)
-  const existingRows = (await run(sql`SELECT id, parent_id, sort_order, href FROM nav_items WHERE group_id = ${Number(group.id)}`)).rows as Row[]
+  await ensureLandingRootHierarchy()
+  const group = (await run(sql`SELECT id, key FROM nav_groups WHERE key = 'primary' LIMIT 1`)).rows[0] as Row | undefined
+  if (!group || groupKey !== 'primary') throw new NavError('Only the single Site Navigation tree is supported.', 409)
+  const landingRow = (await run(sql`SELECT i.id, i.parent_id, i.sort_order, i.href, i.menu_type FROM nav_items i JOIN nav_groups g ON g.id = i.group_id WHERE g.key = 'primary' AND i.href = '/' ORDER BY i.id LIMIT 1`)).rows[0] as Row | undefined
+  if (!landingRow) throw new NavError('The fixed Landing menu is missing. Run the navigation migration / database seed.', 409)
+  const landingId = Number(landingRow.id)
+  const isPrimary = true
+  const rootParent = null
+  const startingDepth = 1
+  const existingRows = (await run(sql`SELECT id, parent_id, sort_order, href, menu_type FROM nav_items WHERE group_id = ${Number(group.id)}`)).rows as Row[]
   const existing = new Set(existingRows.map((r) => Number(r.id)))
-  const landingRow = existingRows.find((row) => String(row.href) === '/')
   const flat: Array<{ id: number; parent: number | null; order: number }> = []
   const seen = new Set<number>()
   const walk = (nodes: MoveNode[], parent: number | null, depth: number) => {
-    if (depth > MAX_DEPTH) throw new NavError(`Menus can be nested ${MAX_DEPTH} levels deep at most.`)
+    if (depth > MAX_DEPTH) throw new NavError(`Menus can have at most ${MENU_LEVELS_BELOW_LANDING} editable levels beneath Home.`, 409)
     nodes.forEach((n, order) => {
       const nid = Number(n.id)
       if (!existing.has(nid) || seen.has(nid)) throw new NavError('The navigation changed in another session. Reload and try again.', 409)
       seen.add(nid); flat.push({ id: nid, parent, order }); walk(n.children || [], nid, depth + 1)
     })
   }
-  walk(tree, null, 1)
+  walk(tree, rootParent, startingDepth)
+  const byExistingId = new Map(existingRows.map((row) => [Number(row.id), row]))
+  const parentLookup = new Map(byExistingId)
+  parentLookup.set(landingId, landingRow)
   if (seen.size !== existing.size) throw new NavError('The navigation changed in another session. Reload and try again.', 409)
-  if (landingRow) {
-    const landingId = Number(landingRow.id)
-    const landingParent = landingRow.parent_id == null ? null : Number(landingRow.parent_id)
-    const landingSortOrder = Number(landingRow.sort_order || 0)
-    const landingExpectedOrder = existingRows.filter((row) => {
-      const sameParent = (row.parent_id == null ? null : Number(row.parent_id)) === landingParent
-      const rowSortOrder = Number(row.sort_order || 0)
-      return sameParent && (rowSortOrder < landingSortOrder || (rowSortOrder === landingSortOrder && Number(row.id) < landingId))
-    }).length
-    const landingNode = flat.find((item) => item.id === landingId)
-    if (!landingNode || landingNode.parent !== landingParent || landingNode.order !== landingExpectedOrder) {
-      throw new NavError('Home is the landing page and cannot be reordered or nested in Site Navigation.', 409)
+  if (isPrimary) {
+    if (tree.length !== 1 || Number(tree[0]?.id) !== landingId) {
+      throw new NavError('Home must remain the only root of the single navigation tree.', 409)
+    }
+    if (landingRow.parent_id != null) throw new NavError('Home must remain at the root of the navigation.', 409)
+  }
+  for (const item of flat) {
+    const currentRow = parentLookup.get(item.id)
+    if (!currentRow) throw new NavError('The navigation changed in another session. Reload and try again.', 409)
+    if (String(currentRow.href) === '/' && (item.parent !== null || !isPrimary)) {
+      throw new NavError('Home is fixed and must remain the only root of the navigation tree.', 409)
+    }
+    if (String(currentRow.href) !== '/' && item.parent == null) {
+      throw new NavError('Home is the only root. Keep every editable item beneath Home.', 409)
+    }
+    if (item.parent != null) {
+      const parentRow = parentLookup.get(item.parent)
+      if (!parentRow) throw new NavError('A menu parent is missing. Reload the navigation and try again.', 409)
+      if (parentRow.menu_type === 'external' || /^https?:\/\//i.test(String(parentRow.href || ''))) {
+        throw new NavError('A submenu page cannot be nested under an external URL. Add it under an internal page menu instead.')
+      }
     }
   }
+  // Reordering changes only parent/order metadata. Each page keeps the exact
+  // public href supplied by the CMS; changing a menu position never rewrites URLs.
   if (!flat.length) return
   const values = sql.join(flat.map((f) => sql`(${f.id}::bigint, ${f.parent}::bigint, ${f.order}::int)`), sql`, `)
   await run(sql`UPDATE nav_items n SET parent_id = v.parent_id, sort_order = v.sort_order FROM (VALUES ${values}) AS v(id, parent_id, sort_order) WHERE n.id = v.id`)

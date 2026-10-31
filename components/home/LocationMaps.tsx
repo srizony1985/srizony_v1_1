@@ -2,8 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { Building2, Compass, Mail, MapPin, Navigation, Phone, Search, User, X } from 'lucide-react'
-import { BRANCHES, type Branch } from '@/data/branches'
-import { FOOTPRINT_INTRO } from '@/data/homeContent'
+import type { Branch } from '@/types/branch'
 import { MAP_H, MAP_W, OUTLINE_COORDS, OUTLINE_PATH, project } from '@/lib/bangladeshMap'
 import { localizeDigits } from '@/lib/utils'
 import type { Lang, PageData } from '@/types/entityType'
@@ -52,7 +51,7 @@ function loadLeaflet(): Promise<any> {
 const BD_BOUNDS: [[number, number], [number, number]] = [[20.55, 87.95], [26.7, 92.8]]
 const tileUrl = (dark: boolean) =>
   `https://api.maptiler.com/maps/${dark ? 'base-v4-dark' : 'base-v4-light'}/{z}/{x}/{y}.png?key=${encodeURIComponent(MAPTILER_API_KEY)}`
-const cssVar = (name: string, fallback: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback
+const cssVar = (name: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim() || 'currentColor'
 
 /* ───────────── Data helpers ───────────── */
 
@@ -96,6 +95,26 @@ const normalizeDistrictName = (value: unknown) => {
 
 const featureDistrictName = (feature: MapFeature) =>
   String(feature.properties.shapeName ?? feature.properties.ADM2_EN ?? feature.properties.NAME_2 ?? feature.properties.name ?? '')
+
+const DISTRICT_COLORS = {
+  light: ['#72c7c4', '#f6bd60', '#a8dadc', '#cdb4db', '#f4a7a0', '#b8d99b', '#91b9e8', '#f2a65a'],
+  dark: ['#168b8b', '#9b6b1d', '#286b75', '#73508e', '#9f4f52', '#4a7837', '#355f9c', '#9b5821'],
+} as const
+
+function districtPaletteIndex(name: string): number {
+  const normalized = normalizeDistrictName(name) || name.trim().toLowerCase()
+  let hash = 2166136261
+  for (let index = 0; index < normalized.length; index += 1) {
+    hash ^= normalized.charCodeAt(index)
+    hash = Math.imul(hash, 16777619)
+  }
+  return (hash >>> 0) % DISTRICT_COLORS.light.length
+}
+
+/** Stable district colours shared by the SVG fallback and interactive Leaflet map. */
+function districtPaletteFill(name: string): string {
+  return `var(--sf-fp-district-${districtPaletteIndex(name) + 1})`
+}
 
 function geoFeaturePath(feature: MapFeature): string {
   const polygons: GeoPolygon[] = feature.geometry.type === 'Polygon'
@@ -271,10 +290,10 @@ export default function LocationMaps({ page, variant = 'default' }: { page: Page
   const footprintCopy = page.sections.find((section): section is FootprintCopySection => section.type === 'richText' && (section.homeComponent === 'locations' || normalizeFootprintHeading(section.heading?.en) === 'our offices across bangladesh'))
   const footprintEyebrow = variant === 'contact'
     ? { en: 'Contact & locations', bn: 'যোগাযোগ ও অবস্থান' }
-    : footprintCopy?.eyebrow ?? FOOTPRINT_INTRO.eyebrow
+    : footprintCopy?.eyebrow
   const footprintTitle = variant === 'contact'
     ? { en: 'Find a Srizony office', bn: 'সৃজনীর অফিস খুঁজুন' }
-    : footprintCopy?.heading ?? FOOTPRINT_INTRO.title
+    : footprintCopy?.heading
   const footprintParagraphs = footprintCopy?.body?.filter((paragraph) => paragraph.en?.trim() || paragraph.bn?.trim()) ?? []
   // An explicitly saved empty body is a valid CMS choice; only use defaults when no
   // section document is present, not when the editor intentionally clears the copy.
@@ -282,7 +301,7 @@ export default function LocationMaps({ page, variant = 'default' }: { page: Page
     ? { en: 'Search offices by district or branch, select a location to view contact details, and open directions in Maps.', bn: 'জেলা বা শাখা দিয়ে অফিস খুঁজুন, যোগাযোগের তথ্য দেখতে একটি অবস্থান নির্বাচন করুন এবং ম্যাপে যাওয়ার নির্দেশনা খুলুন।' }
     : footprintCopy
       ? { en: footprintParagraphs.map((paragraph) => paragraph.en).filter(Boolean).join(' '), bn: footprintParagraphs.map((paragraph) => paragraph.bn).filter(Boolean).join(' ') }
-      : FOOTPRINT_INTRO.lead
+      : { en: '', bn: '' }
 
   const [query, setQuery] = useState('')
   const [hoverId, setHoverId] = useState<string | null>(null)
@@ -305,15 +324,17 @@ export default function LocationMaps({ page, variant = 'default' }: { page: Page
   const [wantMap, setWantMap] = useState(false)
   const [isMobileViewport, setIsMobileViewport] = useState(false)
 
-  const portfolioBranches = (site?.global as any)?.portfolio?.branches
-  const branchDirectory = useMemo<Branch[]>(() => {
-    // Missing branch data means this installation has not configured the CMS directory yet;
-    // an explicitly saved empty array means the editor intentionally removed all pins.
-    if (!Array.isArray(portfolioBranches)) return BRANCHES
-    if (!portfolioBranches.length) return []
-    const valid = portfolioBranches.filter((branch: any) => branch && typeof branch.id === 'string' && branch.name && branch.district && branch.division && Number.isFinite(Number(branch.lat)) && Number.isFinite(Number(branch.lng)))
-    return valid.map((branch: any) => ({ ...branch, lat: Number(branch.lat), lng: Number(branch.lng), kind: branch.kind === 'head' ? 'head' : 'branch' })) as Branch[]
-  }, [portfolioBranches])
+  const [configuredLocations, setConfiguredLocations] = useState<Branch[] | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/website-essentials', { cache: 'no-store' }).then((response) => response.ok ? response.json() : null).then((payload) => {
+      if (cancelled || !Array.isArray(payload?.locations)) return
+      const valid = payload.locations.filter((branch: any) => branch && typeof branch.id === 'string' && branch.name && branch.district && branch.division && Number.isFinite(Number(branch.lat)) && Number.isFinite(Number(branch.lng)))
+      setConfiguredLocations(valid.map((branch: any) => ({ ...branch, lat: Number(branch.lat), lng: Number(branch.lng), kind: branch.kind === 'head' ? 'head' : 'branch' })) as Branch[])
+    }).catch(() => undefined)
+    return () => { cancelled = true }
+  }, [])
+  const branchDirectory = useMemo<Branch[]>(() => configuredLocations ?? [], [configuredLocations])
   const all = useMemo(() => branchDirectory.map((b) => resolve(b, lang, contact)), [branchDirectory, lang, contact.primaryPhone, contact.address?.en, contact.address?.bn]) // eslint-disable-line react-hooks/exhaustive-deps
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -625,9 +646,10 @@ export default function LocationMaps({ page, variant = 'default' }: { page: Page
     const group = circlesRef.current
     if (!L || !group || mode !== 'map') return
     group.clearLayers()
-    const primary = cssVar('--sf-primary', '#173d5b')
-    const accent = cssVar('--sf-accent', '#d7b45f')
-    const districtFill = colorMode === 'dark' ? cssVar('--sf-bg', '#0b1117') : cssVar('--sf-soft', '#edf3f7')
+    const primary = cssVar('--sf-primary')
+    const accent = cssVar('--sf-accent')
+    const districtFill = colorMode === 'dark' ? cssVar('--sf-bg') : cssVar('--sf-soft')
+    const districtColors = colorMode === 'dark' ? DISTRICT_COLORS.dark : DISTRICT_COLORS.light
     const selectedName = normalizeDistrictName(active?.branch.district.en)
 
     if (districtFeatures.length) {
@@ -637,11 +659,11 @@ export default function LocationMaps({ page, variant = 'default' }: { page: Page
         style: (feature: MapFeature | undefined) => {
           const selected = Boolean(feature && normalizeDistrictName(featureDistrictName(feature)) === selectedName && selectedName)
           return {
-            color: selected ? accent : cssVar('--sf-muted', '#a8bbc7'),
+            color: selected ? accent : cssVar('--sf-muted'),
             weight: selected ? 3.25 : 1.05,
             opacity: 1,
-            fillColor: selected ? accent : districtFill,
-            fillOpacity: selected ? 0.58 : 0.56,
+            fillColor: selected ? accent : feature ? districtColors[districtPaletteIndex(featureDistrictName(feature))] : districtFill,
+            fillOpacity: selected ? 0.62 : 0.48,
             lineJoin: 'round',
             interactive: false,
           }
@@ -650,7 +672,7 @@ export default function LocationMaps({ page, variant = 'default' }: { page: Page
       if (countryFeature) {
         L.geoJSON(countryFeature, {
           interactive: false,
-          style: { color: cssVar('--sf-ink', '#eef5fa'), weight: 3, opacity: 0.88, fillOpacity: 0, interactive: false, lineJoin: 'round' },
+          style: { color: cssVar('--sf-ink'), weight: 3, opacity: 0.88, fillOpacity: 0, interactive: false, lineJoin: 'round' },
         }).addTo(group)
       }
     } else {
@@ -658,11 +680,11 @@ export default function LocationMaps({ page, variant = 'default' }: { page: Page
       if (countryFeature) {
         L.geoJSON(countryFeature, {
           interactive: false,
-          style: { color: cssVar('--sf-ink', '#eef5fa'), weight: 3, opacity: 0.92, fillColor: districtFill, fillOpacity: 0.68, interactive: false, lineJoin: 'round' },
+          style: { color: cssVar('--sf-ink'), weight: 3, opacity: 0.92, fillColor: districtFill, fillOpacity: 0.68, interactive: false, lineJoin: 'round' },
         }).addTo(group)
       } else {
         L.polygon(OUTLINE_COORDS.map(([lng, lat]) => [lat, lng]), {
-          color: cssVar('--sf-ink', '#eef5fa'), weight: 3, opacity: 0.92, fillColor: cssVar('--sf-soft', '#16252f'), fillOpacity: 0.78,
+          color: cssVar('--sf-ink'), weight: 3, opacity: 0.92, fillColor: cssVar('--sf-soft'), fillOpacity: 0.78,
           lineJoin: 'round', interactive: false,
         }).addTo(group)
       }
@@ -705,7 +727,7 @@ export default function LocationMaps({ page, variant = 'default' }: { page: Page
     }
   }
 
-  if (variant !== 'contact' && footprintCopy?.visible === false) return null
+  if (variant !== 'contact' && (footprintCopy?.visible === false || !footprintEyebrow || !footprintTitle)) return null
   const sectionId = variant === 'contact' ? 'contact-locations' : 'national-footprint'
   const titleId = variant === 'contact' ? 'sf-contact-map-title' : 'sf-fp-title'
 
@@ -714,8 +736,8 @@ export default function LocationMaps({ page, variant = 'default' }: { page: Page
       <div className="sf-container">
         <Reveal>
           <header className="sf-sec-head sf-sec-head--center">
-            <span className="sf-eyebrow">{footprintEyebrow[lang]}</span>
-            <h2 id={titleId} className="sf-h2">{footprintTitle[lang]}</h2>
+            <span className="sf-eyebrow">{footprintEyebrow?.[lang] ?? ''}</span>
+            <h2 id={titleId} className="sf-h2">{footprintTitle?.[lang] ?? ''}</h2>
             <p className="sf-lead">{footprintLead[lang]}</p>
           </header>
         </Reveal>
@@ -724,6 +746,11 @@ export default function LocationMaps({ page, variant = 'default' }: { page: Page
           <div className="sf-fp-mapcol" data-fp-keep>
             <div className={`sf-fp-map is-${mode}`} ref={boxRef}>
               <div ref={leafletEl} className="sf-fp-leaflet" />
+              <div className="sf-fp-map-legend" role="group" aria-label={tr('Map legend', 'মানচিত্রের নির্দেশিকা')}>
+                <span><i className="is-head" />{tr('Head office', 'প্রধান কার্যালয়')}</span>
+                <span><i className="is-branch" />{tr('Branch office', 'শাখা অফিস')}</span>
+                <span><i className="is-district" />{tr('District areas', 'জেলা সীমানা')}</span>
+              </div>
 
               {mode !== 'map' && (
                 <svg className="sf-fp-svg" viewBox={`${svgViewport.x} ${svgViewport.y} ${svgViewport.width} ${svgViewport.height}`} preserveAspectRatio="xMidYMid meet" role="img" aria-label={tr('Map of Bangladesh with district boundaries', 'জেলা সীমানাসহ বাংলাদেশের মানচিত্র')}>
@@ -735,7 +762,12 @@ export default function LocationMaps({ page, variant = 'default' }: { page: Page
                       {countryFeature && <path d={geoFeaturePath(countryFeature)} className="sf-fp-country-fill" />}
                       {districtFeatures.map((feature, index) => {
                         const selected = Boolean(active && normalizeDistrictName(featureDistrictName(feature)) === normalizeDistrictName(active.branch.district.en))
-                        return <path key={`${featureDistrictName(feature)}-${index}`} d={geoFeaturePath(feature)} className={`sf-fp-district${selected ? ' is-selected' : ''}`} />
+                        return <path
+                          key={`${featureDistrictName(feature)}-${index}`}
+                          d={geoFeaturePath(feature)}
+                          className={`sf-fp-district${selected ? ' is-selected' : ''}`}
+                          style={{ fill: selected ? 'var(--sf-accent)' : districtPaletteFill(featureDistrictName(feature)), fillOpacity: selected ? 0.72 : 0.42 }}
+                        />
                       })}
                       {countryFeature && <path d={geoFeaturePath(countryFeature)} className="sf-fp-country-edge" />}
                     </>

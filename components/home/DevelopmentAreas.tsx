@@ -2,9 +2,8 @@
 
 import type { CSSProperties } from 'react'
 import type { Lang, PageData } from '@/types/entityType'
-import { AREAS, AREAS_INTRO, type AreaCard } from '@/data/homeContent'
 import Container from '@/components/containers/Container'
-import ProjectCard from '@/components/home/ProjectCard'
+import ProjectCard, { type ProjectArea } from '@/components/home/ProjectCard'
 import Reveal from '@/components/containers/Reveal'
 import HomeSectionActions from '@/components/home/HomeSectionActions'
 
@@ -12,33 +11,33 @@ const normalizeHeading = (value?: string) => (value ?? '').trim().toLocaleLowerC
 type CardsSection = Extract<PageData['sections'][number], { type: 'cards' }>
 
 
-function resolveAreas(page: PageData): { intro: { eyebrow: { en: string; bn: string }; title: { en: string; bn: string } }; areas: AreaCard[]; section?: CardsSection } | null {
+function resolveAreas(page: PageData): { intro: { eyebrow: { en: string; bn: string }; title: { en: string; bn: string } }; areas: ProjectArea[]; section?: CardsSection } | null {
   const section = page.sections.find((item): item is CardsSection =>
     item.type === 'cards' && (item.homeComponent === 'developmentAreas' || normalizeHeading(item.heading?.en) === 'integrated development areas'),
   )
   if (section?.visible === false) return null
-  if (!section) return { intro: AREAS_INTRO, areas: AREAS.map((area) => ({ ...area, image: '' })) }
+  if (!section) return null
   const items = Array.isArray(section.items) ? section.items : []
-  if (!items.length) return { intro: { eyebrow: section.eyebrow ?? AREAS_INTRO.eyebrow, title: section.heading ?? AREAS_INTRO.title }, areas: [], section }
+  if (!items.length || !section.heading || !section.eyebrow) return { intro: { eyebrow: section.eyebrow ?? { en: '', bn: '' }, title: section.heading ?? { en: '', bn: '' } }, areas: [], section }
 
-  const validIcons = new Set<AreaCard['icon']>(['heart', 'book', 'users', 'coins', 'sprout', 'store'])
-  const areas = items.map((item, index) => {
-    const fallback = AREAS.find((area) => area.href === item.href) ?? AREAS[index % AREAS.length]
+  const validIcons = new Set<ProjectArea['icon']>(['heart', 'book', 'users', 'coins', 'sprout', 'store'])
+  const areas = items.map((item) => {
     const chosenIcon = item.illustration ?? item.icon
     return {
-      href: item.href ?? fallback.href,
-      icon: typeof chosenIcon === 'string' && validIcons.has(chosenIcon as AreaCard['icon']) ? chosenIcon as AreaCard['icon'] : fallback.icon,
-      title: item.title ?? fallback.title,
-      body: item.body ?? fallback.body,
+      href: item.href ?? '#',
+      icon: typeof chosenIcon === 'string' && validIcons.has(chosenIcon as ProjectArea['icon']) ? chosenIcon as ProjectArea['icon'] : 'users',
+      illustration: item.illustration,
+      title: item.title,
+      body: item.body ?? { en: '', bn: '' },
       chips: Array.isArray(item.chips) ? item.chips : item.tag ? [item.tag] : undefined,
-      imageAlt: item.image?.alt ?? item.title ?? fallback.title,
+      imageAlt: item.image?.alt ?? item.title,
       // An image is deliberately opt-in. The default landing page keeps its animated SVG art,
       // while an editor can replace a card's illustration with a chosen CMS image.
       image: item.image?.src ?? '',
     }
   })
   return {
-    intro: { eyebrow: section.eyebrow ?? AREAS_INTRO.eyebrow, title: section.heading ?? AREAS_INTRO.title },
+    intro: { eyebrow: section.eyebrow, title: section.heading },
     areas,
     section,
   }
@@ -46,7 +45,7 @@ function resolveAreas(page: PageData): { intro: { eyebrow: { en: string; bn: str
 
 export default function DevelopmentAreas({ lang, page }: { lang: Lang; page: PageData }) {
   const resolved = resolveAreas(page)
-  if (!resolved) return null
+  if (!resolved || !resolved.section?.heading || !resolved.section.eyebrow) return null
   const { intro, areas, section } = resolved
   return (
     <section className="sf-section sf-areas" aria-labelledby="sf-areas-title">

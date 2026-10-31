@@ -7,7 +7,7 @@ import { auditAdminAction } from '@/lib/security'
 
 const noStore = { 'Cache-Control': 'no-store' }
 const values = z.record(z.string(), z.union([z.string(), z.number(), z.null()]))
-const saveSchema = z.object({ component: z.string().optional(), id: z.number().int().positive().optional(), slug: z.string().trim().min(1).max(160), values, expectedUpdatedAt: z.string().optional() })
+const saveSchema = z.object({ component: z.string().optional(), id: z.number().int().positive().optional(), slug: z.string().trim().min(1).max(160), values, status: z.enum(['published', 'draft', 'hidden']).default('published'), expectedUpdatedAt: z.string().optional() })
 const statusSchema = z.object({ id: z.number().int().positive(), status: z.enum(['published', 'draft', 'hidden']) })
 
 export async function GET(req: Request) {
@@ -19,7 +19,7 @@ export async function GET(req: Request) {
       const component = p.get('component')
       if (!isComponent(component)) return NextResponse.json({ error: 'Unknown component.' }, { status: 400 })
       const excludeId = Number(p.get('excludeId')) || undefined
-      return NextResponse.json({ taken: await slugTaken(component, p.get('checkSlug') || '', excludeId) }, { headers: noStore })
+      return NextResponse.json({ taken: await slugTaken(component, p.get('checkSlug') || '', excludeId, p.get('routeParent') || undefined) }, { headers: noStore })
     }
     const component = p.get('component')
     if (component && component !== 'all' && !isComponent(component)) return NextResponse.json({ error: 'Unknown component.' }, { status: 400 })
@@ -35,7 +35,7 @@ export async function POST(req: Request) {
   const body = saveSchema.safeParse(await req.json().catch(() => null))
   if (!body.success || !isComponent(body.data.component)) return NextResponse.json({ error: 'Invalid content payload.' }, { status: 400 })
   try {
-    const item = await createItem(body.data.component, body.data.slug, body.data.values)
+    const item = await createItem(body.data.component, body.data.slug, body.data.values, body.data.status)
     await auditAdminAction({ actorEmail: admin.email, action: 'content.create', entity: body.data.component, entityId: item.slug, request: req })
     return NextResponse.json({ ok: true, item })
   } catch (e) { return failure(e, 'Unable to create the item.') }

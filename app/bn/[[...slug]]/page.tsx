@@ -1,7 +1,8 @@
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 import type { Metadata } from 'next'
 import ContentPage from '@/components/pages/ContentPage'
 import { getCmsMenuIndex, getPublicSiteSnapshot, resolvePagePath } from '@/lib/site'
+import { isNavigationPagePath } from '@/lib/cms/routes'
 
 export const dynamic = 'force-dynamic'
 
@@ -34,8 +35,11 @@ export async function generateStaticParams() {
 
 export default async function BanglaSlugPage({ params }: { params: Promise<{ slug?: string[] }> }) {
   const { slug } = await params
+  const requested = slug?.length ? `/${slug.join('/')}` : '/'
   const canonical = canonicalFrom(slug)
+  if (canonical !== requested) redirect(`/bn${canonical === '/' ? '' : canonical}`)
   const snapshot = await getPublicSiteSnapshot(canonical)
   if (snapshot.notFound || !snapshot.page) notFound()
+  if (!isNavigationPagePath(canonical, snapshot.global) && !snapshot.page.contentComponent) notFound()
   return <ContentPage slug={canonical} />
 }

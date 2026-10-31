@@ -10,12 +10,38 @@ import { Label } from '@/components/ui/label'
 import { MediaField } from '../_components/MediaField'
 import { getEditablePage, getPageBuilderIndex, saveEditablePage, type PageIndexItem } from '@/lib/api/pageBuilder'
 import { getPortfolioGlobal, savePortfolioGlobal } from '@/lib/api/portfolio'
-import { BRANCHES, type Branch } from '@/data/branches'
+import { normalizeWebsiteEssentials, type WebsiteEssentials } from '@/lib/websiteEssentials'
+import { BRANCHES } from '@/lib/cms/fallback-gateway'
+import type { Branch } from '@/types/branch'
+import type { IllustrationName } from '@/types/entityType'
+import CmsCardIllustration from '@/components/home/CmsCardIllustration'
 import type { Bilingual, HeroData, PageData, PageSection, Section, SectionButtonConfig } from '@/types/entityType'
-import { HOME_HERO_COPY_DEFAULTS } from '@/data/homeHeroDefaults'
+import { HOME_HERO_COPY_DEFAULTS } from '@/lib/cms/fallback-gateway'
+import { LANDING_COMPONENT_OPTIONS, type LandingComponentKey } from '@/lib/cms/component-policy'
 import { AdminErrorState, PageLoading, SectionToolbar } from '../_components/AdminCommon'
+import LandingCollectionCardsEditor from '../_components/LandingCollectionCardsEditor'
+import { ContentEditor } from '../_components/ContentEditor'
+import { listContent } from '@/lib/api/siteContent'
+import { COMPONENTS, FIXED_CONTENT_PARENT, type ContentComponent, type ContentRecord } from '@/lib/cms/components'
 
 const SECTION_TYPES: Section['type'][] = ['richText', 'stats', 'cards', 'gallery', 'timeline', 'diagram', 'table', 'video', 'cta', 'noticeList', 'contact', 'donation', 'carousel', 'contentFeed', 'reports']
+const COLLECTION_SECTION_TYPES = new Set<Section['type']>(['richText', 'stats', 'cards', 'gallery', 'timeline', 'table', 'cta', 'noticeList', 'donation', 'carousel', 'contentFeed', 'reports'])
+
+function layoutsForSection(type: Section['type']): Array<'grid' | 'carousel' | 'masonry' | 'list'> {
+  if (type === 'gallery') return ['grid', 'masonry']
+  if (type === 'cards' || type === 'contentFeed') return ['grid', 'carousel', 'masonry', 'list']
+  if (type === 'carousel') return ['carousel', 'grid', 'list']
+  if (type === 'stats') return ['grid', 'list']
+  return ['list']
+}
+
+function defaultCollectionComponent(type: Section['type']): ContentComponent {
+  if (type === 'stats') return 'stat'
+  if (type === 'reports') return 'report'
+  if (type === 'noticeList') return 'notice'
+  if (type === 'carousel') return 'news'
+  return 'project'
+}
 const blankBi = (): Bilingual => ({ en: '', bn: '' })
 const defaultButton = (visible = false): SectionButtonConfig => ({ visible, mode: 'primary', label: { en: 'Learn more', bn: 'আরও জানুন' }, secondaryLabel: { en: 'Contact us', bn: 'যোগাযোগ করুন' }, href: '/contact', secondaryHref: '/contact', action: 'route', secondaryAction: 'route' })
 function blankSection(type: Section['type'], title: Bilingual = blankBi()): PageSection {
@@ -35,11 +61,13 @@ function blankSection(type: Section['type'], title: Bilingual = blankBi()): Page
     case 'contact': section = { type, heading: { ...title }, address: { ...bi }, phones: [], emails: [], locations: [] }; break
     case 'donation': section = { type, heading: { ...title }, body: { ...bi } }; break
     case 'carousel': section = { type, heading: { ...title }, body: { ...bi }, presentation: 'collection', items: [] }; break
-    case 'contentFeed': section = { type, heading: { ...title }, components: ['project'], items: [] }; break
+    case 'contentFeed': section = { type, heading: { ...title }, components: ['project'], items: [], columns: 3 }; break
     case 'reports': section = { type, heading: { ...title }, items: [] }; break
     default: section = { type: 'richText', heading: { ...title }, body: [{ ...bi }] }
   }
   section.visible = true
+  section.sectionId = `section-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+  section.contentCollection = { enabled: COLLECTION_SECTION_TYPES.has(type), component: defaultCollectionComponent(type), maxItems: type === 'cta' || type === 'donation' ? 1 : 12, layout: layoutsForSection(type)[0], columns: 3, gap: 24, viewportItems: 3 }
   section.buttonConfig = defaultButton(type === 'cta')
   return section as PageSection
 }
@@ -97,17 +125,37 @@ function BranchDirectoryEditor({ value, onChange }: { value: Branch[]; onChange:
 }
 
 type FriendlyField = { key: string; label: string; kind: 'text' | 'textarea' | 'date' | 'url' | 'image' | 'document' | 'select' | 'bilingualLines'; bilingual?: boolean; options?: { value: string; label: string }[] }
+const ILLUSTRATION_OPTIONS: { value: string; label: string }[] = [
+  { value: '', label: 'Automatic / component default' },
+  { value: 'mission', label: 'Mission — progress journey' },
+  { value: 'vision', label: 'Vision — shared horizon' },
+  { value: 'values', label: 'Values — balance and integrity' },
+  { value: 'heart', label: 'Heart — health and care' },
+  { value: 'book', label: 'Book — education and learning' },
+  { value: 'users', label: 'People — community' },
+  { value: 'coins', label: 'Coins — finance and inclusion' },
+  { value: 'sprout', label: 'Sprout — agriculture and growth' },
+  { value: 'store', label: 'Store — enterprise' },
+  { value: 'women-business', label: 'Women in business' },
+  { value: 'small-enterprise', label: 'Small enterprise' },
+  { value: 'agriculture', label: 'Agriculture' },
+  { value: 'migrant-household', label: 'Migrant household' },
+  { value: 'rural-development', label: 'Rural development' },
+  { value: 'career', label: 'Career and employment' },
+  { value: 'education', label: 'Education' },
+]
 const FRIENDLY_FIELDS: Partial<Record<Section['type'], { title: string; singular: string; fields: FriendlyField[] }>> = {
   cards: { title: 'Cards', singular: 'card', fields: [
     { key: 'title', label: 'Card title', kind: 'text', bilingual: true }, { key: 'body', label: 'Card description', kind: 'textarea', bilingual: true },
     { key: 'tag', label: 'Tag / category', kind: 'text', bilingual: true }, { key: 'href', label: 'Link / destination', kind: 'url' },
     { key: 'icon', label: 'Card icon (standard cards)', kind: 'select', options: [{ value: 'heart', label: 'Heart' }, { value: 'leaf', label: 'Leaf' }, { value: 'book', label: 'Book' }, { value: 'scale', label: 'Scale / rights' }, { value: 'users', label: 'People' }, { value: 'sun', label: 'Sun / climate' }, { value: 'droplets', label: 'Water' }, { value: 'briefcase', label: 'Briefcase / work' }, { value: 'coins', label: 'Coins / finance' }, { value: 'building', label: 'Building' }, { value: 'megaphone', label: 'Megaphone' }, { value: 'shield', label: 'Shield / values' }, { value: 'check', label: 'Check' }] },
-    { key: 'image.src', label: 'Optional card image (replaces the animated illustration)', kind: 'image' }, { key: 'image.alt', label: 'Image alternative text', kind: 'text', bilingual: true },
-    { key: 'illustration', label: 'Animated illustration', kind: 'select', options: [{ value: 'heart', label: 'Heart / health' }, { value: 'book', label: 'Book / education' }, { value: 'users', label: 'People / community' }, { value: 'coins', label: 'Coins / finance' }, { value: 'sprout', label: 'Sprout / agriculture' }, { value: 'store', label: 'Store / enterprise' }] },
+    { key: 'image.src', label: 'Custom illustration image (overrides the selected artwork)', kind: 'image' }, { key: 'image.alt', label: 'Illustration alternative text', kind: 'text', bilingual: true },
+    { key: 'illustration', label: 'Reusable illustration', kind: 'select', options: ILLUSTRATION_OPTIONS },
     { key: 'chips', label: 'Highlights / chips (one per line in each language)', kind: 'bilingualLines' },
   ] },
   stats: { title: 'Statistics', singular: 'statistic', fields: [
     { key: 'value', label: 'Value (e.g. 25,000+)', kind: 'text' }, { key: 'label', label: 'Label', kind: 'text', bilingual: true }, { key: 'note', label: 'Supporting note', kind: 'text', bilingual: true }, { key: 'icon', label: 'Statistic icon', kind: 'select', options: [{ value: 'users', label: 'People' }, { value: 'briefcase', label: 'Briefcase' }, { value: 'home', label: 'Home / village' }, { value: 'building', label: 'Building' }, { value: 'heart', label: 'Heart' }, { value: 'leaf', label: 'Leaf' }, { value: 'coins', label: 'Coins' }, { value: 'shield', label: 'Shield' }] },
+    { key: 'illustration', label: 'Optional reusable illustration', kind: 'select', options: ILLUSTRATION_OPTIONS }, { key: 'image.src', label: 'Custom statistic illustration image', kind: 'image' }, { key: 'image.alt', label: 'Illustration alternative text', kind: 'text', bilingual: true },
   ] },
   gallery: { title: 'Gallery images', singular: 'image', fields: [
     { key: 'src', label: 'Image', kind: 'image' }, { key: 'alt', label: 'Alternative text', kind: 'text', bilingual: true }, { key: 'caption', label: 'Caption', kind: 'text', bilingual: true },
@@ -157,10 +205,10 @@ function FriendlyListEditor({ section, onChange }: { section: PageSection; onCha
   const fields = config.fields
   const activeFields = section.type === 'cards'
     ? section.homeComponent === 'missionVisionValues'
-      ? fields.filter((field) => !['href', 'image.src', 'image.alt', 'icon'].includes(field.key))
+      ? fields.filter((field) => !['href', 'icon'].includes(field.key))
       : section.homeComponent === 'developmentAreas'
         ? fields.filter((field) => field.key !== 'icon')
-        : fields.filter((field) => field.key !== 'illustration')
+        : fields
     : section.type === 'carousel' && section.homeComponent === 'hero'
       ? fields.filter((field) => field.key !== 'tag')
       : fields
@@ -179,7 +227,7 @@ function FriendlyListEditor({ section, onChange }: { section: PageSection; onCha
     onChange({ ...section, items: next } as PageSection); setExpanded((current) => current.map((n) => n === index ? target : n === target ? index : n))
   }
   return <fieldset className="cms-array-fieldset cms-friendly-list"><legend>{config.title}</legend>
-    <p className="admin-small-note">Use these form fields to manage each item. No JSON editing required.</p>
+    <p className="admin-small-note">Manage each item without JSON. Choose a reusable illustration preset or upload a custom image for each card/statistic; the selection is saved with this page in the database and reused by its renderer.</p>
     <div className="cms-repeat-list">
       {items.map((item, index) => {
         const itemTitle = getPath(item, 'title') ?? getPath(item, 'label') ?? getPath(item, 'value') ?? getPath(item, 'year') ?? getPath(item, 'date')
@@ -202,7 +250,9 @@ function FriendlyListEditor({ section, onChange }: { section: PageSection; onCha
                 : field.kind === 'image' || field.kind === 'document'
                   ? <div key={field.key} className="cms-span-2"><MediaField label={field.label} value={getPath(item, field.key) ?? ''} onChange={(value) => update(index, field.key, value)} kind={field.kind === 'document' ? 'document' : 'image'} alt={String(getPath(item, 'title.en') ?? '')} /></div>
                   : field.kind === 'select'
-                    ? <label key={field.key} className="cms-field"><span>{field.label}</span><select className="ui-select" value={String(getPath(item, field.key) ?? field.options?.[0]?.value ?? '')} onChange={(e) => update(index, field.key, e.target.value)}>{(field.options ?? []).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
+                    ? field.key === 'illustration'
+                      ? <div key={field.key} className="cms-illustration-editor cms-span-2"><label className="cms-field"><span>{field.label}</span><select className="ui-select" value={String(getPath(item, field.key) ?? '')} onChange={(e) => update(index, field.key, e.target.value)}>{(field.options ?? []).map((option) => <option key={option.value || 'automatic'} value={option.value}>{option.label}</option>)}</select></label><div className="cms-illustration-editor-preview"><CmsCardIllustration name={(String(getPath(item, field.key) || (section.homeComponent === 'missionVisionValues' ? (index === 0 ? 'mission' : index === 1 ? 'vision' : 'values') : 'users')) as IllustrationName)} imageSrc={String(getPath(item, 'image.src') || '') || undefined} alt={String(getPath(item, 'title.en') || getPath(item, 'label.en') || `${config.singular} ${index + 1}`)} compact /></div></div>
+                      : <label key={field.key} className="cms-field"><span>{field.label}</span><select className="ui-select" value={String(getPath(item, field.key) ?? field.options?.[0]?.value ?? '')} onChange={(e) => update(index, field.key, e.target.value)}>{(field.options ?? []).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
                     : <label key={field.key} className="cms-field"><span>{field.label}</span><Input type={field.kind === 'date' ? 'date' : 'text'} value={String(getPath(item, field.key) ?? '')} onChange={(e) => update(index, field.key, e.target.value)} placeholder={field.kind === 'url' ? '/projects/example or https://…' : undefined} /></label>)}
           </div>}
         </div>
@@ -236,7 +286,7 @@ function SectionExtrasEditor({ section, onChange }: { section: PageSection; onCh
   if (section.type === 'cards') {
     const headingText = (section.heading?.en ?? '').trim().toLowerCase()
     const cardItems = Array.isArray(section.items) ? section.items : []
-    const isEnterpriseFeed = headingText === 'srizony enterprises' || cardItems.some((item) => item.href?.startsWith('/enterprise/'))
+    const isEnterpriseFeed = headingText === 'srizony enterprises' || cardItems.some((item) => item.href?.startsWith('/enterprise-development/'))
     const isMissionStory = section.homeComponent === 'missionVisionValues' || headingText === 'mission, vision & values'
     const isDevelopmentAreas = section.homeComponent === 'developmentAreas' || headingText === 'integrated development areas'
     return <>
@@ -255,12 +305,15 @@ function SectionExtrasEditor({ section, onChange }: { section: PageSection; onCh
   if (section.type === 'timeline') return <fieldset className="cms-array-fieldset"><legend>Timeline layout</legend><label className="cms-field"><span>Presentation</span><select className="ui-select" value={section.variant ?? 'list'} onChange={(e) => set('variant', e.target.value as 'list' | 'journey')}><option value="list">Vertical timeline</option><option value="journey">Journey milestones</option></select></label><p className="admin-small-note">Journey presentation places milestones along a connected horizontal sequence on larger screens and stacks them for mobile.</p></fieldset>
   if (section.type === 'carousel') {
     const headingText = (section.heading?.en ?? '').trim().toLowerCase()
-    const isStoryRail = section.homeComponent === 'stories' || headingText === 'success story of srizony' || headingText === 'news from the field'
+    const isNewsRail = section.homeComponent === 'news' || section.homeComponent === 'stories' || section.homeComponent === 'newsFeed' || headingText === 'news from the field' || headingText === 'latest news'
+    const isSuccessGallery = section.homeComponent === 'successStories' || headingText === 'success stories of srizony' || headingText === 'success story of srizony'
+    const isManagedLandingFeed = isNewsRail || isSuccessGallery
     const isHero = section.homeComponent === 'hero'
-    return <fieldset className="cms-array-fieldset"><legend>Carousel collection options</legend>
+    return <fieldset className="cms-array-fieldset"><legend>{isNewsRail ? 'News rail settings' : isSuccessGallery ? 'Success stories gallery settings' : 'Carousel collection options'}</legend>
       {isHero && <p className="admin-small-note">This collection is rendered as the full-width animated homepage hero. Edit hero text, buttons and autoplay in the Homepage Hero Settings panel above; edit each slide image, alternative text, title, description and route here. Office map pins are managed in the “Our offices across Bangladesh” section.</p>}
-      {isStoryRail && <><label className="cms-field"><span>Success-story data source</span><select className="ui-select" value={section.dataSource ?? 'published-news'} onChange={(e) => set('dataSource', e.target.value as 'manual' | 'published-news')}><option value="published-news">Use published news / success stories</option><option value="manual">Use manual carousel items edited above</option></select></label><p className="admin-small-note">Published mode synchronizes from Site Content → News. Manual mode respects the titles, descriptions, images, tags and links configured in this Page Builder.</p></>}
-      {!isStoryRail && !isHero && <label className="cms-field"><span>Presentation</span><select className="ui-select" value={section.presentation ?? 'collection'} onChange={(e) => set('presentation', e.target.value as 'collection' | 'scroller')}><option value="collection">Collection grid</option><option value="scroller">Animated horizontal scroller</option></select></label>}
+      {isNewsRail && <><p className="admin-small-note">This is the animated News Rail. Add and manage its cards below; each card is a database-managed News record and links to /news/{'{news-slug}'}. Success Stories never appear here.</p><label className="cms-field"><span>Maximum cards displayed</span><Input type="number" min={2} max={12} value={String((section as any).maxItems ?? 8)} onChange={(e) => set('maxItems', Math.max(2, Math.min(12, Number(e.target.value) || 8)))} /></label><LandingCollectionCardsEditor component="news" /></>}
+      {isSuccessGallery && <><p className="admin-small-note">This is the image-first Success Stories Gallery. Add and manage its cards below; published stories with an approved image appear here. Cards show only the image and title and link to /success-stories/{'{story-slug}'}.</p><label className="cms-field"><span>Maximum cards displayed</span><Input type="number" min={2} max={12} value={String((section as any).maxItems ?? 8)} onChange={(e) => set('maxItems', Math.max(2, Math.min(12, Number(e.target.value) || 8)))} /></label><LandingCollectionCardsEditor component="success-story" /></>}
+      {!isManagedLandingFeed && !isHero && <label className="cms-field"><span>Presentation</span><select className="ui-select" value={section.presentation ?? 'collection'} onChange={(e) => set('presentation', e.target.value as 'collection' | 'scroller')}><option value="collection">Collection grid</option><option value="scroller">Animated horizontal scroller</option></select></label>}
     </fieldset>
   }
   if (section.type === 'richText') return <fieldset className="cms-array-fieldset"><legend>{section.homeComponent === 'locations' ? 'Map section options' : 'Text section options'}</legend>
@@ -308,12 +361,13 @@ function defaultSectionButton(section: PageSection): SectionButtonConfig {
     }
   }
   if (section.homeComponent === 'growth') return { ...defaultButton(true), label: { en: 'About us', bn: 'আমাদের সম্পর্কে' }, href: '/about-us' }
-  if (section.homeComponent === 'stories') return { ...defaultButton(true), label: { en: 'All stories', bn: 'সব গল্প' }, href: '/news' }
+  if (section.homeComponent === 'news' || section.homeComponent === 'stories' || section.homeComponent === 'newsFeed') return { ...defaultButton(true), label: { en: 'View all news', bn: 'সব সংবাদ দেখুন' }, href: '/news', action: 'route' }
+  if (section.homeComponent === 'successStories') return { ...defaultButton(true), label: { en: 'View all success stories', bn: 'সব সাফল্যের গল্প দেখুন' }, href: '/success-stories', action: 'route' }
   return defaultButton(false)
 }
 
-function SectionCard({ section, index, total, onChange, onMove, onDuplicate, onRemove }: {
-  section: PageSection; index: number; total: number; onChange: (section: PageSection) => void; onMove: (delta: number) => void; onDuplicate: () => void; onRemove: () => void
+function SectionCard({ section, index, total, pageSlug, onChange, onMove, onDuplicate, onRemove }: {
+  section: PageSection; index: number; total: number; pageSlug: string; onChange: (section: PageSection) => void; onMove: (delta: number) => void; onDuplicate: () => void; onRemove: () => void
 }) {
   const [rawJson, setRawJson] = useState(JSON.stringify(section, null, 2))
   const [jsonError, setJsonError] = useState('')
@@ -356,17 +410,17 @@ function SectionCard({ section, index, total, onChange, onMove, onDuplicate, onR
     </div></CardHeader>
     <CardContent>
       <div className="cms-form-grid pb-section-grid">
-        <label className="cms-field"><span>Section content type</span><select className="ui-select" value={type} onChange={(e) => { const nextType = e.target.value as Section['type']; const next = blankSection(nextType, heading ?? blankBi()); next.visible = section.visible !== false; next.buttonConfig = button; onChange(next) }}>{SECTION_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}</select></label>
+        <label className="cms-field"><span>Section content type</span><select className="ui-select" value={type} disabled={Boolean(section.homeComponent)} onChange={(e) => { const nextType = e.target.value as Section['type']; const next = blankSection(nextType, heading ?? blankBi()); next.visible = section.visible !== false; next.buttonConfig = button; onChange(next) }}>{(section.homeComponent ? [type] : SECTION_TYPES).map((t) => <option key={t} value={t}>{t}</option>)}</select></label>
         <label className="cms-field"><span>Section visibility</span><select className="ui-select" value={section.visible === false ? 'hidden' : 'visible'} onChange={(e) => commonChange('visible', e.target.value === 'visible')}><option value="visible">Show on site</option><option value="hidden">Hide on site</option></select></label>
         {section.homeComponent !== 'hero' && heading && <div className="cms-span-2"><BilingualInputs label="Heading" value={heading} onChange={(v) => commonChange('heading', v)} /></div>}
         {section.homeComponent !== 'hero' && eyebrow && <div className="cms-span-2"><BilingualInputs label="Eyebrow / label" value={eyebrow} onChange={(v) => commonChange('eyebrow', v)} /></div>}
-        {section.homeComponent !== 'hero' && body && <div className="cms-span-2"><BilingualInputs label="Body / description" value={body} multiline onChange={setBodyBoth} /></div>}
+        {section.homeComponent !== 'hero' && body && !section.contentCollection?.enabled && section.type !== 'contentFeed' && <div className="cms-span-2"><BilingualInputs label="Body / description" value={body} multiline onChange={setBodyBoth} /></div>}
       </div>
-      <FriendlyListEditor section={section} onChange={onChange} />
-      <TableRowsEditor section={section} onChange={onChange} />
+      {(section.homeComponent !== 'news' && section.homeComponent !== 'stories' && section.homeComponent !== 'newsFeed' && section.homeComponent !== 'successStories' && !section.contentCollection?.enabled && section.type !== 'contentFeed') && <FriendlyListEditor section={section} onChange={onChange} />}
+      {!section.contentCollection?.enabled && section.type !== 'contentFeed' && <TableRowsEditor section={section} onChange={onChange} />}
       <SectionExtrasEditor section={section} onChange={onChange} />
       {section.homeComponent === 'locations' && <LandingLocationsEditor key="landing-locations-editor" />}
-      {section.type === 'contentFeed' && <fieldset className="cms-array-fieldset"><legend>Content to display</legend><p className="admin-small-note">Choose which published CMS records are included in this feed.</p><div className="rendered-component-grid">{(['project','news','enterprise','partner-agency','health-service','loan-product','notice','report','job','team','product'] as const).map((component) => <label className="cms-check" key={component}><input type="checkbox" checked={(section.components ?? []).includes(component)} onChange={(e) => commonChange('components', e.target.checked ? [...(section.components ?? []), component] : (section.components ?? []).filter((v) => v !== component))} /><span><strong>{component.replaceAll('-', ' ')}</strong></span></label>)}</div></fieldset>}
+      {!section.homeComponent && COLLECTION_SECTION_TYPES.has(section.type) && <SectionCollectionEditor section={section} pageSlug={pageSlug} onChange={onChange} />}
       {section.homeComponent !== 'hero' && <details className="pb-button-settings" open={false}>
         <summary>Buttons & destination routes</summary>
         <div className="cms-form-grid">
@@ -381,6 +435,56 @@ function SectionCard({ section, index, total, onChange, onMove, onDuplicate, onR
       <details className="pb-json-settings"><summary>Advanced technical data (optional)</summary><p className="admin-small-note">Most content can be edited with the forms above. Use this only for section properties not covered by the visual editor; malformed JSON can prevent saving this section.</p><textarea className="ui-textarea pb-json-area" rows={12} spellCheck={false} value={rawJson} onChange={(e) => setRawJson(e.target.value)} /><div className="pb-json-foot"><small className="cms-slug-taken">{jsonError}</small><Button variant="outline" size="sm" onClick={applyJson}>Apply JSON</Button></div></details>
     </CardContent>
   </Card>
+}
+
+function SectionCollectionEditor({ section, pageSlug, onChange }: { section: PageSection; pageSlug: string; onChange: (section: PageSection) => void }) {
+  const config = section.contentCollection ?? { enabled: section.type === 'contentFeed', component: ((section.type === 'contentFeed' ? section.components?.[0] : undefined) ?? 'project') as ContentComponent, maxItems: 12, layout: section.type === 'carousel' ? 'carousel' as const : section.type === 'gallery' ? 'masonry' as const : 'grid' as const, columns: 3 as const, gap: 24, viewportItems: 3 }
+  const [items, setItems] = useState<ContentRecord[]>([])
+  const [loading, setLoading] = useState(false)
+  const [editing, setEditing] = useState<ContentRecord | null | 'new'>(null)
+  const refresh = useCallback(async () => {
+    if (!config.enabled) return
+    setLoading(true)
+    try {
+      const all = await listContent(config.component)
+      const contentPage = FIXED_CONTENT_PARENT[config.component] || pageSlug
+      setItems(all.filter((item) => String(FIXED_CONTENT_PARENT[item.component] || item.values.routeParent || '') === contentPage))
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Unable to load this section collection.')
+    } finally { setLoading(false) }
+  }, [config.enabled, config.component, pageSlug])
+  useEffect(() => { void refresh() }, [refresh])
+  const setConfig = (patch: Partial<typeof config>) => onChange({ ...section, contentCollection: { ...config, ...patch } })
+  const selectableComponents = Object.keys(COMPONENTS) as ContentComponent[]
+  const contentPage = FIXED_CONTENT_PARENT[config.component] || pageSlug
+  const layoutOptions = layoutsForSection(section.type)
+  const selectedLayout = layoutOptions.includes(config.layout) ? config.layout : layoutOptions[0]
+  const singleRecordSection = section.type === 'cta' || section.type === 'donation'
+  const heading = (section as any).heading as Bilingual | undefined
+  return <fieldset className="cms-array-fieldset">
+    <legend>Site content collection</legend>
+    <p className="admin-small-note">A section defines a database-backed collection. Records created here also appear in Site Content. Records created in Site Content appear here when their destination page and content type match.</p>
+    <div className="cms-form-grid">
+      <label className="cms-field"><span>Connect Site Content</span><select className="ui-select" value={config.enabled ? 'yes' : 'no'} onChange={(event) => setConfig({ enabled: event.target.value === 'yes' })}><option value="yes">Enabled — database collection</option><option value="no">Disabled — manually managed section</option></select></label>
+      {config.enabled && <>
+        <label className="cms-field"><span>Content type</span><select className="ui-select" value={config.component} onChange={(event) => setConfig({ component: event.target.value as ContentComponent })}>{selectableComponents.map((component) => <option key={component} value={component}>{COMPONENTS[component].plural}</option>)}</select></label>
+        <label className="cms-field"><span>Maximum records</span><Input type="number" min="1" max="100" value={String(singleRecordSection ? 1 : config.maxItems)} disabled={singleRecordSection} onChange={(event) => setConfig({ maxItems: Math.max(1, Math.min(100, Number(event.target.value) || 1)) })} />{singleRecordSection && <small className="admin-small-note">This section uses one record as its call-to-action content.</small>}</label>
+        <label className="cms-field"><span>Arrangement</span><select className="ui-select" value={selectedLayout} onChange={(event) => setConfig({ layout: event.target.value as typeof config.layout })}>{layoutOptions.map((layout) => <option key={layout} value={layout}>{layout === 'grid' ? 'Grid' : layout === 'carousel' ? 'Carousel / scroller' : layout === 'masonry' ? 'Masonry gallery' : 'List'}</option>)}</select></label>
+        {(selectedLayout === 'grid' || selectedLayout === 'masonry') && <label className="cms-field"><span>Desktop columns</span><select className="ui-select" value={String(config.columns)} onChange={(event) => setConfig({ columns: Number(event.target.value) as 2 | 3 | 4 })}><option value="2">2</option><option value="3">3</option><option value="4">4</option></select></label>}
+        <label className="cms-field"><span>Gap (px)</span><Input type="number" min="0" max="64" value={String(config.gap)} onChange={(event) => setConfig({ gap: Math.max(0, Math.min(64, Number(event.target.value) || 0)) })} /></label>
+        {selectedLayout === 'carousel' && <label className="cms-field"><span>Cards visible in viewport</span><Input type="number" min="1" max="12" value={String(config.viewportItems)} onChange={(event) => setConfig({ viewportItems: Math.max(1, Math.min(12, Number(event.target.value) || 1)) })} /></label>}
+      </>}
+    </div>
+    {config.enabled && (config.component === 'job' || config.component === 'notice') && (
+      <p className="admin-small-note">Notice and job feeds use two columns on medium and larger screens, and one column on smaller screens.</p>
+    )}
+    {config.enabled && <div className="cms-collection-manager">
+      <div className="cms-collection-manager-head"><div><strong>{COMPONENTS[config.component].plural}</strong><small>{items.length} record(s) assigned to <code>{contentPage}</code>{heading?.en ? ` · ${heading.en}` : ''}</small></div><Button size="sm" onClick={() => setEditing('new')}><Plus size={14} /> Add content</Button></div>
+      {loading ? <p className="admin-small-note">Loading collection…</p> : items.length ? <div className="cms-collection-items">{items.map((item) => <div key={item.id} className="cms-collection-item"><div><strong>{item.values.title_en || item.slug}</strong><small>{item.slug} · {item.status}</small></div><Button size="sm" variant="outline" onClick={() => setEditing(item)}>Edit</Button></div>)}</div> : <p className="admin-small-note">No records assigned yet. Add one here or create it in Site Content and set its “Publish under page” destination to {contentPage}.</p>}
+      <a className="ui-button ui-button-ghost ui-button-sm" href={`/admin/dashboard/site-content?component=${config.component}&page=${encodeURIComponent(contentPage)}`}>Open all Site Content ↗</a>
+      {editing !== null && <div className="cms-inline-content-editor"><ContentEditor key={`${config.component}-${editing === 'new' ? 'new' : editing.id}`} component={config.component} record={editing === 'new' ? null : editing} defaultRouteParent={contentPage} onSaved={() => { setEditing(null); void refresh(); toast.success('Section content saved.') }} onDeleted={() => { setEditing(null); void refresh() }} onClose={() => setEditing(null)} /></div>}
+    </div>}
+  </fieldset>
 }
 
 function normalizeHeroDraft(value: unknown): HeroData {
@@ -532,7 +636,7 @@ function LandingGlobalEditor() {
 }
 
 function LandingLocationsEditor() {
-  const [globalDraft, setGlobalDraft] = useState<Record<string, any> | null>(null)
+  const [configured, setConfigured] = useState(false)
   const [branches, setBranches] = useState<Branch[]>(BRANCHES.map((branch) => ({ ...branch })))
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -543,11 +647,14 @@ function LandingLocationsEditor() {
     setLoading(true)
     setError('')
     try {
-      const result = await getPortfolioGlobal()
-      const data = result.global && typeof result.global === 'object' ? result.global : {}
-      const savedPortfolio = data.portfolio && typeof data.portfolio === 'object' ? data.portfolio : {}
-      setGlobalDraft(data)
-      setBranches(Array.isArray(savedPortfolio.branches) ? savedPortfolio.branches : BRANCHES.map((branch) => ({ ...branch })))
+      const response = await fetch('/api/website-essentials', { cache: 'no-store' })
+      if (!response.ok) throw new Error('Unable to load website locations.')
+      const value = normalizeWebsiteEssentials(await response.json())
+      const isConfigured = response.headers.get('X-Website-Essentials-Configured') === 'true'
+      setConfigured(isConfigured)
+      // The legacy directory is used only until the first DB document is seeded.
+      // Once configured, even an empty array is an intentional CMS value.
+      setBranches(isConfigured ? value.locations : (value.locations.length ? value.locations : BRANCHES.map((branch) => ({ ...branch }))))
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Unable to load office locations.')
     } finally {
@@ -558,7 +665,6 @@ function LandingLocationsEditor() {
   useEffect(() => { void load() }, [load])
 
   async function saveSettings() {
-    if (!globalDraft) return
     const seenIds = new Set<string>()
     let headOfficeCount = 0
     for (const branch of branches) {
@@ -573,7 +679,6 @@ function LandingLocationsEditor() {
       if (seenIds.has(id)) { const message = `The map location ID “${id}” is duplicated. Each location needs a unique ID.`; setSaveError(message); toast.error(message); return }
       seenIds.add(id)
       if (branch.kind === 'head') headOfficeCount += 1
-      // Keep map pins inside the Bangladesh map extent used by the public map.
       if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < 20.55 || lat > 26.7 || lng < 87.95 || lng > 92.8) {
         const message = `“${name}” needs verified coordinates inside the displayed Bangladesh map bounds (latitude 20.55–26.7, longitude 87.95–92.8).`
         setSaveError(message); toast.error(message); return
@@ -584,50 +689,37 @@ function LandingLocationsEditor() {
       setSaveError(message); toast.error(message); return
     }
 
-    // Refresh the shared document to avoid overwriting hero settings saved
-    // independently by the Homepage Hero Settings panel.
     setSaving(true)
     setSaveError('')
-    let latestResult: Awaited<ReturnType<typeof getPortfolioGlobal>>
     try {
-      latestResult = await getPortfolioGlobal()
-    } catch (e) {
-      const message = e instanceof Error ? e.message : 'Unable to refresh the shared site settings.'
-      setSaveError(message); toast.error(message); setSaving(false); return
-    }
-    const latestGlobal = latestResult.global && typeof latestResult.global === 'object' ? latestResult.global : {}
-    const existingPortfolio = latestGlobal.portfolio && typeof latestGlobal.portfolio === 'object' ? latestGlobal.portfolio : {}
-    const normalizedBranches = branches.map((branch) => ({
-      ...branch,
-      id: String(branch.id).trim(),
-      lat: Number(branch.lat),
-      lng: Number(branch.lng),
-      kind: branch.kind === 'head' ? 'head' as const : 'branch' as const,
-      name: branch.name ?? blankBi(),
-      district: branch.district ?? blankBi(),
-      division: branch.division ?? blankBi(),
-      address: branch.address ?? blankBi(),
-    }))
-    const branchFootprint = normalizedBranches.map((branch) => ({
-      ...branch,
-      mapQuery: String(branch.address?.en || branch.address?.bn || branch.name?.en || branch.name?.bn || branch.district?.en || branch.district?.bn || ''),
-      // Contact-page footprint uses top-level phone/email; retain manager fields for the map too.
-      phone: branch.manager?.phone || undefined,
-      email: branch.manager?.email || undefined,
-      kind: branch.kind === 'head' ? 'site' : 'branch',
-      manager: branch.manager || undefined,
-    }))
-    const existingContact = latestGlobal.contactInfo && typeof latestGlobal.contactInfo === 'object' ? latestGlobal.contactInfo : {}
-    const nextGlobal = {
-      ...latestGlobal,
-      portfolio: { ...existingPortfolio, branches: normalizedBranches },
-      contactInfo: { ...existingContact, footprint: branchFootprint },
-    }
-
-    try {
-      await savePortfolioGlobal(nextGlobal, latestResult.updatedAt)
-      setGlobalDraft(nextGlobal)
-      toast.success('Office locations saved. The homepage map and contact-page directory will use these settings.')
+      // Read the current document first so this focused editor never overwrites
+      // socials, staff or published PDF configuration owned by Website Essentials.
+      const currentResponse = await fetch('/api/website-essentials', { cache: 'no-store' })
+      if (!currentResponse.ok) throw new Error('Unable to refresh Website Essentials before saving locations.')
+      const latest: WebsiteEssentials = normalizeWebsiteEssentials(await currentResponse.json())
+      const normalizedBranches = branches.map((branch) => ({
+        ...branch,
+        id: String(branch.id).trim(),
+        lat: Number(branch.lat),
+        lng: Number(branch.lng),
+        kind: branch.kind === 'head' ? 'head' as const : 'branch' as const,
+        name: branch.name ?? blankBi(),
+        district: branch.district ?? blankBi(),
+        division: branch.division ?? blankBi(),
+        address: branch.address ?? blankBi(),
+      }))
+      const response = await fetch('/api/website-essentials', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...latest, locations: normalizedBranches }),
+        cache: 'no-store',
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (response.status === 401) { window.location.assign('/admin/login'); return }
+      if (!response.ok) throw new Error(payload.error || 'Unable to save office locations.')
+      setConfigured(true)
+      setBranches(normalizeWebsiteEssentials(payload.data).locations)
+      toast.success('Office locations saved to Website Essentials. The homepage map and location directory now use this database record.')
       await load()
     } catch (e) {
       const message = e instanceof Error ? e.message : 'Unable to save office locations.'
@@ -641,17 +733,18 @@ function LandingLocationsEditor() {
   return <Card className="pb-landing-global-card pb-office-locations-card">
     <CardHeader>
       <div className="pb-page-title-row">
-        <div><CardTitle>Office & branch locations</CardTitle><CardDescription>Manage the pins and office directory for “Our offices across Bangladesh”. These locations also power the portfolio branch directory and contact-page footprint. The section heading and description are edited in this section’s content fields above.</CardDescription></div>
-        <Button onClick={() => void saveSettings()} disabled={loading || saving || !globalDraft}><Save size={15} />{saving ? 'Saving…' : 'Save office locations'}</Button>
+        <div><CardTitle>Office & branch locations</CardTitle><CardDescription>Manage the pins and office directory for “Our offices across Bangladesh”. This editor and Website Essentials share one database record, so edits remain consistent across the homepage, contact page and staff directory.</CardDescription></div>
+        <Button onClick={() => void saveSettings()} disabled={loading || saving}><Save size={15} />{saving ? 'Saving…' : 'Save office locations'}</Button>
       </div>
     </CardHeader>
     <CardContent>
-      {loading && !globalDraft ? <PageLoading rows={4} /> : error && !globalDraft ? <AdminErrorState message={error} onRetry={() => void load()} /> : globalDraft && <>
+      {loading ? <PageLoading rows={4} /> : error ? <AdminErrorState message={error} onRetry={() => void load()} /> : <>
+        {!configured && <p className="admin-small-note">Showing the legacy bootstrap directory until Website Essentials has been seeded. Saving here writes the locations to PostgreSQL.</p>}
         <fieldset className="cms-array-fieldset"><legend>Bangladesh map locations</legend>
           <BranchDirectoryEditor value={branches} onChange={(next) => { setSaveError(''); setBranches(next) }} />
         </fieldset>
         {saveError && <div className="cms-save-error" role="alert"><strong>Changes were not saved.</strong><span>{saveError}</span></div>}
-        <div className="pb-bottom-save"><Button onClick={() => void saveSettings()} disabled={loading || saving || !globalDraft}><Save size={15} />{saving ? 'Saving…' : 'Save office locations'}</Button><Button variant="outline" onClick={() => void load()} disabled={loading || saving}>Reload saved locations</Button></div>
+        <div className="pb-bottom-save"><Button onClick={() => void saveSettings()} disabled={saving}><Save size={15} />{saving ? 'Saving…' : 'Save office locations'}</Button><Button variant="outline" onClick={() => void load()} disabled={saving}>Reload saved locations</Button></div>
       </>}
     </CardContent>
   </Card>
@@ -668,6 +761,7 @@ export default function PageBuilderPage() {
   const [saveError, setSaveError] = useState('')
   const [error, setError] = useState('')
   const [newSectionType, setNewSectionType] = useState<Section['type']>('richText')
+  const [newLandingComponent, setNewLandingComponent] = useState<LandingComponentKey>('growth')
   const [dragIndex, setDragIndex] = useState<number | null>(null)
   const [pageQuery, setPageQuery] = useState('')
 
@@ -711,6 +805,7 @@ export default function PageBuilderPage() {
     setDraft((cur) => {
       if (!cur || index < 0 || index >= cur.sections.length) return cur
       const duplicate = JSON.parse(JSON.stringify(cur.sections[index])) as PageSection
+      duplicate.sectionId = `section-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
       const nextSections = [...cur.sections]
       nextSections.splice(index + 1, 0, duplicate)
       return { ...cur, sections: nextSections }
@@ -748,6 +843,37 @@ export default function PageBuilderPage() {
   }
 
   const sections = draft?.sections ?? []
+  function addPageSection() {
+    if (!draft) return
+    const next = blankSection(newSectionType, { en: `New ${newSectionType} section`, bn: `নতুন ${newSectionType} অংশ` })
+    setDraft((current) => current ? ({ ...current, sections: [...current.sections, next] }) : current)
+  }
+  function addLandingSection(key: LandingComponentKey) {
+    if (!draft) return
+    const option = LANDING_COMPONENT_OPTIONS.find((item) => item.key === key)
+    if (!option) return
+    if (draft.sections.some((section) => section.homeComponent === key)) {
+      toast.error('This landing composition already exists on the page.')
+      return
+    }
+    const next = blankSection(option.type, { en: option.label, bn: option.labelBn })
+    next.contentCollection = { enabled: false, component: 'project', maxItems: 8, layout: 'grid', columns: 3, gap: 24, viewportItems: 3 }
+    next.homeComponent = key
+    if (next.type === 'carousel' && (key === 'news' || key === 'stories')) {
+      next.collectionKind = 'news'
+      next.dataSource = 'published-news'
+      next.presentation = 'scroller'
+      next.heading = { en: 'Latest News', bn: 'সর্বশেষ সংবাদ' }
+      next.buttonConfig = { ...defaultButton(true), label: { en: 'View all news', bn: 'সব সংবাদ দেখুন' }, href: '/news', action: 'route' }
+    } else if (next.type === 'carousel' && key === 'successStories') {
+      next.collectionKind = 'success-stories'
+      next.dataSource = 'published-success-stories'
+      next.presentation = 'collection'
+      next.heading = { en: 'Success Stories of Srizony', bn: 'সৃজনীর সাফল্যের গল্পসমূহ' }
+      next.buttonConfig = { ...defaultButton(true), label: { en: 'View all success stories', bn: 'সব সাফল্যের গল্প দেখুন' }, href: '/success-stories', action: 'route' }
+    }
+    setDraft((current) => current ? ({ ...current, sections: [...current.sections, next] }) : current)
+  }
   return <>
     <SectionToolbar title="Page Builder" description="Edit bilingual page content section by section. Reorder sections, toggle visibility, and configure buttons and routes; published updates flow to the website." count={pages.length} onRefresh={() => { void loadIndex(); if (slug) void loadPage(slug) }} refreshing={loading || pageLoading} />
     {loading && !pages.length ? <PageLoading rows={4} /> : error && !draft ? <AdminErrorState message={error} onRetry={() => { void loadIndex(); if (slug) void loadPage(slug) }} /> : <div className="pb-layout">
@@ -758,16 +884,16 @@ export default function PageBuilderPage() {
             <div className="cms-span-2"><BilingualInputs label={slug === '/' ? "Page title (browser/search metadata)" : "Page title"} value={draft.title} onChange={(title) => updateTop('title', title)} /></div>
             <div className="cms-span-2"><BilingualInputs label={slug === '/' ? "Page subtitle (metadata / internal summary)" : "Page subtitle"} value={draft.subtitle ?? blankBi()} onChange={(subtitle) => updateTop('subtitle', subtitle)} multiline /></div>
             <div className="cms-span-2"><MediaField label={slug === '/' ? "Social preview image (Open Graph)" : "Hero image"} value={draft.heroImage ?? ''} onChange={(value) => updateTop('heroImage', value || undefined)} alt={draft.title.en} helper={slug === '/' ? "Sets the homepage link-preview image. Edit the visible homepage carousel images in the Landing Page Hero section below." : "Upload an approved image or paste an existing HTTPS / CMS media URL."} /></div>
-            <label className="cms-field"><span>Hero tone</span><select className="ui-select" value={draft.heroTone ?? 'green'} onChange={(e) => updateTop('heroTone', e.target.value as PageData['heroTone'])}><option value="green">Green</option><option value="light">Light</option><option value="orange">Orange</option></select></label>
             <label className="cms-field"><span>Page layout</span><select className="ui-select" value={draft.layout ?? 'standard'} onChange={(e) => updateTop('layout', e.target.value as PageData['layout'])}><option value="standard">Standard width</option><option value="wide">Wide content</option><option value="narrow">Narrow reading</option><option value="editorial">Editorial panels</option></select></label>
+            {slug !== '/' && <label className="cms-field"><span>Routed page content padding</span><select className="ui-select" value={draft.contentPadding ?? 'normal'} onChange={(e) => updateTop('contentPadding', e.target.value as NonNullable<PageData['contentPadding']>)}><option value="none">No outer vertical padding</option><option value="compact">Compact</option><option value="normal">Default</option><option value="spacious">Spacious</option></select><small className="admin-small-note">Controls the vertical spacing between the hero and routed page sections, as well as spacing between sections.</small></label>}
             <label className="cms-field"><span>Publication status</span><select className="ui-select" value={slug === '/' ? 'published' : (draft.status ?? 'published')} disabled={slug === '/'} onChange={(e) => updateTop('status', e.target.value as PageData['status'])}><option value="published">Published</option><option value="draft">Draft</option><option value="archived">Archived</option></select>{slug === '/' && <small className="admin-small-note">The landing page route stays published; hide individual sections when needed.</small>}</label>
             <label className="cms-field"><span>Page sort order</span><Input type="number" value={String(draft.sortOrder ?? 0)} onChange={(e) => updateTop('sortOrder', Math.max(0, Number(e.target.value) || 0))} /></label>
             <div className="cms-span-2"><BilingualInputs label="Search description" value={draft.metaDescription ?? blankBi()} onChange={(metaDescription) => updateTop('metaDescription', metaDescription)} multiline /></div>
           </div></CardContent></Card>
           {slug === '/' && <LandingGlobalEditor key="landing-global-editor" />}
-          <div className="pb-sections-heading"><div><h2>Page sections</h2><p>{sections.length} section{sections.length === 1 ? '' : 's'} · Drag cards to rearrange them. Hidden sections remain editable but do not render publicly. The Integrated Development Areas cards are part of this landing-page document.</p></div><div className="pb-add-section"><select className="ui-select" value={newSectionType} onChange={(e) => setNewSectionType(e.target.value as Section['type'])}>{SECTION_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}</select><Button variant="outline" onClick={() => setDraft((cur) => cur ? ({ ...cur, sections: [...cur.sections, blankSection(newSectionType, { en: `New ${newSectionType} section`, bn: `নতুন ${newSectionType} অংশ` })] }) : cur)}><Plus size={14} /> Add section</Button></div></div>
+          <div className="pb-sections-heading"><div><h2>{slug === '/' ? 'Landing compositions' : 'Page sections'}</h2><p>{sections.length} section{sections.length === 1 ? '' : 's'} · Drag sections to rearrange them. {slug === '/' ? 'Configure every landing composition here; use the News Rail and Success Stories card managers inside those sections to create and edit their database records.' : 'Use normal page sections or optionally add a reusable landing composition.'} Hidden sections remain editable but do not render publicly.</p></div><div className="pb-add-section">{slug === '/' ? <><select className="ui-select" aria-label="Landing composition" value={newLandingComponent} onChange={(e) => setNewLandingComponent(e.target.value as LandingComponentKey)}>{LANDING_COMPONENT_OPTIONS.map((option) => <option key={option.key} value={option.key}>{option.label}</option>)}</select><Button variant="outline" onClick={() => addLandingSection(newLandingComponent)}><Plus size={14} /> Add landing composition</Button></> : <><select className="ui-select" aria-label="Page section type" value={newSectionType} onChange={(e) => setNewSectionType(e.target.value as Section['type'])}>{SECTION_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}</select><Button variant="outline" onClick={addPageSection}><Plus size={14} /> Add page section</Button><select className="ui-select" aria-label="Reusable landing composition" value={newLandingComponent} onChange={(e) => setNewLandingComponent(e.target.value as LandingComponentKey)}>{LANDING_COMPONENT_OPTIONS.map((option) => <option key={option.key} value={option.key}>{option.label}</option>)}</select><Button variant="outline" onClick={() => addLandingSection(newLandingComponent)}><Plus size={14} /> Add landing UI</Button></>}</div></div>
           <div className="pb-sections-list" onDragOver={(e) => e.preventDefault()} onDragStartCapture={(e) => { const target = e.target as HTMLElement; const card = target.closest('[data-section-index]'); if (card) setDragIndex(Number(card.getAttribute('data-section-index'))) }} onDropCapture={(e) => { const target = e.target as HTMLElement; const card = target.closest('[data-section-index]'); if (!card || dragIndex === null) return; const to = Number(card.getAttribute('data-section-index')); if (to !== dragIndex) setDraft((cur) => cur ? ({ ...cur, sections: moveItem(cur.sections, dragIndex, to) }) : cur); setDragIndex(null) }}>
-            {sections.map((section, index) => <div data-section-index={index} key={`${slug}-section-${index}`} draggable onDragStart={(e) => { setDragIndex(index); e.dataTransfer.setData('text/plain', String(index)); e.dataTransfer.effectAllowed = 'move' }} onDragOver={(e) => e.preventDefault()}><SectionCard section={section} index={index} total={sections.length} onChange={(value) => updateSection(index, value)} onMove={(delta) => setDraft((cur) => cur ? ({ ...cur, sections: moveItem(cur.sections, index, index + delta) }) : cur)} onDuplicate={() => duplicateSection(index)} onRemove={() => { if (confirm(`Remove section ${index + 1}?`)) setDraft((cur) => cur ? ({ ...cur, sections: cur.sections.filter((_, i) => i !== index) }) : cur) }} /></div>)}
+            {sections.map((section, index) => <div data-section-index={index} key={`${slug}-section-${index}`} draggable onDragStart={(e) => { setDragIndex(index); e.dataTransfer.setData('text/plain', String(index)); e.dataTransfer.effectAllowed = 'move' }} onDragOver={(e) => e.preventDefault()}><SectionCard section={section} index={index} total={sections.length} pageSlug={slug} onChange={(value) => updateSection(index, value)} onMove={(delta) => setDraft((cur) => cur ? ({ ...cur, sections: moveItem(cur.sections, index, index + delta) }) : cur)} onDuplicate={() => duplicateSection(index)} onRemove={() => { if (confirm(`Remove section ${index + 1}?`)) setDraft((cur) => cur ? ({ ...cur, sections: cur.sections.filter((_, i) => i !== index) }) : cur) }} /></div>)}
             {!sections.length && <div className="admin-empty-state">This page has no sections. Add a section to build the page.</div>}
           </div>
           {saveError && <div className="cms-save-error" role="alert"><strong>Changes were not saved.</strong><span>{saveError}</span><small>Your edits are still in this form. You can correct the issue and retry without losing the draft.</small></div>}

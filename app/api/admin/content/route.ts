@@ -72,7 +72,19 @@ export async function PUT(req: Request) {
       return NextResponse.json({ ok: true })
     }
     if (globalResult.success) {
-      await saveDocument('site-global', globalResult.data.data, 'global', admin.email, globalResult.data.expectedUpdatedAt)
+      const current = await getCmsEditorData()
+      const submitted = globalResult.data.data as Record<string, any>
+      const currentIdentity = (current.global as Record<string, any> | undefined)?.siteIdentity || {}
+      const brand = submitted.portfolio?.brandIdentity
+      const logo = typeof brand?.logo === 'string' && brand.logo.trim()
+        ? brand.logo.trim()
+        : typeof submitted.images?.logo === 'string' && submitted.images.logo.trim() ? submitted.images.logo.trim() : undefined
+      const siteIdentity = { ...currentIdentity, ...(logo ? { logo } : {}) }
+      const normalizedGlobal = {
+        ...submitted,
+        ...(logo ? { siteIdentity, images: { ...(submitted.images || {}), logo }, portfolio: { ...(submitted.portfolio || {}), brandIdentity: { ...(brand || {}), logo } } } : {}),
+      }
+      await saveDocument('site-global', normalizedGlobal, 'global', admin.email, globalResult.data.expectedUpdatedAt)
       await auditAdminAction({ actorEmail: admin.email, action: 'content.save', entity: 'site-global', request: req })
       return NextResponse.json({ ok: true })
     }

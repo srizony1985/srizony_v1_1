@@ -1,7 +1,20 @@
 import type { ContactInfo, HeroData, MediaItem, NavGroup, NavItem, PageData, ThemeDefinition, UIContent } from '@/types/entityType'
 
 export type PublicPaymentInfo = { id: string; en: string; bn: string; noteEn: string; noteBn: string; icon: string }
+export type SiteIdentity = {
+  name: string
+  alternateName: string
+  canonicalUrl: string
+  title: string
+  description: string
+  keywords: string[]
+  foundingDate: string
+  logo: string
+  ogImage: string
+}
+
 export type PublicGlobal = {
+  siteIdentity: SiteIdentity
   images: Record<string, any>
   themes: Record<string, ThemeDefinition>
   media: Record<string, any>

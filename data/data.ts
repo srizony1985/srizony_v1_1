@@ -9,6 +9,7 @@ import { BriefcaseBusiness, Coins, CreditCard, Droplets, GraduationCap, HandHear
 import { HERO_FEATURED, LEGACY_IMAGE, SLUG_IMAGE_KEYS, poolUrl } from './landingImages'
 import { HOME_HERO_COPY_DEFAULTS } from './homeHeroDefaults'
 import { contentDetails } from './contentDetails'
+import { canonicalizeCmsRoute, getContentRouteParent } from '../lib/cms/routes'
 import type { Bilingual, HeroData, MediaItem, NavGroup, NavItem, PageData, ContactInfo, ThemeDefinition, ContentEntry, Section, IconName, SDGStep, PaymentInfo } from '../types/entityType'
 
 // ---- system: image registry ----
@@ -345,7 +346,7 @@ const homeHero: HeroData = {
       image: images.hero.feature,
       title: { en: 'Health, education and dignity', bn: 'স্বাস্থ্য, শিক্ষা ও মর্যাদা' },
       description: { en: 'Expanding access to essential services and practical learning.', bn: 'প্রয়োজনীয় সেবা ও ব্যবহারিক শিক্ষার সুযোগ সম্প্রসারণ।' },
-      href: '/health-program',
+      href: '/social-development/health-program',
     },
   ],
   stats: [
@@ -474,7 +475,7 @@ homeHero.slides = HERO_FEATURED.map((featured) => {
 
 function entryToPage(entry: ContentEntry, allRelated = true): PageData {
   return {
-    slug:`/${entry.category === 'project' ? 'projects' : entry.category === 'news' ? 'news' : entry.category === 'notice' ? 'notice' : entry.category === 'career' ? 'job-circular' : 'enterprise'}/${entry.slug}`,
+    slug:`/${entry.category === 'project' ? 'projects' : entry.category === 'news' ? 'news' : entry.category === 'notice' ? 'notice' : entry.category === 'career' ? 'carrer-job' : 'enterprise'}/${entry.slug}`,
     title:entry.title,
     subtitle:entry.excerpt,
     heroImage:entry.image.src,
@@ -513,81 +514,91 @@ const contactInfo = {
 }
 
 const primaryNav: NavItem[] = [
-  { label: { en: 'Home', bn: 'হোম' }, href: '/' },
-  { label: { en: 'Projects', bn: 'প্রকল্পসমূহ' }, href: '/projects' },
-  { label: { en: 'News', bn: 'সংবাদ' }, href: '/news' },
-  { label: { en: 'Notices', bn: 'নোটিশ' }, href: '/notice' },
-  { label: { en: 'Contact', bn: 'যোগাযোগ' }, href: '/contact' },
-  { label: { en: 'Donate Now', bn: 'এখনই দান করুন' }, href: '/donate' },
+  {
+    label: { en: 'Home', bn: 'হোম' },
+    href: '/',
+    children: [
+      { label: { en: 'Projects', bn: 'প্রকল্পসমূহ' }, href: '/projects' },
+      { label: { en: 'Career / Jobs', bn: 'ক্যারিয়ার / চাকরি' }, href: '/carrer-job' },
+      { label: { en: 'Notice', bn: 'নোটিশ' }, href: '/notice' },
+      { label: { en: 'Contact', bn: 'যোগাযোগ' }, href: '/contact' },
+    ],
+  },
 ]
 
-const navGroups: NavGroup[] = [
-  {
-    label: { en: 'Who We Are', bn: 'আমরা যারা' },
-    items: [
+const whoWeAreItems: NavItem[] = [
       {
         label: { en: 'About Us', bn: 'আমাদের সম্পর্কে' },
         href: '/about-us',
         children: [
-          { label: { en: 'Founders Footprint', bn: 'প্রতিষ্ঠাতার অবদান' }, href: '/founders-footprint' },
-          { label: { en: 'Awards & Recognition', bn: 'পুরস্কার ও স্বীকৃতি' }, href: '/awards-recognition' },
-          { label: { en: 'Partners & Networks', bn: 'অংশীদার ও নেটওয়ার্ক' }, href: '/partners-networks' },
-          { label: { en: 'Executive Committee', bn: 'নির্বাহী কমিটি' }, href: '/executive-committee' },
-          { label: { en: 'Operational Structure', bn: 'অপারেশনাল কাঠামো' }, href: '/operational-structure' },
-          { label: { en: 'Governing Body', bn: 'গভর্নিং বডি' }, href: '/governing-body' },
-            ],
+          { label: { en: 'Founders Footprint', bn: 'প্রতিষ্ঠাতার অবদান' }, href: '/about-us/founders-footprint' },
+          { label: { en: 'Awards & Recognition', bn: 'পুরস্কার ও স্বীকৃতি' }, href: '/about-us/awards-recognition' },
+          { label: { en: 'Executive Committee', bn: 'নির্বাহী কমিটি' }, href: '/about-us/executive-committee' },
+          { label: { en: 'Operational Structure', bn: 'অপারেশনাল কাঠামো' }, href: '/about-us/operational-structure' },
+          { label: { en: 'Partners & Networks', bn: 'অংশীদার ও নেটওয়ার্ক' }, href: '/about-us/partners-networks' },
+          { label: { en: 'Governing Body', bn: 'গভর্নিং বডি' }, href: '/about-us/governing-body' },
+        ],
       },
       { label: { en: 'At A Glance', bn: 'এক নজরে' }, href: '/at-a-glance' },
       { label: { en: 'Impact on SDG', bn: 'এসডিজিতে প্রভাব' }, href: '/impact-on-sdg' },
       { label: { en: 'Good Governance', bn: 'সুশাসন' }, href: '/good-governance' },
-    ],
-  },
-  {
-    label: { en: 'What We Do', bn: 'আমাদের কার্যক্রম' },
-    items: [
+      { label: { en: 'Management Staff', bn: 'ব্যবস্থাপনা কর্মকর্তা' }, href: '/management-staff' },
+      { label: { en: 'Documents & Resources', bn: 'ডকুমেন্ট ও ডাউনলোড' }, href: '/resources' },
+    ];
+
+const whatWeDoItems: NavItem[] = [
       {
         label: { en: 'Social Development', bn: 'সামাজিক উন্নয়ন' },
         href: '/social-development',
         children: [
-          { label: { en: 'Health Program', bn: 'স্বাস্থ্য কর্মসূচি' }, href: '/health-program' },
-          { label: { en: 'Education Program', bn: 'শিক্ষা কর্মসূচি' }, href: '/education-program' },
-          { label: { en: 'Human Rights', bn: 'মানবাধিকার' }, href: '/human-rights' },
-          { label: { en: 'Human Resource', bn: 'মানবসম্পদ' }, href: '/human-resource' },
-          { label: { en: 'Climate Change', bn: 'জলবায়ু পরিবর্তন' }, href: '/climate-change' },
-          { label: { en: 'Agriculture & Livelihood', bn: 'কৃষি ও জীবিকা' }, href: '/agriculture-livelihood' },
+          { label: { en: 'Health Program', bn: 'স্বাস্থ্য কর্মসূচি' }, href: '/social-development/health-program' },
+          { label: { en: 'Education Program', bn: 'শিক্ষা কর্মসূচি' }, href: '/social-development/education-program' },
+          { label: { en: 'Human Rights', bn: 'মানবাধিকার' }, href: '/social-development/human-rights' },
+          { label: { en: 'Human Resource', bn: 'মানবসম্পদ' }, href: '/social-development/human-resource' },
+          { label: { en: 'Climate Change', bn: 'জলবায়ু পরিবর্তন' }, href: '/social-development/climate-change' },
+          { label: { en: 'Agriculture & Livelihood', bn: 'কৃষি ও জীবিকা' }, href: '/social-development/agriculture-livelihood' },
         ],
       },
       {
         label: { en: 'Organizational Development', bn: 'প্রাতিষ্ঠানিক উন্নয়ন' },
         href: '/organizational-development',
         children: [
-          { label: { en: 'Women Business Loans', bn: 'নারী ব্যবসা ঋণ' }, href: '/women-business-loan' },
-          { label: { en: 'Small Enterprise Loans', bn: 'ক্ষুদ্র উদ্যোক্তা ঋণ' }, href: '/small-enterprise-loan' },
-          { label: { en: 'Agriculture Loans', bn: 'কৃষি ঋণ' }, href: '/agri-development-loan' },
-          { label: { en: 'Household Migrant Loans', bn: 'অভিবাসী পরিবার ঋণ' }, href: '/household-migrant-loan' },
-          { label: { en: 'Rural Development Loans', bn: 'গ্রামীণ উন্নয়ন ঋণ' }, href: '/rural-development-loan' },
-          { label: { en: 'Job Holder Loans', bn: 'চাকরিজীবী ঋণ' }, href: '/job-holders-loan' },
-          { label: { en: 'Student Loans', bn: 'শিক্ষার্থী ঋণ' }, href: '/student-loan' },
+          { label: { en: 'Women Business Loan', bn: 'নারী ব্যবসা ঋণ' }, href: '/organizational-development/women-business-loan' },
+          { label: { en: 'Small Enterprise Loan', bn: 'ক্ষুদ্র উদ্যোক্তা ঋণ' }, href: '/organizational-development/small-enterprise-loan' },
+          { label: { en: 'Agri Development Loan', bn: 'কৃষি উন্নয়ন ঋণ' }, href: '/organizational-development/agri-development-loan' },
+          { label: { en: 'Household Migrant Loan', bn: 'অভিবাসী পরিবার ঋণ' }, href: '/organizational-development/household-migrant-loan' },
+          { label: { en: 'Rural Development Loan', bn: 'গ্রামীণ উন্নয়ন ঋণ' }, href: '/organizational-development/rural-development-loan' },
+          { label: { en: 'Job Holders Loan', bn: 'চাকরিজীবী ঋণ' }, href: '/organizational-development/job-holders-loan' },
+          { label: { en: 'Student Loan', bn: 'শিক্ষার্থী ঋণ' }, href: '/organizational-development/student-loan' },
         ],
       },
       {
         label: { en: 'Enterprise Development', bn: 'এন্টারপ্রাইজ উন্নয়ন' },
         href: '/enterprise-development',
         children: [
-          { label: { en: 'Srizony Hospital', bn: 'সৃজনী হাসপাতাল' }, href: '/enterprise/srizony-hospital' },
-          { label: { en: 'Srizony University', bn: 'সৃজনী ইউনিভার্সিটি' }, href: '/enterprise/srizony-university' },
-          { label: { en: 'Srizony Polytechnic', bn: 'সৃজনী পলিটেকনিক' }, href: '/enterprise/srizony-polytechnic' },
-          { label: { en: 'Srizony Printing Press', bn: 'সৃজনী প্রিন্টিং প্রেস' }, href: '/enterprise/srizony-printing-press' },
-          { label: { en: 'Srizony Filling Station', bn: 'সৃজনী ফিলিং স্টেশন' }, href: '/enterprise/srizony-filling-station' },
-          { label: { en: 'Srizony Internet', bn: 'সৃজনী ইন্টারনেট' }, href: '/enterprise/srizony-internet' },
-          { label: { en: 'Srizony Computer Garden', bn: 'সৃজনী কম্পিউটার গার্ডেন' }, href: '/enterprise/srizony-computer-garden' },
-          { label: { en: 'Srizony Motors', bn: 'সৃজনী মোটরস' }, href: '/enterprise/srizony-motors' },
+          { label: { en: 'Srizony Hospital', bn: 'সৃজনী হাসপাতাল' }, href: '/enterprise-development/srizony-hospital' },
+          { label: { en: 'Srizony University', bn: 'সৃজনী ইউনিভার্সিটি' }, href: '/enterprise-development/srizony-university' },
+          { label: { en: 'Srizony Polytechnic', bn: 'সৃজনী পলিটেকনিক' }, href: '/enterprise-development/srizony-polytechnic' },
+          { label: { en: 'Srizony Printing Press', bn: 'সৃজনী প্রিন্টিং প্রেস' }, href: '/enterprise-development/srizony-printing-press' },
+          { label: { en: 'Srizony Filling Station', bn: 'সৃজনী ফিলিং স্টেশন' }, href: '/enterprise-development/srizony-filling-station' },
+          { label: { en: 'Srizony Internet', bn: 'সৃজনী ইন্টারনেট' }, href: '/enterprise-development/srizony-internet' },
+          { label: { en: 'Srizony Computer Garden', bn: 'সৃজনী কম্পিউটার গার্ডেন' }, href: '/enterprise-development/srizony-computer-garden' },
+          { label: { en: 'Srizony Motors', bn: 'সৃজনী মোটরস' }, href: '/enterprise-development/srizony-motors' },
         ],
       },
-      { label: { en: 'Micro-finance Program', bn: 'ক্ষুদ্রঋণ কর্মসূচি' }, href: '/microfinance-program' },
-      { label: { en: 'Career / Job', bn: 'ক্যারিয়ার / চাকরি' }, href: '/job-circular' },
-    ],
-  },
+      { label: { en: 'Microfinance Program', bn: 'ক্ষুদ্রঋণ কর্মসূচি' }, href: '/microfinance-program' },
+      { label: { en: 'Success Stories', bn: 'সাফল্যের গল্প' }, href: '/success-stories' },
+      { label: { en: 'News', bn: 'সংবাদ' }, href: '/news' },
+    ];
+
+// navGroups is retained only as an empty API compatibility field. The CMS and
+// public site now use one Home-rooted navigation tree with folder menu items.
+const navGroups: NavGroup[] = [];
+
+primaryNav[0].children = [
+  { label: { en: 'Who We Are', bn: 'আমরা যারা' }, href: '', menuType: 'folder', children: whoWeAreItems },
+  { label: { en: 'What We Do', bn: 'আমাদের কার্যক্রম' }, href: '', menuType: 'folder', children: whatWeDoItems },
+  ...(primaryNav[0].children ?? []),
 ]
 
 const imageMedia = (src: string, alt: Bilingual): MediaItem => ({ src, alt })
@@ -644,9 +655,9 @@ const pages: Record<string, PageData> = {
         heading:{en:'Mission, Vision & Values',bn:'মিশন, ভিশন ও মূল্যবোধ'},
         columns:3,
         items:[
-          {title:{en:'Our Mission',bn:'আমাদের মিশন'},body:{en:'Create an enabling environment for poverty reduction, socio-economic development and human rights.',bn:'দারিদ্র্য বিমোচন, আর্থ-সামাজিক উন্নয়ন ও মানবাধিকার প্রতিষ্ঠায় সহায়ক পরিবেশ তৈরি করা।'},icon:'heart'},
-          {title:{en:'Our Vision',bn:'আমাদের ভিশন'},body:{en:'A Bangladesh where every person, especially the poor and marginalised, lives with dignity, opportunity and rights.',bn:'এমন একটি বাংলাদেশ, যেখানে প্রত্যেক মানুষ, বিশেষ করে দরিদ্র ও প্রান্তিক জনগোষ্ঠী, মর্যাদা, সুযোগ ও অধিকারসহ বাঁচতে পারে।'},icon:'users'},
-          {title:{en:'Our Values',bn:'আমাদের মূল্যবোধ'},body:{en:'Accountability and fairness: abiding by rules and policies in everything we do.',bn:'জবাবদিহিতা ও ন্যায়পরায়ণতা: প্রতিটি কাজে নীতি ও নিয়ম মেনে চলা।'},icon:'shield'},
+          {title:{en:'Our Mission',bn:'আমাদের মিশন'},body:{en:'Create an enabling environment for poverty reduction, socio-economic development and human rights.',bn:'দারিদ্র্য বিমোচন, আর্থ-সামাজিক উন্নয়ন ও মানবাধিকার প্রতিষ্ঠায় সহায়ক পরিবেশ তৈরি করা।'},icon:'heart',illustration:'mission'},
+          {title:{en:'Our Vision',bn:'আমাদের ভিশন'},body:{en:'A Bangladesh where every person, especially the poor and marginalised, lives with dignity, opportunity and rights.',bn:'এমন একটি বাংলাদেশ, যেখানে প্রত্যেক মানুষ, বিশেষ করে দরিদ্র ও প্রান্তিক জনগোষ্ঠী, মর্যাদা, সুযোগ ও অধিকারসহ বাঁচতে পারে।'},icon:'users',illustration:'vision'},
+          {title:{en:'Our Values',bn:'আমাদের মূল্যবোধ'},body:{en:'Accountability and fairness: abiding by rules and policies in everything we do.',bn:'জবাবদিহিতা ও ন্যায়পরায়ণতা: প্রতিটি কাজে নীতি ও নিয়ম মেনে চলা।'},icon:'shield',illustration:'values'},
         ],
       },
       {
@@ -688,10 +699,10 @@ const pages: Record<string, PageData> = {
         columns:3,
         items:[
           {title:{en:'Poverty Reduction',bn:'দারিদ্র্য হ্রাস'},body:{en:'Financial inclusion and livelihood support help households build income and resilience.',bn:'আর্থিক অন্তর্ভুক্তি ও জীবিকা সহায়তা পরিবারগুলোকে আয় ও স্থিতিস্থাপকতা গড়ে তুলতে সহায়তা করে।'},icon:'coins',href:'/microfinance-program'},
-          {title:{en:'Health',bn:'স্বাস্থ্য'},body:{en:'Community-focused health services improve access to essential care and wellbeing.',bn:'কমিউনিটি-কেন্দ্রিক স্বাস্থ্যসেবা প্রয়োজনীয় চিকিৎসা ও সুস্থতার সুযোগ বাড়ায়।'},icon:'heart',href:'/health-program'},
-          {title:{en:'Education',bn:'শিক্ষা'},body:{en:'Learning and skills initiatives expand opportunities for children, youth and adults.',bn:'শিক্ষা ও দক্ষতা উন্নয়ন কার্যক্রম শিশু, তরুণ ও প্রাপ্তবয়স্কদের সুযোগ বাড়ায়।'},icon:'book',href:'/education-program'},
-          {title:{en:'Human Rights',bn:'মানবাধিকার'},body:{en:'Rights-based initiatives strengthen dignity, voice, inclusion and access to justice.',bn:'অধিকারভিত্তিক উদ্যোগ মর্যাদা, অংশগ্রহণ, অন্তর্ভুক্তি ও ন্যায়ের সুযোগকে শক্তিশালী করে।'},icon:'scale',href:'/human-rights'},
-          {title:{en:'Climate & Livelihood',bn:'জলবায়ু ও জীবিকা'},body:{en:'Climate resilience and livelihood programs help communities adapt and prosper.',bn:'জলবায়ু সহনশীলতা ও জীবিকা কার্যক্রম কমিউনিটিকে অভিযোজন ও সমৃদ্ধিতে সহায়তা করে।'},icon:'leaf',href:'/climate-change'},
+          {title:{en:'Health',bn:'স্বাস্থ্য'},body:{en:'Community-focused health services improve access to essential care and wellbeing.',bn:'কমিউনিটি-কেন্দ্রিক স্বাস্থ্যসেবা প্রয়োজনীয় চিকিৎসা ও সুস্থতার সুযোগ বাড়ায়।'},icon:'heart',href:'/social-development/health-program'},
+          {title:{en:'Education',bn:'শিক্ষা'},body:{en:'Learning and skills initiatives expand opportunities for children, youth and adults.',bn:'শিক্ষা ও দক্ষতা উন্নয়ন কার্যক্রম শিশু, তরুণ ও প্রাপ্তবয়স্কদের সুযোগ বাড়ায়।'},icon:'book',href:'/social-development/education-program'},
+          {title:{en:'Human Rights',bn:'মানবাধিকার'},body:{en:'Rights-based initiatives strengthen dignity, voice, inclusion and access to justice.',bn:'অধিকারভিত্তিক উদ্যোগ মর্যাদা, অংশগ্রহণ, অন্তর্ভুক্তি ও ন্যায়ের সুযোগকে শক্তিশালী করে।'},icon:'scale',href:'/social-development/human-rights'},
+          {title:{en:'Climate & Livelihood',bn:'জলবায়ু ও জীবিকা'},body:{en:'Climate resilience and livelihood programs help communities adapt and prosper.',bn:'জলবায়ু সহনশীলতা ও জীবিকা কার্যক্রম কমিউনিটিকে অভিযোজন ও সমৃদ্ধিতে সহায়তা করে।'},icon:'leaf',href:'/social-development/climate-change'},
           {title:{en:'Community',bn:'কমিউনিটি'},body:{en:'Local participation and community systems put people at the centre of development.',bn:'স্থানীয় অংশগ্রহণ ও কমিউনিটি ব্যবস্থা মানুষকে উন্নয়নের কেন্দ্রবিন্দুতে রাখে।'},icon:'users',href:'/organizational-development'},
         ]
       },
@@ -702,12 +713,12 @@ const pages: Record<string, PageData> = {
         heading:{en:'Integrated Development Areas',bn:'সমন্বিত উন্নয়ন ক্ষেত্র'},
         columns:3,
         items:[
-          {title:{en:'Health & Nutrition',bn:'স্বাস্থ্য ও পুষ্টি'},body:{en:'Primary healthcare and nutrition for communities.',bn:'কমিউনিটির জন্য প্রাথমিক স্বাস্থ্যসেবা ও পুষ্টি।'},icon:'heart',href:'/health-program'},
+          {title:{en:'Health & Nutrition',bn:'স্বাস্থ্য ও পুষ্টি'},body:{en:'Primary healthcare and nutrition for communities.',bn:'কমিউনিটির জন্য প্রাথমিক স্বাস্থ্যসেবা ও পুষ্টি।'},icon:'heart',href:'/social-development/health-program'},
           {title:{en:'Social Development',bn:'সামাজিক উন্নয়ন'},body:{en:'Rights, inclusion and community leadership.',bn:'অধিকার, অন্তর্ভুক্তি ও কমিউনিটি নেতৃত্ব।'},icon:'users',href:'/social-development'},
           {title:{en:'Microfinance & Loans',bn:'ক্ষুদ্রঋণ ও ঋণ সেবা'},body:{en:'Savings and loans built around livelihoods.',bn:'জীবিকাকেন্দ্রিক সঞ্চয় ও ঋণসেবা।'},icon:'coins',href:'/microfinance-program'},
-          {title:{en:'Agriculture & Livelihood',bn:'কৃষি ও জীবিকা'},body:{en:'Climate-aware farming and rural income.',bn:'জলবায়ু-সচেতন কৃষি ও গ্রামীণ আয়।'},icon:'leaf',href:'/agriculture-livelihood'},
+          {title:{en:'Agriculture & Livelihood',bn:'কৃষি ও জীবিকা'},body:{en:'Climate-aware farming and rural income.',bn:'জলবায়ু-সচেতন কৃষি ও গ্রামীণ আয়।'},icon:'leaf',href:'/social-development/agriculture-livelihood'},
           {title:{en:'Enterprise Development',bn:'এন্টারপ্রাইজ উন্নয়ন'},body:{en:'Social enterprises linking people to markets.',bn:'মানুষকে বাজারের সঙ্গে যুক্ত করা সামাজিক উদ্যোগ।'},icon:'briefcase',href:'/enterprise-development'},
-          {title:{en:'Education & Skills',bn:'শিক্ষা ও দক্ষতা'},body:{en:'Learning and practical skills for young people.',bn:'তরুণদের জন্য শিক্ষা ও ব্যবহারিক দক্ষতা।'},icon:'book',href:'/education-program'},
+          {title:{en:'Education & Skills',bn:'শিক্ষা ও দক্ষতা'},body:{en:'Learning and practical skills for young people.',bn:'তরুণদের জন্য শিক্ষা ও ব্যবহারিক দক্ষতা।'},icon:'book',href:'/social-development/education-program'},
         ]
       },
       {
@@ -718,18 +729,19 @@ const pages: Record<string, PageData> = {
           title:entry.title,
           body:entry.excerpt,
           icon:['heart','book','briefcase','building'][i%4] as IconName,
-          href:`/enterprise/${entry.slug}`,
+          href:`/enterprise-development/${entry.slug}`,
           image:entry.image,
         })),
       },
       {
         type:'carousel',
-        homeComponent:'stories',
+        homeComponent:'news',
         presentation:'scroller',
         collectionKind:'news',
-        eyebrow:{en:'Impact Stories',bn:'প্রভাবের গল্প'},
-        heading:{en:'Success Story of Srizony',bn:'সৃজনীর সফলতার গল্প'},
-        body:{en:'Explore stories of people and communities creating lasting change with Srizony.',bn:'সৃজনীর সঙ্গে স্থায়ী পরিবর্তন গড়ে তোলা মানুষ ও কমিউনিটির গল্প জানুন।'},
+        dataSource:'published-news',
+        eyebrow:{en:'From Our Field',bn:'মাঠপর্যায় থেকে'},
+        heading:{en:'News from the Field',bn:'মাঠপর্যায়ের সংবাদ'},
+        body:{en:'Read the latest news, activities and updates from Srizony Foundation.',bn:'সৃজনী ফাউন্ডেশনের সর্বশেষ সংবাদ, কার্যক্রম ও আপডেট পড়ুন।'},
         items:newsEntries.slice(0,6).map(entry=>({
           tag:{en:entry.date||'Update',bn:entry.date||'আপডেট'},
           title:entry.title,
@@ -737,6 +749,18 @@ const pages: Record<string, PageData> = {
           image:entry.image,
           href:`/news/${entry.slug}`,
         })),
+      },
+      {
+        type:'carousel',
+        homeComponent:'successStories',
+        presentation:'collection',
+        collectionKind:'success-stories',
+        dataSource:'published-success-stories',
+        eyebrow:{en:'Real People, Real Change',bn:'মানুষের জীবনে বাস্তব পরিবর্তন'},
+        heading:{en:'Success Stories of Srizony',bn:'সৃজনীর সাফল্যের গল্পসমূহ'},
+        body:{en:'Stories of people and communities whose lives have changed.',bn:'মানুষ ও কমিউনিটির জীবনে ইতিবাচক পরিবর্তনের সাফল্যের গল্প।'},
+        items:[],
+        buttonConfig:{visible:true,mode:'primary',label:{en:'View all success stories',bn:'সব সাফল্যের গল্প দেখুন'},href:'/success-stories',action:'route'},
       },
       {
         type:'cta',
@@ -821,7 +845,6 @@ const pages: Record<string, PageData> = {
   '/operational-structure': {slug:'/operational-structure',title:{en:'Operational Structure',bn:'অপারেশনাল কাঠামো'},sections:[{type:'diagram',heading:{en:'How the organization works',bn:'প্রতিষ্ঠান কীভাবে কাজ করে'},variant:'governance'},{type:'timeline',heading:{en:'Operating cycle',bn:'কার্যক্রমের চক্র'},items:[{year:'01',title:{en:'Listen',bn:'শোনা'},body:{en:'Community needs, data and feedback inform program design.',bn:'কমিউনিটির প্রয়োজন, তথ্য ও মতামত কর্মসূচি নকশায় প্রভাব ফেলে।'}},{year:'02',title:{en:'Plan',bn:'পরিকল্পনা'},body:{en:'Teams translate priorities into programs, budgets and partnerships.',bn:'অগ্রাধিকারকে কর্মসূচি, বাজেট ও অংশীদারিত্বে রূপ দেওয়া হয়।'}},{year:'03',title:{en:'Deliver',bn:'বাস্তবায়ন'},body:{en:'Local teams deliver services through branches and projects.',bn:'স্থানীয় দল শাখা ও প্রকল্পের মাধ্যমে সেবা দেয়।'}},{year:'04',title:{en:'Learn',bn:'শেখা'},body:{en:'Monitoring, evaluation and participant feedback improve the next cycle.',bn:'পর্যবেক্ষণ, মূল্যায়ন ও অংশগ্রহণকারীর মতামত পরবর্তী ধাপকে উন্নত করে।'}}]}]},
   '/executive-committee': {slug:'/executive-committee',title:{en:'Executive Committee',bn:'নির্বাহী কমিটি'},subtitle:{en:'The Executive Committee provides governance, strategic direction and oversight for the foundation’s mission and programs.',bn:'নির্বাহী কমিটি ফাউন্ডেশনের লক্ষ্য ও কর্মসূচির জন্য সুশাসন, কৌশলগত দিকনির্দেশনা এবং তদারকি নিশ্চিত করে।'},sections:[{type:'richText',heading:{en:'Governance and Responsibilities',bn:'সুশাসন ও দায়িত্ব'},body:[{en:'The Executive Committee guides institutional priorities, reviews plans and performance, promotes accountability, and supports the leadership team in delivering community-focused development programs. Member names and designations should be maintained by the CMS from officially approved records.',bn:'নির্বাহী কমিটি প্রাতিষ্ঠানিক অগ্রাধিকার নির্ধারণ, পরিকল্পনা ও কার্যক্রম পর্যালোচনা, জবাবদিহিতা জোরদার এবং কমিউনিটিকেন্দ্রিক উন্নয়ন কর্মসূচি বাস্তবায়নে নেতৃত্ব দলকে সহায়তা করে। সদস্যদের নাম ও পদবি অনুমোদিত অফিসিয়াল নথি অনুযায়ী CMS-এ সংরক্ষণ করতে হবে।'}]},{type:'cards',heading:{en:'Committee Responsibilities',bn:'কমিটির দায়িত্ব'},columns:3,items:[{title:{en:'Strategic Direction',bn:'কৌশলগত দিকনির্দেশনা'},body:{en:'Set priorities and review organizational plans against the foundation’s mission and community needs.',bn:'ফাউন্ডেশনের লক্ষ্য ও কমিউনিটির প্রয়োজন অনুযায়ী অগ্রাধিকার নির্ধারণ এবং প্রাতিষ্ঠানিক পরিকল্পনা পর্যালোচনা।'},icon:'arrow'},{title:{en:'Governance & Accountability',bn:'সুশাসন ও জবাবদিহিতা'},body:{en:'Promote transparent decisions, sound oversight and responsible use of organizational resources.',bn:'স্বচ্ছ সিদ্ধান্ত, কার্যকর তদারকি এবং প্রাতিষ্ঠানিক সম্পদের দায়িত্বশীল ব্যবহার নিশ্চিত করা।'},icon:'shield'},{title:{en:'Program Oversight',bn:'কর্মসূচি তদারকি'},body:{en:'Review progress, evidence and risks to help programs remain effective, inclusive and sustainable.',bn:'কর্মসূচির অগ্রগতি, প্রমাণ ও ঝুঁকি পর্যালোচনা করে কার্যকারিতা, অন্তর্ভুক্তি ও স্থায়িত্বে সহায়তা করা।'},icon:'users'}]}]},
   '/good-governance': {slug:'/good-governance',title:{en:'Human Rights & Good Governance',bn:'মানবাধিকার ও সুশাসন'},subtitle:{en:'Rights, accountability and dignity for all',bn:'সবার জন্য অধিকার, জবাবদিহিতা ও মর্যাদা'},heroImage:images.general.project2,sections:[{type:'richText',heading:{en:'Human Rights Work',bn:'মানবাধিকার কার্যক্রম'},body:[{en:'Srizony Foundation has implemented human rights-related activities since 1992 in its program intervention areas.',bn:'সৃজনী ফাউন্ডেশন ১৯৯২ সাল থেকে কর্মএলাকায় মানবাধিকার-সম্পর্কিত কার্যক্রম বাস্তবায়ন করে আসছে।'},{en:'The organization has undertaken initiatives including prevention of women and child trafficking, legal aid, gender development, disability development, adolescent development, children’s groups and rights-awareness training.',bn:'নারী ও শিশু পাচার প্রতিরোধ, আইনি সহায়তা, জেন্ডার উন্নয়ন, প্রতিবন্ধী উন্নয়ন, কিশোর-কিশোরী উন্নয়ন, শিশু গ্রুপ গঠন ও অধিকার প্রশিক্ষণসহ বিভিন্ন উদ্যোগ বাস্তবায়ন করা হয়েছে।'}],image:imageMedia(images.general.project2,{en:'Human rights program',bn:'মানবাধিকার কর্মসূচি'})},{type:'cards',heading:{en:'Good Governance Principles',bn:'সুশাসনের নীতিমালা'},columns:3,items:[{title:{en:'Participation',bn:'অংশগ্রহণ'},body:{en:'People are involved in decisions affecting their lives.',bn:'মানুষ তার জীবনকে প্রভাবিত করা সিদ্ধান্তে অংশ নেয়।'},icon:'users'},{title:{en:'Accountability',bn:'জবাবদিহিতা'},body:{en:'Processes and decisions are transparent and accountable.',bn:'প্রক্রিয়া ও সিদ্ধান্ত স্বচ্ছ ও জবাবদিহিমূলক।'},icon:'shield'},{title:{en:'Justice',bn:'ন্যায়বিচার'},body:{en:'Rights-based support helps address discrimination and injustice.',bn:'অধিকারভিত্তিক সহায়তা বৈষম্য ও অবিচার মোকাবিলায় সহায়তা করে।'},icon:'scale'}]},{type:'diagram',heading:{en:'Governance in practice',bn:'বাস্তবে সুশাসন'},variant:'impact'}]},
-  '/reports': {slug:'/reports',title:{en:'Reports & Publications',bn:'রিপোর্ট ও প্রকাশনা'},sections:[{type:'reports',eyebrow:{en:'Official documents',bn:'অফিসিয়াল নথি'},heading:{en:'Reports & Publications',bn:'রিপোর্ট ও প্রকাশনা'},body:{en:'Only documents uploaded and published through the CMS are listed here.',bn:'CMS-এর মাধ্যমে আপলোড ও প্রকাশিত নথিগুলোই এখানে তালিকাভুক্ত হবে.'},items:[]},{type:'cta',heading:{en:'Need a specific report?',bn:'নির্দিষ্ট রিপোর্ট প্রয়োজন?'},body:{en:'Contact Srizony Foundation for an official copy that is not yet published online.',bn:'অনলাইনে প্রকাশিত নয় এমন অফিসিয়াল কপির জন্য সৃজনী ফাউন্ডেশনের সঙ্গে যোগাযোগ করুন।'},primary:{label:{en:'Contact Us',bn:'যোগাযোগ করুন'},href:'/contact'}}]},
   '/social-development': {slug:'/social-development',title:{en:'Social Development',bn:'সামাজিক উন্নয়ন'},subtitle:{en:'Integrated services for healthier, capable communities',bn:'স্বাস্থ্যবান ও সক্ষম কমিউনিটির জন্য সমন্বিত সেবা'},heroImage:images.general.project3,sections:[{type:'cards',heading:{en:'Program Areas',bn:'কর্মসূচির ক্ষেত্র'},columns:4,items:[['Health Program','স্বাস্থ্য কর্মসূচি','Primary healthcare, nutrition and maternal health.','প্রাথমিক স্বাস্থ্যসেবা, পুষ্টি ও মাতৃস্বাস্থ্য।','/health-program','heart',images.programs.health],['Education Program','শিক্ষা কর্মসূচি','Inclusive education and skills for life and work.','অন্তর্ভুক্তিমূলক শিক্ষা ও জীবন-জীবিকার দক্ষতা।','/education-program','book',images.programs.education],['Human Rights','মানবাধিকার','Legal aid, protection and rights awareness.','আইনি সহায়তা, সুরক্ষা ও অধিকার সচেতনতা।','/human-rights','scale',images.programs.humanRights],['Human Resource','মানবসম্পদ','Training, leadership and people development.','প্রশিক্ষণ, নেতৃত্ব ও মানবসম্পদ উন্নয়ন।','/human-resource','users',images.programs.humanResource],['Climate Change','জলবায়ু পরিবর্তন','Resilience, adaptation and environmental action.','সহনশীলতা, অভিযোজন ও পরিবেশগত উদ্যোগ।','/climate-change','leaf',images.programs.climateChange],['Agriculture & Livelihood','কৃষি ও জীবিকা','Productivity, enterprise and livelihood strengthening.','উৎপাদনশীলতা, উদ্যোগ ও জীবিকা শক্তিশালীকরণ।','/agriculture-livelihood','sun',images.programs.agricultureLivelihood],['Organizational Development','প্রাতিষ্ঠানিক উন্নয়ন','Capacity building for local institutions.','স্থানীয় প্রতিষ্ঠানের সক্ষমতা বৃদ্ধি।','/organizational-development','building',images.programs.organizationalDevelopment],['Social Enterprise','সামাজিক উদ্যোগ','Sustainable enterprise models supporting social impact.','সামাজিক প্রভাবকে সহায়তাকারী টেকসই উদ্যোগ।','/social-enterprise','briefcase',images.programs.socialEnterprise]].map(x=>({title:{en:x[0],bn:x[1]},body:{en:x[2],bn:x[3]},href:x[4],icon:x[5] as IconName,image:imageMedia(x[6],{en:`${x[0]} visual`,bn:`${x[1]} ভিজ্যুয়াল`})}))},{type:'carousel',presentation:'scroller',eyebrow:{en:'Latest News',bn:'সর্বশেষ সংবাদ'},heading:{en:'News from the field',bn:'মাঠপর্যায়ের সংবাদ'},body:{en:'Field Stories are part of our news stream. Open any story to read the full update.',bn:'মাঠের গল্প আমাদের সংবাদধারারই অংশ। যেকোনো সংবাদ খুলে সম্পূর্ণ আপডেট পড়ুন।'},items:newsEntries.slice(0,6).map(entry=>({tag:{en:entry.date||'Update',bn:entry.date||'আপডেট'},title:entry.title,body:entry.excerpt,image:entry.image,href:`/news/${entry.slug}`}))}]},
   '/health-program': {slug:'/health-program',title:{en:'Health Program',bn:'স্বাস্থ্য কর্মসূচি'},subtitle:{en:'Urban primary health, nutrition and prevention',bn:'নগর প্রাথমিক স্বাস্থ্য, পুষ্টি ও প্রতিরোধ'},heroImage:images.hero.feature,sections:[{type:'richText',heading:{en:'Urban Health Support Program',bn:'নগর স্বাস্থ্য সহায়তা কর্মসূচি'},body:[{en:'Health and nutrition are major components of Srizony Foundation’s work.',bn:'স্বাস্থ্য ও পুষ্টি সৃজনী ফাউন্ডেশনের কাজের গুরুত্বপূর্ণ অংশ। যারা মানসম্মত চিকিৎসা সুবিধা থেকে বঞ্চিত, তাদের জন্য প্রতিষ্ঠান স্বাস্থ্যসেবা ও সহায়তা প্রদান করে।'},{en:'The program has included urban primary healthcare activities in Barisal division and Kushtia municipality areas through partnerships and public systems.',bn:'অংশীদারিত্ব ও সরকারি ব্যবস্থার মাধ্যমে বরিশাল বিভাগ ও কুষ্টিয়া পৌর এলাকায় নগর প্রাথমিক স্বাস্থ্যসেবা কার্যক্রম পরিচালিত হয়েছে।'}],image:imageMedia(images.hero.feature,{en:'Health service',bn:'স্বাস্থ্যসেবা'})},{type:'cards',heading:{en:'Service Components',bn:'সেবার উপাদান'},columns:4,items:[
     ['Antenatal Care','গর্ভকালীন সেবা'],['Postnatal Care','প্রসবোত্তর সেবা'],['Neonatal Care','নবজাতক সেবা'],['Normal Delivery','স্বাভাবিক প্রসব'],
@@ -845,7 +868,7 @@ const pages: Record<string, PageData> = {
     {type:'cards',heading:{en:'Microfinance Components',bn:'ক্ষুদ্রঋণের প্রধান উপাদান'},columns:3,items:[
       {title:{en:'Savings & Capital Building',bn:'সঞ্চয় ও মূলধন গঠন'},body:{en:'Regular savings, long-term savings and capital-building accounts help members create financial buffers.',bn:'নিয়মিত সঞ্চয়, দীর্ঘমেয়াদি সঞ্চয় ও মূলধন গঠনের হিসাব সদস্যদের আর্থিক সুরক্ষা তৈরি করতে সহায়তা করে।'},image:imageMedia(images.field.livelihood,{en:'Savings and livelihood activity',bn:'সঞ্চয় ও জীবিকা কার্যক্রম'}),href:'/at-a-glance'},
       {title:{en:'Groups & Collection Centres',bn:'গ্রুপ ও সংগ্রহ কেন্দ্র'},body:{en:'Member groups provide a recurring structure for meetings, savings, repayments and community accountability.',bn:'সদস্য গ্রুপ সভা, সঞ্চয়, কিস্তি ও কমিউনিটি জবাবদিহিতার ধারাবাহিক কাঠামো তৈরি করে।'},image:imageMedia(images.field.partnership,{en:'Community group meeting',bn:'কমিউনিটি গ্রুপ সভা'}),href:'/projects'},
-      {title:{en:'Responsible Credit',bn:'দায়িত্বশীল ঋণ'},body:{en:'Loan products sit inside the wider microfinance program and are matched to different household and enterprise needs.',bn:'বিভিন্ন পরিবার ও উদ্যোগের প্রয়োজন অনুযায়ী ঋণ পণ্যগুলো বৃহত্তর ক্ষুদ্রঋণ কর্মসূচির ভেতরে পরিচালিত হয়।'},image:imageMedia(images.field.health,{en:'Community financial support',bn:'কমিউনিটি আর্থিক সহায়তা'}),href:'/loans'}
+      {title:{en:'Responsible Credit',bn:'দায়িত্বশীল ঋণ'},body:{en:'Loan products sit inside the wider microfinance program and are matched to different household and enterprise needs.',bn:'বিভিন্ন পরিবার ও উদ্যোগের প্রয়োজন অনুযায়ী ঋণ পণ্যগুলো বৃহত্তর ক্ষুদ্রঋণ কর্মসূচির ভেতরে পরিচালিত হয়।'},image:imageMedia(images.field.health,{en:'Community financial support',bn:'কমিউনিটি আর্থিক সহায়তা'}),href:'/organizational-development'}
     ]},
     {type:'table',heading:{en:'Published Microfinance Portfolio',bn:'প্রকাশিত ক্ষুদ্রঋণ পোর্টফোলিও'},headers:[{en:'Indicator',bn:'সূচক'},{en:'Published value',bn:'প্রকাশিত মান'}],rows:[
       [{en:'Total members',bn:'মোট সদস্য'},{en:'69,753',bn:'৬৯,৭৫৩'}],[{en:'General savers',bn:'সাধারণ সঞ্চয়কারী'},{en:'69,174',bn:'৬৯,১৭৪'}],[{en:'Primary loan members',bn:'প্রাথমিক ঋণ সদস্য'},{en:'57,895',bn:'৫৭,৮৯৫'}],[{en:'SME loan members',bn:'এসএমই ঋণ সদস্য'},{en:'4,883',bn:'৪,৮৮৩'}],[{en:'Active borrowers',bn:'সক্রিয় ঋণগ্রহীতা'},{en:'44,249',bn:'৪৪,২৪৯'}],[{en:'Cumulative recovery rate',bn:'ক্রমপুঞ্জীভূত আদায় হার'},{en:'99.63%',bn:'৯৯.৬৩%'}]
@@ -861,7 +884,7 @@ const pages: Record<string, PageData> = {
       {en:'Participation is subject to product eligibility, local verification and the foundation’s current operating policies.',bn:'অংশগ্রহণ পণ্যভিত্তিক যোগ্যতা, স্থানীয় যাচাই এবং ফাউন্ডেশনের বর্তমান পরিচালন নীতিমালার অধীন।'},
       {en:'Published portfolio figures may change over time.',bn:'প্রকাশিত পোর্টফোলিওর পরিসংখ্যান সময়ের সঙ্গে পরিবর্তিত হতে পারে।'}
     ]} ,
-    {type:'cta',heading:{en:'Looking for a specific loan product?',bn:'নির্দিষ্ট ঋণ পণ্য খুঁজছেন?'},body:{en:'Browse the dedicated loan products to see the purpose and program details for each offering.',bn:'প্রতিটি ঋণ পণ্যের উদ্দেশ্য ও বিস্তারিত দেখতে Get Loan-এর আলাদা পেজগুলো দেখুন।'},primary:{label:{en:'Browse Loan Products',bn:'ঋণ পণ্য দেখুন'},href:'/loans'}}
+    {type:'cta',heading:{en:'Looking for a specific loan product?',bn:'নির্দিষ্ট ঋণ পণ্য খুঁজছেন?'},body:{en:'Browse the dedicated loan products to see the purpose and program details for each offering.',bn:'প্রতিটি ঋণ পণ্যের উদ্দেশ্য ও বিস্তারিত দেখতে Get Loan-এর আলাদা পেজগুলো দেখুন।'},primary:{label:{en:'Browse Loan Products',bn:'ঋণ পণ্য দেখুন'},href:'/organizational-development'}}
   ]},
   '/loans': {slug:'/loans',title:{en:'Get Loan',bn:'ঋণ নিন'},subtitle:{en:'Dedicated loan products for different household, enterprise, agriculture and education needs',bn:'পরিবার, উদ্যোগ, কৃষি ও শিক্ষার বিভিন্ন প্রয়োজনের জন্য পৃথক ঋণ পণ্য'},heroImage:images.loans.smallEnterprise,sections:[
     {type:'richText',eyebrow:{en:'Loan Products',bn:'ঋণ পণ্য'},heading:{en:'Choose the product that matches your purpose.',bn:'আপনার প্রয়োজনের সঙ্গে মিল রেখে ঋণ পণ্য বেছে নিন।'},body:[{en:'The foundation publishes a range of loan offerings under its microfinance activities, including women business, small enterprise, agricultural development, household migrant, ru…',bn:'ফাউন্ডেশন তার ক্ষুদ্রঋণ কার্যক্রমের অধীনে নারী উদ্যোক্তা, ক্ষুদ্র উদ্যোগ, কৃষি উন্নয়ন, অভিবাসী পরিবার, গ্রামীণ উন্নয়ন, চাকরিজীবী ও শিক্ষার্থী ঋণসহ বিভিন্ন ঋণ পণ্য প্রকাশ করে।'},{en:'This page is the loan catalogue. The microfinance page explains the wider financial-inclusion system, member structure, savings and portfolio.',bn:'এই পেজটি ঋণ পণ্যের ক্যাটালগ। ক্ষুদ্রঋণ পেজে সামগ্রিক আর্থিক অন্তর্ভুক্তি ব্যবস্থা, সদস্য কাঠামো, সঞ্চয় ও পোর্টফোলিও ব্যাখ্যা করা হয়েছে।'}],image:imageMedia(images.loans.smallEnterprise,{en:'Loan products',bn:'ঋণ পণ্য'})},
@@ -885,13 +908,13 @@ const pages: Record<string, PageData> = {
       {en:'Choose the product whose purpose matches your need.',bn:'আপনার প্রয়োজনের সঙ্গে মেলে এমন পণ্য বেছে নিন।'}
     ]}
   ]},
-  '/enterprise-development': {slug:'/enterprise-development',title:{en:'Enterprise Development',bn:'এন্টারপ্রাইজ উন্নয়ন'},sections:[{type:'cards',heading:{en:'Srizony Enterprises',bn:'সৃজনী উদ্যোগসমূহ'},columns:4,items:enterpriseEntries.map((entry,i)=>({title:entry.title,body:entry.excerpt,icon:['heart','book','briefcase','building'][i%4] as IconName,href:`/enterprise/${entry.slug}`,image:entry.image}))},{type:'gallery',heading:{en:'Enterprise Story',bn:'উদ্যোগের গল্প'},columns:3,items:[imageMedia(images.general.project1,{en:'Enterprise activity',bn:'উদ্যোগ কার্যক্রম'}),imageMedia(images.general.project2,{en:'Service delivery',bn:'সেবা কার্যক্রম'}),imageMedia(images.general.project3,{en:'Skills and employment',bn:'দক্ষতা ও কর্মসংস্থান'})]}]},
+  '/enterprise-development': {slug:'/enterprise-development',title:{en:'Enterprise Development',bn:'এন্টারপ্রাইজ উন্নয়ন'},sections:[{type:'cards',heading:{en:'Srizony Enterprises',bn:'সৃজনী উদ্যোগসমূহ'},columns:4,items:enterpriseEntries.map((entry,i)=>({title:entry.title,body:entry.excerpt,icon:['heart','book','briefcase','building'][i%4] as IconName,href:`/enterprise-development/${entry.slug}`,image:entry.image}))},{type:'gallery',heading:{en:'Enterprise Story',bn:'উদ্যোগের গল্প'},columns:3,items:[imageMedia(images.general.project1,{en:'Enterprise activity',bn:'উদ্যোগ কার্যক্রম'}),imageMedia(images.general.project2,{en:'Service delivery',bn:'সেবা কার্যক্রম'}),imageMedia(images.general.project3,{en:'Skills and employment',bn:'দক্ষতা ও কর্মসংস্থান'})]}]},
   '/projects': {slug:'/projects',title:{en:'Projects',bn:'প্রকল্পসমূহ'},subtitle:{en:'Programs and initiatives across Bangladesh',bn:'বাংলাদেশজুড়ে বিভিন্ন কর্মসূচি ও উদ্যোগ'},heroImage:images.general.project3,sections:[{type:'carousel',presentation:'collection',collectionKind:'projects',eyebrow:{en:'Project Portfolio',bn:'প্রকল্প পোর্টফোলিও'},heading:{en:'Programs that create measurable community impact',bn:'কমিউনিটিতে পরিমাপযোগ্য প্রভাব তৈরি করা প্রকল্পসমূহ'},items:[...projectEntries,...additionalProjectEntries].map(entry=>({title:entry.title,body:entry.excerpt,image:entry.image,href:`/projects/${entry.slug}`}))},{type:'cta',heading:{en:'Need a project partnership?',bn:'প্রকল্প অংশীদারিত্ব করতে চান?'},body:{en:'Connect with our team to discuss collaboration, implementation and community impact.',bn:'সহযোগিতা, বাস্তবায়ন ও কমিউনিটি প্রভাব নিয়ে আলোচনা করতে আমাদের দলের সঙ্গে যোগাযোগ করুন।'},primary:{label:{en:'Contact Us',bn:'যোগাযোগ করুন'},href:'/contact'},secondary:{label:{en:'Donate',bn:'দান করুন'},href:'/donate'}}]},
   '/news': {slug:'/news',title:{en:'Latest News',bn:'সর্বশেষ সংবাদ'},heroImage:images.general.project2,sections:[{type:'carousel',presentation:'collection',collectionKind:'news',eyebrow:{en:'Latest Updates',bn:'সর্বশেষ আপডেট'},heading:{en:'Stories, announcements and field updates',bn:'গল্প, ঘোষণা ও মাঠপর্যায়ের আপডেট'},items:newsEntries.map(entry=>({tag:{en:entry.date||'Update',bn:entry.date||'আপডেট'},title:entry.title,body:entry.excerpt,image:entry.image,href:`/news/${entry.slug}`}))},{type:'cta',heading:{en:'Have a story to share?',bn:'আপনার কোনো গল্প আছে?'},body:{en:'Send verified organizational news or partnership updates to the communications team.',bn:'যাচাইকৃত সাংগঠনিক সংবাদ বা অংশীদারিত্বের আপডেট যোগাযোগ টিমকে পাঠান।'},primary:{label:{en:'Email Us',bn:'ইমেইল করুন'},href:'mailto:info@srizonyfoundation.org.bd'}}]},
+  '/success-stories': {slug:'/success-stories',title:{en:'Success Stories of Srizony',bn:'সৃজনীর সাফল্যের গল্পসমূহ'},subtitle:{en:'Stories of people and communities whose lives have changed.',bn:'মানুষ ও কমিউনিটির জীবনে ইতিবাচক পরিবর্তনের সাফল্যের গল্প।'},sections:[{type:'contentFeed',visible:true,heading:{en:'Success Stories of Srizony',bn:'সৃজনীর সাফল্যের গল্পসমূহ'},components:['success-story'],items:[],columns:3}]},
   '/notice': {slug:'/notice',title:{en:'Notice',bn:'নোটিশ'},sections:[{type:'noticeList',heading:{en:'Notices & Circulars',bn:'নোটিশ ও বিজ্ঞপ্তি'},items:noticeEntries.map(entry=>({date:entry.date||'',title:entry.title,body:entry.excerpt,href:`/notice/${entry.slug}`}))}]},
-  '/job-circular': {slug:'/job-circular',title:{en:'Career / Job Circular',bn:'ক্যারিয়ার / চাকরি বিজ্ঞপ্তি'},subtitle:{en:'Build your career with a purpose-driven organization',bn:'উদ্দেশ্যভিত্তিক প্রতিষ্ঠানের সঙ্গে আপনার ক্যারিয়ার গড়ুন'},heroImage:images.hero.feature,sections:[{type:'noticeList',heading:{en:'Open Opportunities',bn:'চলমান সুযোগ'},items:careerEntries.map(entry=>({date:entry.date||'',title:entry.title,body:entry.excerpt,href:`/job-circular/${entry.slug}`}))},{type:'cta',heading:{en:'No published vacancies right now?',bn:'এই মুহূর্তে কোনো প্রকাশিত শূন্যপদ নেই?'},body:{en:'Current vacancies are published through the CMS only after the official circular and application instructions are approved.',bn:'অফিসিয়াল বিজ্ঞপ্তি ও আবেদন নির্দেশনা অনুমোদনের পরই বর্তমান শূন্যপদ CMS-এর মাধ্যমে প্রকাশ করা হয়।'},primary:{label:{en:'Contact Us',bn:'যোগাযোগ করুন'},href:'/contact'}}]},
+  '/carrer-job': {slug:'/carrer-job',title:{en:'Career / Job Circular',bn:'ক্যারিয়ার / চাকরি বিজ্ঞপ্তি'},subtitle:{en:'Build your career with a purpose-driven organization',bn:'উদ্দেশ্যভিত্তিক প্রতিষ্ঠানের সঙ্গে আপনার ক্যারিয়ার গড়ুন'},heroImage:images.hero.feature,sections:[{type:'noticeList',heading:{en:'Open Opportunities',bn:'চলমান সুযোগ'},items:careerEntries.map(entry=>({date:entry.date||'',title:entry.title,body:entry.excerpt,href:`/carrer-job/${entry.slug}`}))},{type:'cta',heading:{en:'No published vacancies right now?',bn:'এই মুহূর্তে কোনো প্রকাশিত শূন্যপদ নেই?'},body:{en:'Current vacancies are published through the CMS only after the official circular and application instructions are approved.',bn:'অফিসিয়াল বিজ্ঞপ্তি ও আবেদন নির্দেশনা অনুমোদনের পরই বর্তমান শূন্যপদ CMS-এর মাধ্যমে প্রকাশ করা হয়।'},primary:{label:{en:'Contact Us',bn:'যোগাযোগ করুন'},href:'/contact'}}]},
   '/contact': {slug:'/contact',title:{en:'Contact',bn:'যোগাযোগ'},sections:[{type:'contact',heading:{en:'Location & Other Inquiries',bn:'ঠিকানা ও অন্যান্য অনুসন্ধান'},address:contactInfo.address,phones:contactInfo.phones,emails:[contactInfo.email],mapLabel:{en:'Open location in Google Maps',bn:'গুগল ম্যাপে অবস্থান দেখুন'},locations:[{name:{en:'Head Office — Srizony Bhaban',bn:'প্রধান কার্যালয় — সৃজনী ভবন'},address:contactInfo.address,mapQuery:'111 Pabahati Road, Pabahati, Jhenaidah-7300, Bangladesh',kind:'site'},...contactInfo.footprint]},{type:'cta',heading:{en:'Send us a message',bn:'আমাদের বার্তা পাঠান'},body:{en:'For partnerships, programs, careers or support, use the contact details above.',bn:'অংশীদারিত্ব, কর্মসূচি, ক্যারিয়ার বা সহায়তার জন্য উপরের যোগাযোগ তথ্য ব্যবহার করুন।'},primary:{label:{en:'Email Us',bn:'ইমেইল করুন'},href:'mailto:info@srizonyfoundation.org.bd'}}]},
-  '/privacy': {slug:'/privacy',title:{en:'Privacy & Cookies',bn:'গোপনীয়তা ও কুকিজ'},subtitle:{en:'How Srizony Foundation handles information shared through this website',bn:'এই ওয়েবসাইটে দেওয়া তথ্য কীভাবে সৃজনী ফাউন্ডেশন ব্যবহার করে'},sections:[{type:'richText',heading:{en:'Your information and your choices',bn:'আপনার তথ্য ও আপনার পছন্দ'},body:[{en:'When you submit an enquiry, we ask for consent before processing the information needed to respond. Enquiry submissions are linked to an authenticated form profile so future forms can be completed more easily.',bn:'আপনি অনুসন্ধান পাঠানোর সময় প্রয়োজনীয় তথ্য প্রক্রিয়াকরণের আগে সম্মতি দিতে হয়। ভবিষ্যৎ ফর্ম সহজে পূরণ করার জন্য অনুসন্ধানটি একটি যাচাইকৃত ফর্ম প্রোফাইলের সঙ্গে যুক্ত থাকে।'},{en:'We use operational visitor measurements to understand page usage and improve the website. We do not use these records to sell personal information.',bn:'ওয়েবসাইট উন্নত করতে আমরা ভিজিটর ব্যবহারের কিছু অপারেশনাল তথ্য পরিমাপ করি। ব্যক্তিগত তথ্য বিক্রির জন্য এই রেকর্ড ব্যবহার করা হয় না।'}],},{type:'table',heading:{en:'Information controls',bn:'তথ্য নিয়ন্ত্রণ'},headers:[{en:'Area',bn:'ক্ষেত্র'},{en:'Your control',bn:'আপনার নিয়ন্ত্রণ'}],rows:[[{en:'Enquiry consent',bn:'অনুসন্ধানের সম্মতি'},{en:'You must actively agree before an enquiry can be submitted.',bn:'অনুসন্ধান জমা দেওয়ার আগে সক্রিয়ভাবে সম্মতি দিতে হবে।'}],[{en:'Enquiry frequency',bn:'অনুসন্ধানের সীমা'},{en:'One enquiry per email address is accepted per Bangladesh calendar day.',bn:'বাংলাদেশের ক্যালেন্ডার দিনের হিসাবে প্রতি ইমেইলে একটি অনুসন্ধান গ্রহণ করা হয়।'}],[{en:'Newsletter',bn:'নিউজলেটার'},{en:'You may subscribe, view the current status and unsubscribe at any time.',bn:'আপনি সাবস্ক্রাইব করতে, বর্তমান স্ট্যাটাস দেখতে এবং যেকোনো সময় আনসাবস্ক্রাইব করতে পারেন।'}],[{en:'Data removal',bn:'তথ্য অপসারণ'},{en:'You may contact the foundation to request review or removal of your form information.',bn:'আপনার ফর্মের তথ্য পর্যালোচনা বা অপসারণের অনুরোধ করতে ফাউন্ডেশনের সঙ্গে যোগাযোগ করতে পারেন।'}]]},{type:'cta',heading:{en:'Need help with your information?',bn:'আপনার তথ্য নিয়ে সহায়তা প্রয়োজন?'},body:{en:'Contact the foundation for questions about privacy, form records or newsletter preferences.',bn:'গোপনীয়তা, ফর্ম রেকর্ড বা নিউজলেটার পছন্দ নিয়ে প্রশ্ন থাকলে ফাউন্ডেশনের সঙ্গে যোগাযোগ করুন।'},primary:{label:{en:'Contact Us',bn:'যোগাযোগ করুন'},href:'/contact'}}]},
   '/donate': {slug:'/donate',title:{en:'Donate',bn:'দান করুন'},subtitle:{en:'Help Create Lasting Change',bn:'স্থায়ী পরিবর্তনের অংশ হোন'},heroImage:images.general.project3,sections:[{type:'donation',heading:{en:'Your support matters',bn:'আপনার সহায়তা গুরুত্বপূর্ণ'},body:{en:'Choose an amount and pay securely by card, bKash, Nagad, Rocket, mobile banking or internet banking. Anonymous donations are welcome.',bn:'পরিমাণ নির্বাচন করে কার্ড, বিকাশ, নগদ, রকেট, মোবাইল ব্যাংকিং বা ইন্টারনেট ব্যাংকিংয়ে নিরাপদে দান করুন। বেনামে দান করা যায়।'}},{type:'cards',heading:{en:'What your support helps fund',bn:'আপনার সহায়তা কোথায় কাজে লাগে'},columns:3,items:[{title:{en:'Health',bn:'স্বাস্থ্য'},body:{en:'Primary healthcare, nutrition and prevention.',bn:'প্রাথমিক স্বাস্থ্যসেবা, পুষ্টি ও প্রতিরোধ।'},icon:'heart'},{title:{en:'Education',bn:'শিক্ষা'},body:{en:'Learning and skills for children, youth and adults.',bn:'শিশু, যুব ও প্রাপ্তবয়স্কদের শিক্ষা ও দক্ষতা।'},icon:'book'},{title:{en:'Livelihoods',bn:'জীবিকা'},body:{en:'Finance and skills that strengthen household income.',bn:'পরিবারের আয় শক্তিশালী করা অর্থায়ন ও দক্ষতা।'},icon:'coins'}]}]}
 }
 
@@ -907,19 +930,106 @@ const autoPrograms: [string,string,string,string,IconName][] = [
   ['/student-loan','Student Loan','শিক্ষার্থী ঋণ','Support education expenses and learning opportunities.', 'book'],
 ]
 const autoLoanImages: Record<string,string> = { '/women-business-loan':images.loans.womenBusiness,'/agri-development-loan':images.loans.agriculture,'/rural-development-loan':images.loans.ruralDevelopment,'/small-enterprise-loan':images.loans.smallEnterprise,'/household-migrant-loan':images.loans.migrantHousehold,'/job-holders-loan':images.loans.jobHolders,'/student-loan':images.loans.student }
-for (const [slug,en,bn,body,icon] of autoPrograms) autoPages[slug]={slug,title:{en,bn},subtitle:{en:'Program information, eligibility guidance and contact details.',bn:'কর্মসূচির তথ্য, যোগ্যতার নির্দেশনা ও যোগাযোগের বিবরণ।'},heroImage:autoLoanImages[slug] || images.general.community,sections:[{type:'richText',heading:{en,bn},body:[{en:body,bn:bn+' কর্মসূচির মাধ্যমে পরিবার ও ব্যক্তির আর্থিক ও উন্নয়নমূলক সক্ষমতা বাড়াতে সহায়তা করা হয়।'}],image:imageMedia(autoLoanImages[slug] || images.general.community,{en:'Program image',bn:'কর্মসূচির ছবি'})},{type:'cards',heading:{en:'Program Features',bn:'কর্মসূচির বৈশিষ্ট্য'},columns:3,items:[{title:{en:'Accessible Support',bn:'সহজলভ্য সহায়তা'},body:{en:'Designed around real needs and practical use.',bn:'বাস্তব প্রয়োজন ও ব্যবহারিক প্রয়োগকে কেন্দ্র করে।'},image:imageMedia(autoLoanImages[slug] || images.general.community,{en:'Accessible support',bn:'সহজলভ্য সহায়তার ছবি'}),href:slug},{title:{en:'Microfinance Context',bn:'ক্ষুদ্রঋণ প্রেক্ষাপট'},body:{en:'See how this loan fits into the wider microfinance program, savings and group structure.',bn:'এই ঋণ কীভাবে বৃহত্তর ক্ষুদ্রঋণ, সঞ্চয় ও গ্রুপ কাঠামোর সঙ্গে যুক্ত তা দেখুন।'},image:imageMedia(images.field.partnership,{en:'Microfinance program context',bn:'ক্ষুদ্রঋণ কর্মসূচির প্রেক্ষাপট'}),href:'/microfinance-program'},{title:{en:'Related Livelihoods',bn:'সম্পর্কিত জীবিকা'},body:{en:'Explore the social-development and livelihood pathways connected to financial support.',bn:'আর্থিক সহায়তার সঙ্গে যুক্ত সামাজিক উন্নয়ন ও জীবিকার পথগুলো দেখুন।'},image:imageMedia(images.field.livelihood,{en:'Livelihood pathway',bn:'জীবিকার পথ'}),href:'/agriculture-livelihood'}]},{type:'cards',heading:{en:'Loan Details',bn:'ঋণের বিস্তারিত'},columns:3,items:[{title:{en:'Purpose',bn:'উদ্দেশ্য'},body:{en:body,bn:bn+' পণ্যের নির্ধারিত উদ্দেশ্য পূরণে ব্যবহার করা হয়।'},icon:'check'},{title:{en:'Eligibility',bn:'যোগ্যতা'},body:{en:'Eligibility depends on the selected product, applicant profile, local verification and current institutional policy.',bn:'যোগ্যতা নির্বাচিত পণ্য, আবেদনকারীর প্রোফাইল, স্থানীয় যাচাই ও বর্তমান প্রাতিষ্ঠানিক নীতিমালার ওপর নির্ভর করে।'},icon:'users'},{title:{en:'Repayment',bn:'পরিশোধ'},body:{en:'Repayment frequency and duration are confirmed during approval and may vary by product.',bn:'অনুমোদনের সময় কিস্তির ঘনত্ব ও মেয়াদ নিশ্চিত করা হয় এবং পণ্যভেদে পরিবর্তিত হতে পারে।'},icon:'building'}]},{type:'table',heading:{en:'Terms & Conditions',bn:'শর্তাবলি'},headers:[{en:'Term',bn:'শর্ত'},{en:'What it means',bn:'বিবরণ'}],rows:[[{en:'Current loan amount',bn:'বর্তমান ঋণের পরিমাণ'},{en:'Approved limits depend on the selected product and current schedule; confirm the latest amount with the branch.',bn:'অনুমোদিত সীমা নির্বাচিত পণ্য ও বর্তমান সূচির ওপর নির্ভর করে; সর্বশেষ পরিমাণ শাখা থেকে নিশ্চিত করুন।'}],[{en:'Service charge / fees',bn:'সার্ভিস চার্জ / ফি'},{en:'Applicable charges follow the current approved schedule and should be confirmed before application.',bn:'প্রযোজ্য চার্জ বর্তমান অনুমোদিত সূচি অনুযায়ী; আবেদন করার আগে নিশ্চিত করতে হবে।'}],[{en:'Documents',bn:'কাগজপত্র'},{en:'Identity, address and product-specific supporting documents may be required; the branch provides the final checklist.',bn:'পরিচয়, ঠিকানা ও পণ্যভিত্তিক সহায়ক কাগজপত্র প্রয়োজন হতে পারে; চূড়ান্ত তালিকা শাখা দেবে।'}],[{en:'Membership & savings',bn:'সদস্যপদ ও সঞ্চয়'},{en:'Where applicable, the loan is linked to the microfinance program membership and savings process.',bn:'প্রযোজ্য ক্ষেত্রে ঋণটি ক্ষুদ্রঋণ কর্মসূচির সদস্যপদ ও সঞ্চয় প্রক্রিয়ার সঙ্গে যুক্ত থাকবে।'}],[{en:'Guarantor / security',bn:'গ্যারান্টর / নিরাপত্তা'},{en:'Any guarantor or security requirement depends on the product and current policy; confirm with the relevant office.',bn:'গ্যারান্টর বা নিরাপত্তার প্রয়োজন পণ্য ও বর্তমান নীতিমালার ওপর নির্ভর করে; সংশ্লিষ্ট অফিস থেকে নিশ্চিত করুন।'}]]},{type:'cta',heading:{en:'Need more information?',bn:'আরও তথ্য প্রয়োজন?'},body:{en:'Contact the organization for current eligibility, rates and application details.',bn:'বর্তমান যোগ্যতা, হার ও আবেদন সংক্রান্ত তথ্যের জন্য প্রতিষ্ঠানের সঙ্গে যোগাযোগ করুন।'},primary:{label:{en:'Contact Us',bn:'যোগাযোগ করুন'},href:'/contact'}}]}
+for (const [slug,en,bn,body,icon] of autoPrograms) autoPages[slug]={slug,title:{en,bn},subtitle:{en:'Program information, eligibility guidance and contact details.',bn:'কর্মসূচির তথ্য, যোগ্যতার নির্দেশনা ও যোগাযোগের বিবরণ।'},heroImage:autoLoanImages[slug] || images.general.community,sections:[{type:'richText',heading:{en,bn},body:[{en:body,bn:bn+' কর্মসূচির মাধ্যমে পরিবার ও ব্যক্তির আর্থিক ও উন্নয়নমূলক সক্ষমতা বাড়াতে সহায়তা করা হয়।'}],image:imageMedia(autoLoanImages[slug] || images.general.community,{en:'Program image',bn:'কর্মসূচির ছবি'})},{type:'cards',heading:{en:'Program Features',bn:'কর্মসূচির বৈশিষ্ট্য'},columns:3,items:[{title:{en:'Accessible Support',bn:'সহজলভ্য সহায়তা'},body:{en:'Designed around real needs and practical use.',bn:'বাস্তব প্রয়োজন ও ব্যবহারিক প্রয়োগকে কেন্দ্র করে।'},image:imageMedia(autoLoanImages[slug] || images.general.community,{en:'Accessible support',bn:'সহজলভ্য সহায়তার ছবি'}),href:slug},{title:{en:'Microfinance Context',bn:'ক্ষুদ্রঋণ প্রেক্ষাপট'},body:{en:'See how this loan fits into the wider microfinance program, savings and group structure.',bn:'এই ঋণ কীভাবে বৃহত্তর ক্ষুদ্রঋণ, সঞ্চয় ও গ্রুপ কাঠামোর সঙ্গে যুক্ত তা দেখুন।'},image:imageMedia(images.field.partnership,{en:'Microfinance program context',bn:'ক্ষুদ্রঋণ কর্মসূচির প্রেক্ষাপট'}),href:'/microfinance-program'},{title:{en:'Related Livelihoods',bn:'সম্পর্কিত জীবিকা'},body:{en:'Explore the social-development and livelihood pathways connected to financial support.',bn:'আর্থিক সহায়তার সঙ্গে যুক্ত সামাজিক উন্নয়ন ও জীবিকার পথগুলো দেখুন।'},image:imageMedia(images.field.livelihood,{en:'Livelihood pathway',bn:'জীবিকার পথ'}),href:'/social-development/agriculture-livelihood'}]},{type:'cards',heading:{en:'Loan Details',bn:'ঋণের বিস্তারিত'},columns:3,items:[{title:{en:'Purpose',bn:'উদ্দেশ্য'},body:{en:body,bn:bn+' পণ্যের নির্ধারিত উদ্দেশ্য পূরণে ব্যবহার করা হয়।'},icon:'check'},{title:{en:'Eligibility',bn:'যোগ্যতা'},body:{en:'Eligibility depends on the selected product, applicant profile, local verification and current institutional policy.',bn:'যোগ্যতা নির্বাচিত পণ্য, আবেদনকারীর প্রোফাইল, স্থানীয় যাচাই ও বর্তমান প্রাতিষ্ঠানিক নীতিমালার ওপর নির্ভর করে।'},icon:'users'},{title:{en:'Repayment',bn:'পরিশোধ'},body:{en:'Repayment frequency and duration are confirmed during approval and may vary by product.',bn:'অনুমোদনের সময় কিস্তির ঘনত্ব ও মেয়াদ নিশ্চিত করা হয় এবং পণ্যভেদে পরিবর্তিত হতে পারে।'},icon:'building'}]},{type:'table',heading:{en:'Terms & Conditions',bn:'শর্তাবলি'},headers:[{en:'Term',bn:'শর্ত'},{en:'What it means',bn:'বিবরণ'}],rows:[[{en:'Current loan amount',bn:'বর্তমান ঋণের পরিমাণ'},{en:'Approved limits depend on the selected product and current schedule; confirm the latest amount with the branch.',bn:'অনুমোদিত সীমা নির্বাচিত পণ্য ও বর্তমান সূচির ওপর নির্ভর করে; সর্বশেষ পরিমাণ শাখা থেকে নিশ্চিত করুন।'}],[{en:'Service charge / fees',bn:'সার্ভিস চার্জ / ফি'},{en:'Applicable charges follow the current approved schedule and should be confirmed before application.',bn:'প্রযোজ্য চার্জ বর্তমান অনুমোদিত সূচি অনুযায়ী; আবেদন করার আগে নিশ্চিত করতে হবে।'}],[{en:'Documents',bn:'কাগজপত্র'},{en:'Identity, address and product-specific supporting documents may be required; the branch provides the final checklist.',bn:'পরিচয়, ঠিকানা ও পণ্যভিত্তিক সহায়ক কাগজপত্র প্রয়োজন হতে পারে; চূড়ান্ত তালিকা শাখা দেবে।'}],[{en:'Membership & savings',bn:'সদস্যপদ ও সঞ্চয়'},{en:'Where applicable, the loan is linked to the microfinance program membership and savings process.',bn:'প্রযোজ্য ক্ষেত্রে ঋণটি ক্ষুদ্রঋণ কর্মসূচির সদস্যপদ ও সঞ্চয় প্রক্রিয়ার সঙ্গে যুক্ত থাকবে।'}],[{en:'Guarantor / security',bn:'গ্যারান্টর / নিরাপত্তা'},{en:'Any guarantor or security requirement depends on the product and current policy; confirm with the relevant office.',bn:'গ্যারান্টর বা নিরাপত্তার প্রয়োজন পণ্য ও বর্তমান নীতিমালার ওপর নির্ভর করে; সংশ্লিষ্ট অফিস থেকে নিশ্চিত করুন।'}]]},{type:'cta',heading:{en:'Need more information?',bn:'আরও তথ্য প্রয়োজন?'},body:{en:'Contact the organization for current eligibility, rates and application details.',bn:'বর্তমান যোগ্যতা, হার ও আবেদন সংক্রান্ত তথ্যের জন্য প্রতিষ্ঠানের সঙ্গে যোগাযোগ করুন।'},primary:{label:{en:'Contact Us',bn:'যোগাযোগ করুন'},href:'/contact'}}]}
 
 // Detail pages are generated from editable content entries in the CMS.
 const detailPages: Record<string, PageData> = Object.fromEntries(contentEntries.map(entry => {
-  const prefix = entry.category === 'project' ? '/projects' : entry.category === 'news' ? '/news' : entry.category === 'notice' ? '/notice' : entry.category === 'career' ? '/job-circular' : '/enterprise'
-  return [`${prefix}/${entry.slug}`, entryToPage(entry)]
+  const prefix = entry.category === 'project' ? '/projects' : entry.category === 'news' ? '/news' : entry.category === 'notice' ? '/notice' : entry.category === 'career' ? '/carrer-job' : '/enterprise-development'
+  return [`${prefix}/${entry.slug}`, { ...entryToPage(entry), contentSlug: entry.slug, contentComponent: entry.category === 'project' ? 'project' : entry.category === 'news' ? 'news' : entry.category === 'notice' ? 'notice' : entry.category === 'career' ? 'job' : 'enterprise' }]
 }))
-const allPages: Record<string, PageData> = {...pages,...autoPages,...detailPages}
+
+/** Canonicalize URL-valued data (not labels or media content) against the real menu hierarchy. */
+function canonicalizeRouteReferences<T>(value: T): T {
+  if (typeof value === 'string') return (value.startsWith('/') ? canonicalizeCmsRoute(value) : value) as T
+  if (Array.isArray(value)) return value.map((item) => canonicalizeRouteReferences(item)) as T
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([key, child]) => [
+      key.startsWith('/') ? canonicalizeCmsRoute(key) : key,
+      canonicalizeRouteReferences(child),
+    ])) as T
+  }
+  return value
+}
+
+// Keep the seed script and the public global export on the same hierarchical paths.
+const normalizedPrimaryNav = canonicalizeRouteReferences(primaryNav) as NavItem[]
+primaryNav.splice(0, primaryNav.length, ...normalizedPrimaryNav)
+// No separate navigation groups are maintained.
+
+const rawAllPages: Record<string, PageData> = { ...pages, ...autoPages, ...detailPages }
+const navigationPaths = new Set<string>(['/'])
+// Keep the bundled page catalogue aligned with the exact public menu tree used by
+// lib/site.ts. Hidden legacy navigation entries (and their descendants) must not
+// cause orphan pages to survive merely because their old seed definitions remain.
+const excludedNavigationPaths = new Set([
+  '/executive-secretariat', '/executive-secratariat', '/senior-management',
+  '/public-relation', '/public-relations', '/public-relations-office', '/public-relations-unit',
+  '/social-enterprise',
+])
+const excludedNavigationLabels = new Set([
+  'executive secretariat', 'senior management', 'public relation', 'public relations', 'social enterprise',
+  'নির্বাহী সচিবালয়', 'নির্বাহী সচিবালয়', 'সিনিয়র ম্যানেজমেন্ট', 'সিনিয়র ম্যানেজমেন্ট',
+  'জনসংযোগ', 'সামাজিক উদ্যোগ',
+])
+const normalizeNavigationLabel = (value: unknown) => String(value ?? '').trim().toLocaleLowerCase().replace(/[\s_-]+/g, ' ')
+function collectNavigationPaths(items: NavItem[], parentExcluded = false) {
+  for (const item of items) {
+    const rawPath = String(item.href || '').split(/[?#]/, 1)[0].replace(/\/+$/, '').toLocaleLowerCase() || '/'
+    const isExcluded = parentExcluded
+      || excludedNavigationPaths.has(rawPath)
+      || excludedNavigationLabels.has(normalizeNavigationLabel(item.label?.en))
+      || excludedNavigationLabels.has(normalizeNavigationLabel(item.label?.bn))
+    if (!isExcluded && item.menuType !== 'external' && item.href.startsWith('/')) navigationPaths.add(canonicalizeCmsRoute(item.href))
+    if (!isExcluded && Array.isArray(item.children)) collectNavigationPaths(item.children, false)
+  }
+}
+collectNavigationPaths(primaryNav)
+
+const normalizedPageMap = new Map<string, { page: PageData; canonicalSource: boolean }>()
+for (const [rawSlug, rawPage] of Object.entries(rawAllPages)) {
+  const slug = canonicalizeCmsRoute(rawSlug)
+  const page = { ...(canonicalizeRouteReferences(rawPage) as PageData), slug }
+  const isCanonicalSource = rawSlug === slug
+  const existing = normalizedPageMap.get(slug)
+  if (!existing) {
+    normalizedPageMap.set(slug, { page, canonicalSource: isCanonicalSource })
+    continue
+  }
+  // When old aliases converge on a real menu page (e.g. /loans -> /organizational-development),
+  // retain the canonical page identity and merge unique sections instead of silently discarding
+  // either page's editorial content.
+  const preferred = isCanonicalSource && !existing.canonicalSource ? page : existing.page
+  const secondary = preferred === page ? existing.page : page
+  const sectionKey = (section: any) => `${String(section?.type || '')}:${String(section?.heading?.en || '')}:${String(section?.heading?.bn || '')}`
+  const seen = new Set((preferred.sections || []).map(sectionKey))
+  const mergedSections = [...(preferred.sections || []), ...(secondary.sections || []).filter((section: any) => {
+    const key = sectionKey(section)
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })]
+  normalizedPageMap.set(slug, { page: { ...preferred, slug, sections: mergedSections }, canonicalSource: existing.canonicalSource || isCanonicalSource })
+}
+const allPages: Record<string, PageData> = Object.fromEntries(Array.from(normalizedPageMap.entries())
+  .filter(([slug, entry]) => navigationPaths.has(slug) || (Boolean(entry.page.contentComponent) && navigationPaths.has(getContentRouteParent(slug))))
+  .map(([slug, entry]) => [slug, entry.page]))
 
 
 // Public grouped data sets.
 const systemData = {
   images, themes, media, homeHero, ui, contactInfo, primaryNav, navGroups, imageForSlug,
+  // Bootstrap/recovery defaults only. Administrators edit this document in the CMS.
+  siteIdentity: {
+    name: 'Srizony Foundation',
+    alternateName: 'সৃজনী ফাউন্ডেশন',
+    canonicalUrl: 'https://srizonyfoundation.org.bd',
+    title: 'Srizony Foundation | Community Development in Bangladesh',
+    description: 'Srizony Foundation works with marginalized communities in Bangladesh through health, education, livelihoods, microfinance, rights, climate resilience and social development.',
+    keywords: ['Srizony Foundation', 'সৃজনী ফাউন্ডেশন', 'Bangladesh NGO', 'community development Bangladesh', 'education', 'health', 'livelihood'],
+    foundingDate: '1985',
+    logo: images.logo,
+    ogImage: images.hero.feature,
+  },
 } as const
 
 const contentData = {

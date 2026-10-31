@@ -13,7 +13,7 @@ import { setSubmissionStatus } from '@/lib/api/dashboard'
 type RecordValue = Record<string, unknown>
 type SortState = { key: string; direction: 'asc' | 'desc' }
 
-const CONFIG = { visitors: REPORTS.visitors, newsletter: REPORTS.newsletter, submissions: REPORTS.submissions, donations: REPORTS.donations } as const
+const CONFIG = { visitors: REPORTS.visitors, submissions: REPORTS.submissions, donations: REPORTS.donations } as const
 
 function textValue(value: unknown): string {
   if (value === null || value === undefined) return ''

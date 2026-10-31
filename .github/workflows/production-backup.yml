@@ -1,0 +1,46 @@
+name: Scheduled production backup
+
+on:
+  schedule:
+    - cron: '35 20 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    name: PostgreSQL and media backup
+    runs-on: ubuntu-latest
+    # Pin pg_dump to major 17. Change this image when the production server major changes.
+    container:
+      image: postgres:17-bookworm
+    timeout-minutes: 60
+    env:
+      BACKUP_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+      AWS_ENDPOINT_URL_S3: ${{ secrets.AWS_ENDPOINT_URL_S3 }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      BACKUP_S3_BUCKET: ${{ vars.BACKUP_S3_BUCKET }}
+      BACKUP_S3_PREFIX: ${{ vars.BACKUP_S3_PREFIX }}
+      NEON_OBJECT_STORAGE_BUCKET: ${{ vars.NEON_OBJECT_STORAGE_BUCKET }}
+      NEON_PUBLIC_ASSETS_BUCKET: ${{ vars.NEON_PUBLIC_ASSETS_BUCKET }}
+    steps:
+      - name: Check out backup script
+        uses: actions/checkout@v4
+      - name: Install S3 CLI
+        run: |
+          apt-get update
+          apt-get install --yes --no-install-recommends awscli ca-certificates
+      - name: Verify required tools
+        run: |
+          pg_dump --version
+          aws --version
+          test "$(pg_dump --version | sed -E 's/.* ([0-9]+)\..*/\1/')" = "17"
+      - name: Back up database and both media buckets
+        run: bash scripts/backup-production.sh

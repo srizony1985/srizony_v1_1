@@ -38,10 +38,10 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
   if (!media || media.status !== 'ready') return new NextResponse('Not found', { status: 404 })
 
-  // Only approved public images may be requested anonymously. Documents and any
-  // non-public media stay behind the authenticated CMS boundary.
-  const publicImage = media.isPublic && media.kind === 'image'
-  if (!publicImage) {
+  // Public media may be requested anonymously only when explicitly approved in CMS.
+  // Public documents are limited to PDF; every other document remains admin-only.
+  const publicMedia = media.isPublic && (media.kind === 'image' || (media.kind === 'document' && (media.contentType === 'application/pdf' || String(media.src).toLowerCase().includes('.pdf'))))
+  if (!publicMedia) {
     const admin = await getAdminSession()
     if (!admin) return new NextResponse('Authentication required to access this media.', { status: 401 })
     if (!hasAdminRole(admin, 'admin', 'editor')) return new NextResponse('Forbidden.', { status: 403 })
@@ -54,7 +54,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   // New public images load directly from Neon Object Storage. This redirect is
   // only used for known-public images in the public_read bucket. Uploads in the
   // previous private bucket continue to stream until the migration script runs.
-  if (publicImage && bucket === getPublicAssetsBucket()) {
+  if (publicMedia && bucket === getPublicAssetsBucket()) {
     try {
       const publicUrl = getPublicObjectUrl(key, bucket)
       return NextResponse.redirect(publicUrl, {
@@ -77,7 +77,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     const headers = new Headers()
     headers.set('Content-Type', safeContentType(object.ContentType || media.contentType, key))
     headers.set('X-Content-Type-Options', 'nosniff')
-    headers.set('Cache-Control', publicImage
+    headers.set('Cache-Control', publicMedia
       ? 'public, max-age=300, stale-while-revalidate=86400'
       : 'private, no-store')
     const contentLength = object.ContentLength ?? media.sizeBytes

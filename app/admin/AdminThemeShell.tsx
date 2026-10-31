@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { buildThemeCssVariables, type RuntimeShapeName, type RuntimeThemeMap } from '@/lib/themeRuntime'
 
 type ThemeVars = Record<string, string>
@@ -32,10 +32,15 @@ function buildAdminCssVariables(themeVars: ThemeVars) {
   const warning = hexToTriplet(themeVars['--sf-warning'], '217 119 6')
   const danger = hexToTriplet(themeVars['--sf-danger'], '185 28 28')
   const focus = hexToTriplet(themeVars['--sf-focus'], '37 99 235')
-  const radius = themeVars['--sf-radius-shape'] || '8px'
+  const radius = themeVars['--sf-radius-shape'] || '10px'
+  // Mirror the shared public SF radius scale so every CMS page responds to the
+  // same theme shape setting instead of using a single fixed radius everywhere.
+  const radiusControl = `min(12px, ${radius})`
+  const radiusSmall = `min(8px, calc(${radius} * .7))`
+  const radiusPanel = `min(22px, calc(${radius} + 4px))`
 
   const primaryHover = themeVars['--sf-primary-strong'] || `rgb(${primary})`
-  const primaryActive = `color-mix(in srgb, rgb(${primary}) 76%, #000)`
+  const primaryActive = `color-mix(in srgb, rgb(${primary}) 76%, rgb(${primaryForeground}))`
   const fontBody = themeVars['--sf-font-body'] || 'ui-sans-serif, system-ui, sans-serif'
   const fontDisplay = themeVars['--sf-font-display'] || 'ui-sans-serif, system-ui, sans-serif'
   const tracking = themeVars['--sf-tracking'] || '-.02em'
@@ -103,13 +108,13 @@ function buildAdminCssVariables(themeVars: ThemeVars) {
     '--table-head': `rgb(${surfaceMuted})`,
     '--input-bg': `rgb(${surface})`,
     '--success': `rgb(${success})`,
-    '--success-soft': `rgb(${surfaceMuted})`,
+    '--success-soft': `color-mix(in srgb, rgb(${success}) 12%, rgb(${surface}))`,
     '--warning': `rgb(${warning})`,
-    '--warning-soft': `rgb(${surfaceMuted})`,
+    '--warning-soft': `color-mix(in srgb, rgb(${warning}) 12%, rgb(${surface}))`,
     '--error': `rgb(${danger})`,
-    '--error-soft': `rgb(${surfaceMuted})`,
+    '--error-soft': `color-mix(in srgb, rgb(${danger}) 10%, rgb(${surface}))`,
     '--info': `rgb(${focus})`,
-    '--info-soft': `rgb(${surfaceMuted})`,
+    '--info-soft': `color-mix(in srgb, rgb(${focus}) 10%, rgb(${surface}))`,
     '--overlay': `rgb(${textPrimary} / .55)`,
 
     '--sidebar-rgb': surface,
@@ -131,14 +136,15 @@ function buildAdminCssVariables(themeVars: ThemeVars) {
     '--sidebar-current-icon': `rgb(${primaryForeground})`,
     '--sidebar-current-icon-foreground': `rgb(${primary})`,
 
-    '--radius-control': radius,
+    '--radius-control': radiusControl,
     '--radius-card': radius,
-    '--radius-panel': radius,
-    '--radius-modal': radius,
-    '--shadow-sm': '0 1px 2px rgb(0 0 0 / .05)',
-    '--shadow-md': '0 6px 18px rgb(0 0 0 / .10)',
-    '--shadow-lg': '0 18px 48px rgb(0 0 0 / .22)',
-    '--shadow': '0 6px 18px rgb(0 0 0 / .10)',
+    '--radius-panel': radiusPanel,
+    '--radius-modal': radiusPanel,
+    '--radius-small': radiusSmall,
+    '--shadow-sm': themeVars['--sf-shadow-soft'] || '0 2px 8px color-mix(in srgb, var(--sf-ink) 10%, transparent)',
+    '--shadow-md': themeVars['--sf-shadow'] || '0 8px 24px color-mix(in srgb, var(--sf-ink) 14%, transparent)',
+    '--shadow-lg': '0 22px 60px color-mix(in srgb, var(--sf-ink) 24%, transparent)',
+    '--shadow': themeVars['--sf-shadow-soft'] || '0 6px 18px color-mix(in srgb, var(--sf-ink) 10%, transparent)',
   }
 }
 
@@ -151,16 +157,27 @@ export default function AdminThemeShell({
   themeVars: ThemeVars
   themeConfig: RuntimeThemeMap
 }) {
+  const themeRootRef = useRef<HTMLDivElement>(null)
+  const [activeThemeVars, setActiveThemeVars] = useState<ThemeVars>(themeVars)
+
   const apply = (vars: ThemeVars) => {
     const root = document.documentElement
+    root.style.colorScheme = root.dataset.mode === 'light' ? 'light' : 'dark'
     const adminVars = buildAdminCssVariables(vars)
-    Object.entries(adminVars).forEach(([key, value]) => root.style.setProperty(key, value))
+    // Keep the global defaults and the CMS subtree in sync. The wrapper carries
+    // initial inline tokens to avoid a flash on first paint, so theme changes
+    // must update that wrapper too (inherited root variables cannot override it).
+    for (const target of [root, themeRootRef.current]) {
+      if (!target) continue
+      Object.entries(adminVars).forEach(([key, value]) => target.style.setProperty(key, value))
+    }
   }
 
-  const initialVars = buildAdminCssVariables(themeVars)
+  const initialVars = buildAdminCssVariables(activeThemeVars)
 
   useEffect(() => {
     const root = document.documentElement
+    setActiveThemeVars(themeVars)
     apply(themeVars)
 
     const handleThemeUpdate = (event: Event) => {
@@ -178,6 +195,7 @@ export default function AdminThemeShell({
       const mode = detail.mode || (root.dataset.mode === 'dark' ? 'dark' : 'light')
       const shape = detail.shape || (root.dataset.shape === 'soft' || root.dataset.shape === 'square' ? root.dataset.shape : 'rounded')
       const vars = buildThemeCssVariables(themeConfig, themeName, mode, detail.tokens || {}, shape)
+      setActiveThemeVars(vars)
 
       root.dataset.theme = themeName
       root.dataset.mode = mode
@@ -190,7 +208,7 @@ export default function AdminThemeShell({
   }, [themeConfig, themeVars])
 
   return (
-    <div className="admin-theme-root" style={initialVars as CSSProperties}>
+    <div ref={themeRootRef} className="admin-theme-root" style={initialVars as CSSProperties}>
       {children}
     </div>
   )

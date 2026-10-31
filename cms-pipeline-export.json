@@ -1,0 +1,1793 @@
+{
+  "landing-copy": {
+    "areas": {
+      "cards": [
+        {
+          "body": {
+            "bn": "কমিউনিটির জন্য প্রাথমিক স্বাস্থ্যসেবা ও পুষ্টি।",
+            "en": "Primary healthcare and nutrition for communities."
+          },
+          "href": "/social-development/health-program",
+          "icon": "heart",
+          "image": "https://images.unsplash.com/photo-1774979161296-bb930552543a?auto=format&fit=crop&w=1800&q=85",
+          "title": {
+            "bn": "স্বাস্থ্য ও পুষ্টি",
+            "en": "Health & Nutrition"
+          }
+        },
+        {
+          "body": {
+            "bn": "অধিকার, অন্তর্ভুক্তি ও কমিউনিটি নেতৃত্ব।",
+            "en": "Rights, inclusion and community leadership."
+          },
+          "href": "/social-development",
+          "icon": "users",
+          "image": "https://images.unsplash.com/photo-1722944759942-791464a16ee0?auto=format&fit=crop&w=1800&q=85",
+          "title": {
+            "bn": "সামাজিক উন্নয়ন",
+            "en": "Social Development"
+          }
+        },
+        {
+          "body": {
+            "bn": "জীবিকাকেন্দ্রিক সঞ্চয় ও ঋণসেবা।",
+            "en": "Savings and loans built around livelihoods."
+          },
+          "href": "/microfinance-program",
+          "icon": "coins",
+          "image": "https://images.unsplash.com/photo-1765658559220-6b51dbabe850?auto=format&fit=crop&w=1800&q=85",
+          "title": {
+            "bn": "ক্ষুদ্রঋণ ও ঋণ সেবা",
+            "en": "Microfinance & Loans"
+          }
+        },
+        {
+          "body": {
+            "bn": "জলবায়ু-সচেতন কৃষি ও গ্রামীণ আয়।",
+            "en": "Climate-aware farming and rural income."
+          },
+          "href": "/social-development/agriculture-livelihood",
+          "icon": "sprout",
+          "image": "https://images.unsplash.com/photo-1761961851508-43db0337480a?auto=format&fit=crop&w=1800&q=85",
+          "title": {
+            "bn": "কৃষি ও জীবিকা",
+            "en": "Agriculture & Livelihood"
+          }
+        },
+        {
+          "body": {
+            "bn": "মানুষকে বাজারের সঙ্গে যুক্ত করা সামাজিক উদ্যোগ।",
+            "en": "Social enterprises linking people to markets."
+          },
+          "href": "/enterprise-development",
+          "icon": "store",
+          "image": "/photos/market-women.jpg",
+          "title": {
+            "bn": "এন্টারপ্রাইজ উন্নয়ন",
+            "en": "Enterprise Development"
+          }
+        },
+        {
+          "body": {
+            "bn": "তরুণদের জন্য শিক্ষা ও ব্যবহারিক দক্ষতা।",
+            "en": "Learning and practical skills for young people."
+          },
+          "href": "/social-development/education-program",
+          "icon": "book",
+          "image": "/photos/school-children.jpg",
+          "title": {
+            "bn": "শিক্ষা ও দক্ষতা",
+            "en": "Education & Skills"
+          }
+        }
+      ],
+      "title": {
+        "bn": "সমন্বিত উন্নয়ন ক্ষেত্র",
+        "en": "Integrated Development Areas"
+      },
+      "eyebrow": {
+        "bn": "আমাদের কার্যক্রম",
+        "en": "What We Do"
+      }
+    },
+    "story": {
+      "hint": {
+        "bn": "স্ক্রল করুন",
+        "en": "Keep scrolling"
+      },
+      "steps": [
+        {
+          "id": "mission",
+          "body": {
+            "bn": "দারিদ্র্য বিমোচন, আর্থ-সামাজিক উন্নয়ন ও মানবাধিকার প্রতিষ্ঠায় সহায়ক পরিবেশ তৈরি করা।",
+            "en": "Create an enabling environment for poverty reduction, socio-economic development and human rights."
+          },
+          "chips": [
+            {
+              "bn": "দারিদ্র্য বিমোচন",
+              "en": "Poverty reduction"
+            },
+            {
+              "bn": "আর্থ-সামাজিক উন্নয়ন",
+              "en": "Socio-economic development"
+            },
+            {
+              "bn": "মানবাধিকার",
+              "en": "Human rights"
+            }
+          ],
+          "kicker": {
+            "bn": "আমাদের মিশন",
+            "en": "Our Mission"
+          }
+        },
+        {
+          "id": "vision",
+          "body": {
+            "bn": "এমন একটি বাংলাদেশ, যেখানে প্রত্যেক মানুষ, বিশেষ করে দরিদ্র ও প্রান্তিক জনগোষ্ঠী, মর্যাদা, সুযোগ ও অধিকারসহ বাঁচতে পারে।",
+            "en": "A Bangladesh where every person, especially the poor and marginalised, lives with dignity, opportunity and rights."
+          },
+          "chips": [
+            {
+              "bn": "মর্যাদা",
+              "en": "Dignity"
+            },
+            {
+              "bn": "সুযোগ",
+              "en": "Opportunity"
+            },
+            {
+              "bn": "অধিকার",
+              "en": "Rights"
+            }
+          ],
+          "kicker": {
+            "bn": "আমাদের ভিশন",
+            "en": "Our Vision"
+          }
+        },
+        {
+          "id": "values",
+          "body": {
+            "bn": "জবাবদিহিতা ও ন্যায়পরায়ণতা: প্রতিটি কাজে নীতি ও নিয়ম মেনে চলা।",
+            "en": "Accountability and fairness: abiding by rules and policies in everything we do."
+          },
+          "chips": [
+            {
+              "bn": "জবাবদিহিতা",
+              "en": "Accountability"
+            },
+            {
+              "bn": "ন্যায়পরায়ণতা",
+              "en": "Fairness"
+            }
+          ],
+          "kicker": {
+            "bn": "আমাদের মূল্যবোধ",
+            "en": "Our Values"
+          }
+        }
+      ],
+      "title": {
+        "bn": "মিশন, ভিশন ও মূল্যবোধ",
+        "en": "Mission, Vision & Values"
+      },
+      "eyebrow": {
+        "bn": "আমরা যারা",
+        "en": "Who We Are"
+      }
+    },
+    "growth": {
+      "about": {
+        "bn": "আমাদের সম্পর্কে",
+        "en": "About us"
+      },
+      "title": {
+        "bn": "একসাথে এগিয়ে চলা",
+        "en": "Growing together"
+      },
+      "eyebrow": {
+        "bn": "১৯৮৫ সাল থেকে",
+        "en": "Since 1985"
+      },
+      "counters": [
+        {
+          "id": "members",
+          "icon": "users",
+          "label": {
+            "bn": "সদস্য",
+            "en": "Members"
+          },
+          "value": 69753
+        },
+        {
+          "id": "staff",
+          "icon": "briefcase",
+          "label": {
+            "bn": "কর্মী",
+            "en": "Staff"
+          },
+          "value": 2540
+        },
+        {
+          "id": "villages",
+          "icon": "home",
+          "label": {
+            "bn": "গ্রাম",
+            "en": "Villages"
+          },
+          "value": 1898
+        },
+        {
+          "id": "branches",
+          "icon": "building",
+          "label": {
+            "bn": "শাখা অফিস",
+            "en": "Branch offices"
+          },
+          "value": 80
+        }
+      ]
+    },
+    "stories": {
+      "all": {
+        "bn": "সব গল্প",
+        "en": "All stories"
+      },
+      "next": {
+        "bn": "পরের গল্প",
+        "en": "Next stories"
+      },
+      "prev": {
+        "bn": "আগের গল্প",
+        "en": "Previous stories"
+      },
+      "read": {
+        "bn": "গল্পটি পড়ুন",
+        "en": "Read story"
+      },
+      "title": {
+        "bn": "সৃজনীর সফলতার গল্প",
+        "en": "Success Story of Srizony"
+      },
+      "eyebrow": {
+        "bn": "প্রভাব",
+        "en": "Impact"
+      }
+    },
+    "footprint": {
+      "lead": {
+        "bn": "শাখার অবস্থান ও যোগাযোগের তথ্য দেখতে পিন বা শাখা নির্বাচন করুন।",
+        "en": "Select a pin or branch to view its location and contact details."
+      },
+      "title": {
+        "bn": "সারা বাংলাদেশে আমাদের কার্যালয়",
+        "en": "Our offices across Bangladesh"
+      },
+      "eyebrow": {
+        "bn": "জাতীয় বিস্তৃতি",
+        "en": "National Footprint"
+      }
+    },
+    "imagePlan": {
+      "pool": {
+        "solar": {
+          "url": "https://images.unsplash.com/photo-1784623305001-c7aebfc7f226?auto=format&fit=crop&w=1800&q=85",
+          "tags": [
+            "energy",
+            "solar",
+            "power"
+          ]
+        },
+        "water": {
+          "url": "https://images.unsplash.com/photo-1548839140-29a749e1cf4d?auto=format&fit=crop&w=1800&q=85",
+          "tags": [
+            "water",
+            "sanitation"
+          ]
+        },
+        "campus": {
+          "url": "https://images.unsplash.com/photo-1562774053-701939374585?auto=format&fit=crop&w=1800&q=85",
+          "tags": [
+            "university",
+            "campus",
+            "higher",
+            "education"
+          ]
+        },
+        "clinic": {
+          "url": "https://images.unsplash.com/photo-1774979161296-bb930552543a?auto=format&fit=crop&w=1800&q=85",
+          "tags": [
+            "clinic",
+            "primary",
+            "health",
+            "urban"
+          ]
+        },
+        "health": {
+          "url": "https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?auto=format&fit=crop&w=1800&q=85",
+          "tags": [
+            "health",
+            "care",
+            "medical"
+          ]
+        },
+        "office": {
+          "url": "https://images.unsplash.com/photo-1497366754035-f200968a6e72?auto=format&fit=crop&w=1800&q=85",
+          "tags": [
+            "printing",
+            "press",
+            "office",
+            "publication"
+          ]
+        },
+        "rights": {
+          "url": "https://images.unsplash.com/photo-1722932592507-59b3a3ac368d?auto=format&fit=crop&w=1800&q=85",
+          "tags": [
+            "rights",
+            "governance",
+            "voice",
+            "advocacy"
+          ]
+        },
+        "sewing": {
+          "url": "https://images.unsplash.com/photo-1765658559220-6b51dbabe850?auto=format&fit=crop&w=1800&q=85",
+          "tags": [
+            "finance",
+            "micro",
+            "work",
+            "growth",
+            "business"
+          ]
+        },
+        "climate": {
+          "url": "https://images.unsplash.com/photo-1668940004859-c3b8249e8067?auto=format&fit=crop&w=1800&q=85",
+          "tags": [
+            "climate",
+            "resilience",
+            "environment",
+            "field"
+          ]
+        },
+        "digital": {
+          "url": "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=1800&q=85",
+          "tags": [
+            "internet",
+            "digital",
+            "computer",
+            "technology"
+          ]
+        },
+        "elderly": {
+          "url": "https://images.unsplash.com/photo-1771699435693-52329f0d18ff?auto=format&fit=crop&w=1800&q=85",
+          "tags": [
+            "nutrition",
+            "market",
+            "elderly",
+            "health"
+          ]
+        },
+        "farming": {
+          "url": "https://images.unsplash.com/photo-1738233505102-1bd26c33679e?auto=format&fit=crop&w=1800&q=85",
+          "tags": [
+            "livelihood",
+            "enterprise",
+            "farming",
+            "work"
+          ]
+        },
+        "village": {
+          "url": "https://images.unsplash.com/photo-1681672705104-c78e31a8d111?auto=format&fit=crop&w=1800&q=85",
+          "tags": [
+            "partnership",
+            "village",
+            "rural",
+            "river"
+          ]
+        },
+        "community": {
+          "url": "https://images.unsplash.com/photo-1766858669684-4e501b3b9f9f?auto=format&fit=crop&w=1800&q=85",
+          "tags": [
+            "community",
+            "rural",
+            "development",
+            "people"
+          ]
+        },
+        "education": {
+          "url": "https://images.unsplash.com/photo-1777725770744-e66b802dbf60?auto=format&fit=crop&w=1800&q=85",
+          "tags": [
+            "education",
+            "student",
+            "learning",
+            "book",
+            "school"
+          ]
+        },
+        "fieldPath": {
+          "url": "https://images.unsplash.com/photo-1739073677749-5e0f1a1487df?auto=format&fit=crop&w=1800&q=85",
+          "tags": [
+            "filling",
+            "station",
+            "road",
+            "fuel"
+          ]
+        },
+        "riceFarmer": {
+          "url": "https://images.unsplash.com/photo-1558289282-647de9fdf608?auto=format&fit=crop&w=1800&q=85",
+          "tags": [
+            "irrigation",
+            "rice",
+            "farmer"
+          ]
+        },
+        "riceSunset": {
+          "url": "https://images.unsplash.com/photo-1597356420268-4289c0bbe55d?auto=format&fit=crop&w=1800&q=85",
+          "tags": [
+            "mobility",
+            "motors",
+            "rural",
+            "road"
+          ]
+        },
+        "waterHands": {
+          "url": "https://images.unsplash.com/photo-1574482620811-1aa16ffe3c82?auto=format&fit=crop&w=1800&q=85",
+          "tags": [
+            "water",
+            "hygiene",
+            "sanitation",
+            "clean"
+          ]
+        },
+        "agriculture": {
+          "url": "https://images.unsplash.com/photo-1761961851508-43db0337480a?auto=format&fit=crop&w=1800&q=85",
+          "tags": [
+            "agriculture",
+            "farm",
+            "rice",
+            "hunger",
+            "food"
+          ]
+        },
+        "handwashing": {
+          "url": "https://images.unsplash.com/photo-1780504863172-22655ab910ae?auto=format&fit=crop&w=1800&q=85",
+          "tags": [
+            "water",
+            "sanitation",
+            "hygiene",
+            "drinking"
+          ]
+        },
+        "localMarket": {
+          "url": "/photos/market-women.jpg",
+          "tags": [
+            "market",
+            "women",
+            "livelihood",
+            "work",
+            "growth"
+          ]
+        },
+        "localSchool": {
+          "url": "/photos/school-children.jpg",
+          "tags": [
+            "education",
+            "skills",
+            "school",
+            "children"
+          ]
+        },
+        "mobileMoney": {
+          "url": "https://images.unsplash.com/photo-1681826291722-70bd7e9e6fc3?auto=format&fit=crop&w=1800&q=85",
+          "tags": [
+            "remittance",
+            "transfer",
+            "mobile",
+            "money"
+          ]
+        },
+        "schoolgirls": {
+          "url": "https://images.unsplash.com/photo-1573894998033-c0cef4ed722b?auto=format&fit=crop&w=1800&q=85",
+          "tags": [
+            "education",
+            "school",
+            "girls",
+            "classroom"
+          ]
+        },
+        "sportsField": {
+          "url": "https://images.unsplash.com/photo-1760510088582-3ca0631ad84f?auto=format&fit=crop&w=1800&q=85",
+          "tags": [
+            "sports",
+            "culture",
+            "play"
+          ]
+        },
+        "villageHome": {
+          "url": "https://images.unsplash.com/photo-1767154966831-9607c8322a5a?auto=format&fit=crop&w=1800&q=85",
+          "tags": [
+            "poverty",
+            "housing",
+            "home",
+            "village"
+          ]
+        },
+        "cleanCooking": {
+          "url": "https://images.unsplash.com/photo-1697378149850-0910bce142b7?auto=format&fit=crop&w=1800&q=85",
+          "tags": [
+            "cook",
+            "stove",
+            "kitchen",
+            "clean"
+          ]
+        },
+        "dhakaBuilding": {
+          "url": "https://images.unsplash.com/photo-1687346394692-7860c0713e51?auto=format&fit=crop&w=1800&q=85",
+          "tags": [
+            "hospital",
+            "building",
+            "urban",
+            "centre"
+          ]
+        },
+        "localChildren": {
+          "url": "/photos/children-learning.jpg",
+          "tags": [
+            "computer",
+            "garden",
+            "learning",
+            "children"
+          ]
+        },
+        "localTraining": {
+          "url": "/photos/women-training.jpg",
+          "tags": [
+            "polytechnic",
+            "training",
+            "skills",
+            "technical"
+          ]
+        },
+        "localGathering": {
+          "url": "/photos/women-gathering.jpg",
+          "tags": [
+            "legacy",
+            "community",
+            "elders",
+            "gathering"
+          ]
+        },
+        "communityAction": {
+          "url": "https://images.unsplash.com/photo-1722944759942-791464a16ee0?auto=format&fit=crop&w=1800&q=85",
+          "tags": [
+            "governance",
+            "participation",
+            "civic",
+            "voice"
+          ]
+        },
+        "floodResilience": {
+          "url": "https://images.unsplash.com/photo-1759261158814-e5c651e30714?auto=format&fit=crop&w=1800&q=85",
+          "tags": [
+            "disaster",
+            "flood",
+            "resilience"
+          ]
+        },
+        "childrenCommunity": {
+          "url": "https://images.unsplash.com/photo-1780282148151-e53f763cbb30?auto=format&fit=crop&w=1800&q=85",
+          "tags": [
+            "children",
+            "protection",
+            "adolescent"
+          ]
+        },
+        "elderlyBangladesh": {
+          "url": "https://images.unsplash.com/photo-1758726948996-c2390f716d70?auto=format&fit=crop&w=1800&q=85",
+          "tags": [
+            "elderly",
+            "older",
+            "dignity"
+          ]
+        },
+        "womenInAgriculture": {
+          "url": "https://images.unsplash.com/photo-1774504798125-bd6eed7063fc?auto=format&fit=crop&w=1800&q=85",
+          "tags": [
+            "gender",
+            "women",
+            "agriculture",
+            "trees"
+          ]
+        }
+      },
+      "heroFeatured": [
+        {
+          "slug": "enrich",
+          "image": "community",
+          "title": {
+            "bn": "কমিউনিটি নেতৃত্বাধীন উন্নয়ন",
+            "en": "Community-led development"
+          }
+        },
+        {
+          "slug": "protection-of-working-children",
+          "image": "childrenCommunity",
+          "title": {
+            "bn": "শ্রমজীবী শিশুর সুরক্ষা",
+            "en": "Protecting working children"
+          }
+        },
+        {
+          "slug": "second-chance-education",
+          "image": "education",
+          "title": {
+            "bn": "দ্বিতীয় সুযোগের শিক্ষা",
+            "en": "Second chance education"
+          }
+        },
+        {
+          "slug": "urban-primary-health-care",
+          "image": "clinic",
+          "title": {
+            "bn": "নগর প্রাথমিক স্বাস্থ্যসেবা",
+            "en": "Urban primary healthcare"
+          }
+        },
+        {
+          "slug": "micro-finance-program",
+          "image": "sewing",
+          "title": {
+            "bn": "পরিবারের জন্য ক্ষুদ্রঋণ",
+            "en": "Micro finance for families"
+          }
+        },
+        {
+          "slug": "disaster-management",
+          "image": "floodResilience",
+          "title": {
+            "bn": "দুর্যোগ প্রস্তুতি",
+            "en": "Disaster preparedness"
+          }
+        },
+        {
+          "slug": "safe-drinking-water-sanitation",
+          "image": "handwashing",
+          "title": {
+            "bn": "নিরাপদ পানি, উন্নত স্যানিটেশন",
+            "en": "Safe water, better sanitation"
+          }
+        },
+        {
+          "slug": "solar-irrigation-pumping-system",
+          "image": "riceFarmer",
+          "title": {
+            "bn": "সোলার সেচ পাম্প",
+            "en": "Solar irrigation pumps"
+          }
+        },
+        {
+          "slug": "improve-cook-stove",
+          "image": "cleanCooking",
+          "title": {
+            "bn": "পরিচ্ছন্ন চুলা",
+            "en": "Cleaner cook stoves"
+          }
+        },
+        {
+          "slug": "human-rights-and-good-governance",
+          "image": "rights",
+          "title": {
+            "bn": "অধিকার ও সুশাসন",
+            "en": "Rights and good governance"
+          }
+        },
+        {
+          "slug": "remittance-transfer-program",
+          "image": "mobileMoney",
+          "title": {
+            "bn": "রেমিট্যান্স ট্রান্সফার সেবা",
+            "en": "Remittance transfer services"
+          }
+        },
+        {
+          "slug": "uplifting-quality-of-life-elderly",
+          "image": "elderlyBangladesh",
+          "title": {
+            "bn": "বয়স্কদের জন্য মর্যাদা",
+            "en": "Dignity for older people"
+          }
+        }
+      ],
+      "sdgImageKeys": {
+        "1": "villageHome",
+        "2": "agriculture",
+        "3": "health",
+        "4": "schoolgirls",
+        "5": "womenInAgriculture",
+        "6": "waterHands",
+        "7": "solar",
+        "8": "localMarket"
+      },
+      "slugImageKeys": {
+        "srizony-motors": "riceSunset",
+        "srizony-hospital": "dhakaBuilding",
+        "srizony-internet": "digital",
+        "srizony-university": "campus",
+        "srizony-polytechnic": "localTraining",
+        "srizony-printing-press": "office",
+        "srizony-computer-garden": "localChildren",
+        "srizony-filling-station": "fieldPath",
+        "climate-resilience-update": "climate",
+        "education-and-skills-update": "localSchool",
+        "community-partnership-update": "village",
+        "livelihood-and-enterprise-update": "farming",
+        "community-health-and-nutrition-update": "elderly",
+        "community-rights-and-governance-update": "communityAction"
+      }
+    }
+  },
+  "landing-images": {
+    "pool": {
+      "solar": {
+        "url": "https://images.unsplash.com/photo-1784623305001-c7aebfc7f226?auto=format&fit=crop&w=1800&q=85",
+        "tags": [
+          "energy",
+          "solar",
+          "power"
+        ]
+      },
+      "water": {
+        "url": "https://images.unsplash.com/photo-1548839140-29a749e1cf4d?auto=format&fit=crop&w=1800&q=85",
+        "tags": [
+          "water",
+          "sanitation"
+        ]
+      },
+      "campus": {
+        "url": "https://images.unsplash.com/photo-1562774053-701939374585?auto=format&fit=crop&w=1800&q=85",
+        "tags": [
+          "university",
+          "campus",
+          "higher",
+          "education"
+        ]
+      },
+      "clinic": {
+        "url": "https://images.unsplash.com/photo-1774979161296-bb930552543a?auto=format&fit=crop&w=1800&q=85",
+        "tags": [
+          "clinic",
+          "primary",
+          "health",
+          "urban"
+        ]
+      },
+      "health": {
+        "url": "https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?auto=format&fit=crop&w=1800&q=85",
+        "tags": [
+          "health",
+          "care",
+          "medical"
+        ]
+      },
+      "office": {
+        "url": "https://images.unsplash.com/photo-1497366754035-f200968a6e72?auto=format&fit=crop&w=1800&q=85",
+        "tags": [
+          "printing",
+          "press",
+          "office",
+          "publication"
+        ]
+      },
+      "rights": {
+        "url": "https://images.unsplash.com/photo-1722932592507-59b3a3ac368d?auto=format&fit=crop&w=1800&q=85",
+        "tags": [
+          "rights",
+          "governance",
+          "voice",
+          "advocacy"
+        ]
+      },
+      "sewing": {
+        "url": "https://images.unsplash.com/photo-1765658559220-6b51dbabe850?auto=format&fit=crop&w=1800&q=85",
+        "tags": [
+          "finance",
+          "micro",
+          "work",
+          "growth",
+          "business"
+        ]
+      },
+      "climate": {
+        "url": "https://images.unsplash.com/photo-1668940004859-c3b8249e8067?auto=format&fit=crop&w=1800&q=85",
+        "tags": [
+          "climate",
+          "resilience",
+          "environment",
+          "field"
+        ]
+      },
+      "digital": {
+        "url": "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=1800&q=85",
+        "tags": [
+          "internet",
+          "digital",
+          "computer",
+          "technology"
+        ]
+      },
+      "elderly": {
+        "url": "https://images.unsplash.com/photo-1771699435693-52329f0d18ff?auto=format&fit=crop&w=1800&q=85",
+        "tags": [
+          "nutrition",
+          "market",
+          "elderly",
+          "health"
+        ]
+      },
+      "farming": {
+        "url": "https://images.unsplash.com/photo-1738233505102-1bd26c33679e?auto=format&fit=crop&w=1800&q=85",
+        "tags": [
+          "livelihood",
+          "enterprise",
+          "farming",
+          "work"
+        ]
+      },
+      "village": {
+        "url": "https://images.unsplash.com/photo-1681672705104-c78e31a8d111?auto=format&fit=crop&w=1800&q=85",
+        "tags": [
+          "partnership",
+          "village",
+          "rural",
+          "river"
+        ]
+      },
+      "community": {
+        "url": "https://images.unsplash.com/photo-1766858669684-4e501b3b9f9f?auto=format&fit=crop&w=1800&q=85",
+        "tags": [
+          "community",
+          "rural",
+          "development",
+          "people"
+        ]
+      },
+      "education": {
+        "url": "https://images.unsplash.com/photo-1777725770744-e66b802dbf60?auto=format&fit=crop&w=1800&q=85",
+        "tags": [
+          "education",
+          "student",
+          "learning",
+          "book",
+          "school"
+        ]
+      },
+      "fieldPath": {
+        "url": "https://images.unsplash.com/photo-1739073677749-5e0f1a1487df?auto=format&fit=crop&w=1800&q=85",
+        "tags": [
+          "filling",
+          "station",
+          "road",
+          "fuel"
+        ]
+      },
+      "riceFarmer": {
+        "url": "https://images.unsplash.com/photo-1558289282-647de9fdf608?auto=format&fit=crop&w=1800&q=85",
+        "tags": [
+          "irrigation",
+          "rice",
+          "farmer"
+        ]
+      },
+      "riceSunset": {
+        "url": "https://images.unsplash.com/photo-1597356420268-4289c0bbe55d?auto=format&fit=crop&w=1800&q=85",
+        "tags": [
+          "mobility",
+          "motors",
+          "rural",
+          "road"
+        ]
+      },
+      "waterHands": {
+        "url": "https://images.unsplash.com/photo-1574482620811-1aa16ffe3c82?auto=format&fit=crop&w=1800&q=85",
+        "tags": [
+          "water",
+          "hygiene",
+          "sanitation",
+          "clean"
+        ]
+      },
+      "agriculture": {
+        "url": "https://images.unsplash.com/photo-1761961851508-43db0337480a?auto=format&fit=crop&w=1800&q=85",
+        "tags": [
+          "agriculture",
+          "farm",
+          "rice",
+          "hunger",
+          "food"
+        ]
+      },
+      "handwashing": {
+        "url": "https://images.unsplash.com/photo-1780504863172-22655ab910ae?auto=format&fit=crop&w=1800&q=85",
+        "tags": [
+          "water",
+          "sanitation",
+          "hygiene",
+          "drinking"
+        ]
+      },
+      "localMarket": {
+        "url": "/photos/market-women.jpg",
+        "tags": [
+          "market",
+          "women",
+          "livelihood",
+          "work",
+          "growth"
+        ]
+      },
+      "localSchool": {
+        "url": "/photos/school-children.jpg",
+        "tags": [
+          "education",
+          "skills",
+          "school",
+          "children"
+        ]
+      },
+      "mobileMoney": {
+        "url": "https://images.unsplash.com/photo-1681826291722-70bd7e9e6fc3?auto=format&fit=crop&w=1800&q=85",
+        "tags": [
+          "remittance",
+          "transfer",
+          "mobile",
+          "money"
+        ]
+      },
+      "schoolgirls": {
+        "url": "https://images.unsplash.com/photo-1573894998033-c0cef4ed722b?auto=format&fit=crop&w=1800&q=85",
+        "tags": [
+          "education",
+          "school",
+          "girls",
+          "classroom"
+        ]
+      },
+      "sportsField": {
+        "url": "https://images.unsplash.com/photo-1760510088582-3ca0631ad84f?auto=format&fit=crop&w=1800&q=85",
+        "tags": [
+          "sports",
+          "culture",
+          "play"
+        ]
+      },
+      "villageHome": {
+        "url": "https://images.unsplash.com/photo-1767154966831-9607c8322a5a?auto=format&fit=crop&w=1800&q=85",
+        "tags": [
+          "poverty",
+          "housing",
+          "home",
+          "village"
+        ]
+      },
+      "cleanCooking": {
+        "url": "https://images.unsplash.com/photo-1697378149850-0910bce142b7?auto=format&fit=crop&w=1800&q=85",
+        "tags": [
+          "cook",
+          "stove",
+          "kitchen",
+          "clean"
+        ]
+      },
+      "dhakaBuilding": {
+        "url": "https://images.unsplash.com/photo-1687346394692-7860c0713e51?auto=format&fit=crop&w=1800&q=85",
+        "tags": [
+          "hospital",
+          "building",
+          "urban",
+          "centre"
+        ]
+      },
+      "localChildren": {
+        "url": "/photos/children-learning.jpg",
+        "tags": [
+          "computer",
+          "garden",
+          "learning",
+          "children"
+        ]
+      },
+      "localTraining": {
+        "url": "/photos/women-training.jpg",
+        "tags": [
+          "polytechnic",
+          "training",
+          "skills",
+          "technical"
+        ]
+      },
+      "localGathering": {
+        "url": "/photos/women-gathering.jpg",
+        "tags": [
+          "legacy",
+          "community",
+          "elders",
+          "gathering"
+        ]
+      },
+      "communityAction": {
+        "url": "https://images.unsplash.com/photo-1722944759942-791464a16ee0?auto=format&fit=crop&w=1800&q=85",
+        "tags": [
+          "governance",
+          "participation",
+          "civic",
+          "voice"
+        ]
+      },
+      "floodResilience": {
+        "url": "https://images.unsplash.com/photo-1759261158814-e5c651e30714?auto=format&fit=crop&w=1800&q=85",
+        "tags": [
+          "disaster",
+          "flood",
+          "resilience"
+        ]
+      },
+      "childrenCommunity": {
+        "url": "https://images.unsplash.com/photo-1780282148151-e53f763cbb30?auto=format&fit=crop&w=1800&q=85",
+        "tags": [
+          "children",
+          "protection",
+          "adolescent"
+        ]
+      },
+      "elderlyBangladesh": {
+        "url": "https://images.unsplash.com/photo-1758726948996-c2390f716d70?auto=format&fit=crop&w=1800&q=85",
+        "tags": [
+          "elderly",
+          "older",
+          "dignity"
+        ]
+      },
+      "womenInAgriculture": {
+        "url": "https://images.unsplash.com/photo-1774504798125-bd6eed7063fc?auto=format&fit=crop&w=1800&q=85",
+        "tags": [
+          "gender",
+          "women",
+          "agriculture",
+          "trees"
+        ]
+      }
+    },
+    "heroFeatured": [
+      {
+        "slug": "enrich",
+        "image": "community",
+        "title": {
+          "bn": "কমিউনিটি নেতৃত্বাধীন উন্নয়ন",
+          "en": "Community-led development"
+        }
+      },
+      {
+        "slug": "protection-of-working-children",
+        "image": "childrenCommunity",
+        "title": {
+          "bn": "শ্রমজীবী শিশুর সুরক্ষা",
+          "en": "Protecting working children"
+        }
+      },
+      {
+        "slug": "second-chance-education",
+        "image": "education",
+        "title": {
+          "bn": "দ্বিতীয় সুযোগের শিক্ষা",
+          "en": "Second chance education"
+        }
+      },
+      {
+        "slug": "urban-primary-health-care",
+        "image": "clinic",
+        "title": {
+          "bn": "নগর প্রাথমিক স্বাস্থ্যসেবা",
+          "en": "Urban primary healthcare"
+        }
+      },
+      {
+        "slug": "micro-finance-program",
+        "image": "sewing",
+        "title": {
+          "bn": "পরিবারের জন্য ক্ষুদ্রঋণ",
+          "en": "Micro finance for families"
+        }
+      },
+      {
+        "slug": "disaster-management",
+        "image": "floodResilience",
+        "title": {
+          "bn": "দুর্যোগ প্রস্তুতি",
+          "en": "Disaster preparedness"
+        }
+      },
+      {
+        "slug": "safe-drinking-water-sanitation",
+        "image": "handwashing",
+        "title": {
+          "bn": "নিরাপদ পানি, উন্নত স্যানিটেশন",
+          "en": "Safe water, better sanitation"
+        }
+      },
+      {
+        "slug": "solar-irrigation-pumping-system",
+        "image": "riceFarmer",
+        "title": {
+          "bn": "সোলার সেচ পাম্প",
+          "en": "Solar irrigation pumps"
+        }
+      },
+      {
+        "slug": "improve-cook-stove",
+        "image": "cleanCooking",
+        "title": {
+          "bn": "পরিচ্ছন্ন চুলা",
+          "en": "Cleaner cook stoves"
+        }
+      },
+      {
+        "slug": "human-rights-and-good-governance",
+        "image": "rights",
+        "title": {
+          "bn": "অধিকার ও সুশাসন",
+          "en": "Rights and good governance"
+        }
+      },
+      {
+        "slug": "remittance-transfer-program",
+        "image": "mobileMoney",
+        "title": {
+          "bn": "রেমিট্যান্স ট্রান্সফার সেবা",
+          "en": "Remittance transfer services"
+        }
+      },
+      {
+        "slug": "uplifting-quality-of-life-elderly",
+        "image": "elderlyBangladesh",
+        "title": {
+          "bn": "বয়স্কদের জন্য মর্যাদা",
+          "en": "Dignity for older people"
+        }
+      }
+    ],
+    "sdgImageKeys": {
+      "1": "villageHome",
+      "2": "agriculture",
+      "3": "health",
+      "4": "schoolgirls",
+      "5": "womenInAgriculture",
+      "6": "waterHands",
+      "7": "solar",
+      "8": "localMarket"
+    },
+    "slugImageKeys": {
+      "srizony-motors": "riceSunset",
+      "srizony-hospital": "dhakaBuilding",
+      "srizony-internet": "digital",
+      "srizony-university": "campus",
+      "srizony-polytechnic": "localTraining",
+      "srizony-printing-press": "office",
+      "srizony-computer-garden": "localChildren",
+      "srizony-filling-station": "fieldPath",
+      "climate-resilience-update": "climate",
+      "education-and-skills-update": "localSchool",
+      "community-partnership-update": "village",
+      "livelihood-and-enterprise-update": "farming",
+      "community-health-and-nutrition-update": "elderly",
+      "community-rights-and-governance-update": "communityAction"
+    }
+  },
+  "hero": {
+    "stats": [
+      {
+        "id": "years",
+        "icon": "heart",
+        "label": {
+          "bn": "প্রতিষ্ঠিত",
+          "en": "Established"
+        },
+        "value": {
+          "bn": "১৯৮৫",
+          "en": "1985"
+        }
+      },
+      {
+        "id": "staff",
+        "icon": "users",
+        "label": {
+          "bn": "কর্মী",
+          "en": "Staff"
+        },
+        "value": {
+          "bn": "২,৫৪০",
+          "en": "2,540"
+        }
+      },
+      {
+        "id": "branches",
+        "icon": "building",
+        "label": {
+          "bn": "শাখা",
+          "en": "Branches"
+        },
+        "value": {
+          "bn": "৮০",
+          "en": "80"
+        }
+      },
+      {
+        "id": "villages",
+        "icon": "location",
+        "label": {
+          "bn": "গ্রাম",
+          "en": "Villages"
+        },
+        "value": {
+          "bn": "১,৮৯৮",
+          "en": "1,898"
+        }
+      },
+      {
+        "id": "members",
+        "icon": "users",
+        "label": {
+          "bn": "সদস্য",
+          "en": "Members"
+        },
+        "value": {
+          "bn": "৬৯,৭৫৩",
+          "en": "69,753"
+        }
+      }
+    ],
+    "slides": [
+      {
+        "id": "project-enrich",
+        "href": "/projects/enrich",
+        "image": "https://images.unsplash.com/photo-1766858669684-4e501b3b9f9f?auto=format&fit=crop&w=1800&q=85",
+        "title": {
+          "bn": "কমিউনিটি নেতৃত্বাধীন উন্নয়ন",
+          "en": "Community-led development"
+        },
+        "description": {
+          "bn": "পরিবারের জীবিকা ও প্রয়োজনীয় সামাজিক সেবাকে যুক্ত করতে সমন্বিত কমিউনিটি উন্নয়ন পদ্ধতি ব্যবহার করে।",
+          "en": "Uses an integrated community-development approach to connect household livelihoods with essential social services."
+        }
+      },
+      {
+        "id": "project-protection-of-working-children",
+        "href": "/projects/protection-of-working-children",
+        "image": "https://images.unsplash.com/photo-1780282148151-e53f763cbb30?auto=format&fit=crop&w=1800&q=85",
+        "title": {
+          "bn": "শ্রমজীবী শিশুর সুরক্ষা",
+          "en": "Protecting working children"
+        },
+        "description": {
+          "bn": "ঝুঁকিপূর্ণ বা শোষণমূলক কাজে যুক্ত শিশুদের সুরক্ষা, শিক্ষায় প্রবেশাধিকার ও কমিউনিটি সহায়তার মাধ্যমে সমর্থন করে।",
+          "en": "Supports children exposed to hazardous or exploitative work through protection, access to learning and community-based support."
+        }
+      },
+      {
+        "id": "project-second-chance-education",
+        "href": "/projects/second-chance-education",
+        "image": "https://images.unsplash.com/photo-1777725770744-e66b802dbf60?auto=format&fit=crop&w=1800&q=85",
+        "title": {
+          "bn": "দ্বিতীয় সুযোগের শিক্ষা",
+          "en": "Second chance education"
+        },
+        "description": {
+          "bn": "প্রাতিষ্ঠানিক শিক্ষা থেকে ঝরে পড়া বা বিরতি নেওয়া শিশু ও তরুণদের পুনরায় শেখার সুযোগ তৈরি করে।",
+          "en": "Creates pathways back to learning for children and young people who have missed or interrupted formal schooling."
+        }
+      },
+      {
+        "id": "project-urban-primary-health-care",
+        "href": "/projects/urban-primary-health-care",
+        "image": "https://images.unsplash.com/photo-1774979161296-bb930552543a?auto=format&fit=crop&w=1800&q=85",
+        "title": {
+          "bn": "নগর প্রাথমিক স্বাস্থ্যসেবা",
+          "en": "Urban primary healthcare"
+        },
+        "description": {
+          "bn": "নগর ও সেবা-বঞ্চিত কমিউনিটির জন্য প্রয়োজনীয় প্রাথমিক স্বাস্থ্যসেবার সুযোগ বাড়ানোর ওপর গুরুত্ব দেয়।",
+          "en": "Focuses on improving access to essential primary healthcare for urban and underserved communities."
+        }
+      },
+      {
+        "id": "project-micro-finance-program",
+        "href": "/projects/micro-finance-program",
+        "image": "https://images.unsplash.com/photo-1765658559220-6b51dbabe850?auto=format&fit=crop&w=1800&q=85",
+        "title": {
+          "bn": "পরিবারের জন্য ক্ষুদ্রঋণ",
+          "en": "Micro finance for families"
+        },
+        "description": {
+          "bn": "পরিবারের প্রয়োজন ও জীবিকাকে সহায়তা করার জন্য সঞ্চয় ও ঋণসেবার কাঠামো প্রদান করে।",
+          "en": "Provides a framework for savings and loan services designed to support household needs and livelihoods."
+        }
+      },
+      {
+        "id": "project-disaster-management",
+        "href": "/projects/disaster-management",
+        "image": "https://images.unsplash.com/photo-1759261158814-e5c651e30714?auto=format&fit=crop&w=1800&q=85",
+        "title": {
+          "bn": "দুর্যোগ প্রস্তুতি",
+          "en": "Disaster preparedness"
+        },
+        "description": {
+          "bn": "দুর্যোগজনিত ঝুঁকি মোকাবিলায় কমিউনিটির প্রস্তুতি, সাড়া ও পুনরুদ্ধার পরিকল্পনা শক্তিশালী করে।",
+          "en": "Strengthens community preparedness, response and recovery planning for disaster-related risks."
+        }
+      },
+      {
+        "id": "project-safe-drinking-water-sanitation",
+        "href": "/projects/safe-drinking-water-sanitation",
+        "image": "https://images.unsplash.com/photo-1780504863172-22655ab910ae?auto=format&fit=crop&w=1800&q=85",
+        "title": {
+          "bn": "নিরাপদ পানি, উন্নত স্যানিটেশন",
+          "en": "Safe water, better sanitation"
+        },
+        "description": {
+          "bn": "সুস্থ কমিউনিটি গড়তে নিরাপদ পানীয় জল, স্যানিটেশন ও স্বাস্থ্যবিধির চর্চাকে উৎসাহিত করে।",
+          "en": "Promotes safe drinking water, sanitation and hygiene practices for healthier communities."
+        }
+      },
+      {
+        "id": "project-solar-irrigation-pumping-system",
+        "href": "/projects/solar-irrigation-pumping-system",
+        "image": "https://images.unsplash.com/photo-1558289282-647de9fdf608?auto=format&fit=crop&w=1800&q=85",
+        "title": {
+          "bn": "সোলার সেচ পাম্প",
+          "en": "Solar irrigation pumps"
+        },
+        "description": {
+          "bn": "কৃষিতে পানি ব্যবস্থাপনার বিকল্প শক্তি হিসেবে সৌরচালিত সেচকে উৎসাহিত করে।",
+          "en": "Promotes solar-powered irrigation as an alternative energy option for agricultural water management."
+        }
+      },
+      {
+        "id": "project-improve-cook-stove",
+        "href": "/projects/improve-cook-stove",
+        "image": "https://images.unsplash.com/photo-1697378149850-0910bce142b7?auto=format&fit=crop&w=1800&q=85",
+        "title": {
+          "bn": "পরিচ্ছন্ন চুলা",
+          "en": "Cleaner cook stoves"
+        },
+        "description": {
+          "bn": "পরিচ্ছন্ন রান্নাঘর ও জ্বালানির দক্ষ ব্যবহারকে সহায়তা করতে উন্নত গৃহস্থালি রান্নার বিকল্পকে উৎসাহিত করে।",
+          "en": "Promotes improved household cooking options that can support cleaner kitchens and more efficient fuel use."
+        }
+      },
+      {
+        "id": "project-human-rights-and-good-governance",
+        "href": "/projects/human-rights-and-good-governance",
+        "image": "https://images.unsplash.com/photo-1722932592507-59b3a3ac368d?auto=format&fit=crop&w=1800&q=85",
+        "title": {
+          "bn": "অধিকার ও সুশাসন",
+          "en": "Rights and good governance"
+        },
+        "description": {
+          "bn": "অধিকার সচেতনতা, জবাবদিহিতা, অন্তর্ভুক্তি ও সেবায় ন্যায্য প্রবেশাধিকারকে উৎসাহিত করে।",
+          "en": "Promotes rights awareness, accountability, inclusion and fair access to services."
+        }
+      },
+      {
+        "id": "project-remittance-transfer-program",
+        "href": "/projects/remittance-transfer-program",
+        "image": "https://images.unsplash.com/photo-1681826291722-70bd7e9e6fc3?auto=format&fit=crop&w=1800&q=85",
+        "title": {
+          "bn": "রেমিট্যান্স ট্রান্সফার সেবা",
+          "en": "Remittance transfer services"
+        },
+        "description": {
+          "bn": "রেমিট্যান্স গ্রহণকারী পরিবারের অর্থ স্থানান্তর সেবা ও আর্থিক অন্তর্ভুক্তির সঙ্গে সম্পর্কিত।",
+          "en": "Relates to money-transfer services and financial access for households receiving remittances."
+        }
+      },
+      {
+        "id": "project-uplifting-quality-of-life-elderly",
+        "href": "/projects/uplifting-quality-of-life-elderly",
+        "image": "https://images.unsplash.com/photo-1758726948996-c2390f716d70?auto=format&fit=crop&w=1800&q=85",
+        "title": {
+          "bn": "বয়স্কদের জন্য মর্যাদা",
+          "en": "Dignity for older people"
+        },
+        "description": {
+          "bn": "বয়স্ক মানুষের সহায়তা, সুস্থতা, মর্যাদা ও কমিউনিটি জীবনের সঙ্গে সংযোগের ওপর গুরুত্ব দেয়।",
+          "en": "Highlights support for older people, their wellbeing, dignity and connection with community life."
+        }
+      }
+    ],
+    "eyebrow": {
+      "bn": "",
+      "en": ""
+    },
+    "autoplay": true,
+    "copyRemoved": true,
+    "copyVisible": false,
+    "description": {
+      "bn": "",
+      "en": ""
+    },
+    "primaryAction": {
+      "href": "/donate",
+      "label": {
+        "bn": "দান করুন",
+        "en": "Donate Now"
+      }
+    },
+    "headingLineOne": {
+      "bn": "",
+      "en": ""
+    },
+    "headingLineTwo": {
+      "bn": "",
+      "en": ""
+    },
+    "secondaryAction": {
+      "href": "/social-development",
+      "label": {
+        "bn": "আমাদের কার্যক্রম দেখুন",
+        "en": "Explore Our Work"
+      }
+    },
+    "autoplayInterval": 4500
+  },
+  "branches": [
+    {
+      "id": "head-office",
+      "lat": 23.5448,
+      "lng": 89.1726,
+      "kind": "head",
+      "name": {
+        "bn": "প্রধান কার্যালয় — সৃজনী ভবন",
+        "en": "Head Office — Srizony Bhaban"
+      },
+      "address": {
+        "bn": "",
+        "en": ""
+      },
+      "district": {
+        "bn": "ঝিনাইদহ",
+        "en": "Jhenaidah"
+      },
+      "division": {
+        "bn": "খুলনা বিভাগ",
+        "en": "Khulna Division"
+      }
+    },
+    {
+      "id": "kushtia",
+      "lat": 23.9013,
+      "lng": 89.1205,
+      "kind": "branch",
+      "name": {
+        "bn": "কুষ্টিয়া শাখা",
+        "en": "Kushtia Branch"
+      },
+      "address": {
+        "bn": "",
+        "en": ""
+      },
+      "district": {
+        "bn": "কুষ্টিয়া",
+        "en": "Kushtia"
+      },
+      "division": {
+        "bn": "খুলনা বিভাগ",
+        "en": "Khulna Division"
+      }
+    },
+    {
+      "id": "pabna",
+      "lat": 24.0064,
+      "lng": 89.2372,
+      "kind": "branch",
+      "name": {
+        "bn": "পাবনা শাখা",
+        "en": "Pabna Branch"
+      },
+      "address": {
+        "bn": "",
+        "en": ""
+      },
+      "district": {
+        "bn": "পাবনা",
+        "en": "Pabna"
+      },
+      "division": {
+        "bn": "রাজশাহী বিভাগ",
+        "en": "Rajshahi Division"
+      }
+    },
+    {
+      "id": "chuadanga",
+      "lat": 23.6402,
+      "lng": 88.8418,
+      "kind": "branch",
+      "name": {
+        "bn": "চুয়াডাঙ্গা শাখা",
+        "en": "Chuadanga Branch"
+      },
+      "address": {
+        "bn": "",
+        "en": ""
+      },
+      "district": {
+        "bn": "চুয়াডাঙ্গা",
+        "en": "Chuadanga"
+      },
+      "division": {
+        "bn": "খুলনা বিভাগ",
+        "en": "Khulna Division"
+      }
+    },
+    {
+      "id": "meherpur",
+      "lat": 23.7622,
+      "lng": 88.6318,
+      "kind": "branch",
+      "name": {
+        "bn": "মেহেরপুর শাখা",
+        "en": "Meherpur Branch"
+      },
+      "address": {
+        "bn": "",
+        "en": ""
+      },
+      "district": {
+        "bn": "মেহেরপুর",
+        "en": "Meherpur"
+      },
+      "division": {
+        "bn": "খুলনা বিভাগ",
+        "en": "Khulna Division"
+      }
+    },
+    {
+      "id": "jashore",
+      "lat": 23.1665,
+      "lng": 89.2081,
+      "kind": "branch",
+      "name": {
+        "bn": "যশোর শাখা",
+        "en": "Jashore Branch"
+      },
+      "address": {
+        "bn": "",
+        "en": ""
+      },
+      "district": {
+        "bn": "যশোর",
+        "en": "Jashore"
+      },
+      "division": {
+        "bn": "খুলনা বিভাগ",
+        "en": "Khulna Division"
+      }
+    },
+    {
+      "id": "satkhira",
+      "lat": 22.7185,
+      "lng": 89.0705,
+      "kind": "branch",
+      "name": {
+        "bn": "সাতক্ষীরা শাখা",
+        "en": "Satkhira Branch"
+      },
+      "address": {
+        "bn": "",
+        "en": ""
+      },
+      "district": {
+        "bn": "সাতক্ষীরা",
+        "en": "Satkhira"
+      },
+      "division": {
+        "bn": "খুলনা বিভাগ",
+        "en": "Khulna Division"
+      }
+    },
+    {
+      "id": "khulna",
+      "lat": 22.8456,
+      "lng": 89.5403,
+      "kind": "branch",
+      "name": {
+        "bn": "খুলনা শাখা",
+        "en": "Khulna Branch"
+      },
+      "address": {
+        "bn": "",
+        "en": ""
+      },
+      "district": {
+        "bn": "খুলনা",
+        "en": "Khulna"
+      },
+      "division": {
+        "bn": "খুলনা বিভাগ",
+        "en": "Khulna Division"
+      }
+    },
+    {
+      "id": "narail",
+      "lat": 23.1725,
+      "lng": 89.5126,
+      "kind": "branch",
+      "name": {
+        "bn": "নড়াইল শাখা",
+        "en": "Narail Branch"
+      },
+      "address": {
+        "bn": "",
+        "en": ""
+      },
+      "district": {
+        "bn": "নড়াইল",
+        "en": "Narail"
+      },
+      "division": {
+        "bn": "খুলনা বিভাগ",
+        "en": "Khulna Division"
+      }
+    },
+    {
+      "id": "magura",
+      "lat": 23.4873,
+      "lng": 89.4199,
+      "kind": "branch",
+      "name": {
+        "bn": "মাগুরা শাখা",
+        "en": "Magura Branch"
+      },
+      "address": {
+        "bn": "",
+        "en": ""
+      },
+      "district": {
+        "bn": "মাগুরা",
+        "en": "Magura"
+      },
+      "division": {
+        "bn": "খুলনা বিভাগ",
+        "en": "Khulna Division"
+      }
+    },
+    {
+      "id": "faridpur",
+      "lat": 23.607,
+      "lng": 89.8429,
+      "kind": "branch",
+      "name": {
+        "bn": "ফরিদপুর শাখা",
+        "en": "Faridpur Branch"
+      },
+      "address": {
+        "bn": "",
+        "en": ""
+      },
+      "district": {
+        "bn": "ফরিদপুর",
+        "en": "Faridpur"
+      },
+      "division": {
+        "bn": "ঢাকা বিভাগ",
+        "en": "Dhaka Division"
+      }
+    },
+    {
+      "id": "rajbari",
+      "lat": 23.7574,
+      "lng": 89.6445,
+      "kind": "branch",
+      "name": {
+        "bn": "রাজবাড়ী শাখা",
+        "en": "Rajbari Branch"
+      },
+      "address": {
+        "bn": "",
+        "en": ""
+      },
+      "district": {
+        "bn": "রাজবাড়ী",
+        "en": "Rajbari"
+      },
+      "division": {
+        "bn": "ঢাকা বিভাগ",
+        "en": "Dhaka Division"
+      }
+    },
+    {
+      "id": "manikganj",
+      "lat": 23.8617,
+      "lng": 90.0003,
+      "kind": "branch",
+      "name": {
+        "bn": "মানিকগঞ্জ শাখা",
+        "en": "Manikganj Branch"
+      },
+      "address": {
+        "bn": "",
+        "en": ""
+      },
+      "district": {
+        "bn": "মানিকগঞ্জ",
+        "en": "Manikganj"
+      },
+      "division": {
+        "bn": "ঢাকা বিভাগ",
+        "en": "Dhaka Division"
+      }
+    },
+    {
+      "id": "dhaka",
+      "lat": 23.8103,
+      "lng": 90.4125,
+      "kind": "branch",
+      "name": {
+        "bn": "ঢাকা শাখা",
+        "en": "Dhaka Branch"
+      },
+      "address": {
+        "bn": "",
+        "en": ""
+      },
+      "district": {
+        "bn": "ঢাকা",
+        "en": "Dhaka"
+      },
+      "division": {
+        "bn": "ঢাকা বিভাগ",
+        "en": "Dhaka Division"
+      }
+    }
+  ],
+  "donation-info": [
+    {
+      "bn": "কার্ড",
+      "en": "Cards",
+      "id": "cards",
+      "icon": "cards",
+      "noteBn": "Visa, Mastercard, Amex ও অন্যান্য সমর্থিত কার্ড।",
+      "noteEn": "Visa, Mastercard, Amex and other supported cards."
+    },
+    {
+      "bn": "বিকাশ",
+      "en": "bKash",
+      "id": "bkash",
+      "icon": "bkash",
+      "noteBn": "গেটওয়ের মাধ্যমে মোবাইল ওয়ালেট চ্যানেল।",
+      "noteEn": "Direct mobile-wallet channel through the gateway."
+    },
+    {
+      "bn": "নগদ",
+      "en": "Nagad",
+      "id": "nagad",
+      "icon": "nagad",
+      "noteBn": "সক্রিয় গেটওয়ে চ্যানেলের ওপর প্রাপ্যতা নির্ভর করে।",
+      "noteEn": "Availability depends on your active gateway channels."
+    },
+    {
+      "bn": "রকেট",
+      "en": "Rocket",
+      "id": "rocket",
+      "icon": "rocket",
+      "noteBn": "সক্রিয় গেটওয়ে চ্যানেলের ওপর প্রাপ্যতা নির্ভর করে।",
+      "noteEn": "Availability depends on your active gateway channels."
+    },
+    {
+      "bn": "ইন্টারনেট ব্যাংকিং",
+      "en": "Internet banking",
+      "id": "internet",
+      "icon": "internet",
+      "noteBn": "সক্রিয় ব্যাংক ও ইন্টারনেট ব্যাংকিং চ্যানেল।",
+      "noteEn": "Available bank and internet-banking channels at checkout."
+    }
+  ]
+}

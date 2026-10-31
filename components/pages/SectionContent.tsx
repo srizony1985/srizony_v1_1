@@ -10,17 +10,16 @@ import Button from '@/components/ui/ActionButton'
 import Diagram from '@/components/pages/Diagram'
 import DonationForm from '@/components/ui/DonationForm'
 import SafeImage from '@/components/ui/SafeImage'
+import CmsCardIllustration from '@/components/home/CmsCardIllustration'
 import SectionHeading from '@/components/ui/SectionHeading'
 import Stats from '@/components/ui/Stats'
 import VideoPlayer from '@/components/pages/VideoPlayer'
+import ContentFeedCard from '@/components/pages/ContentFeedCard'
 import type { IconName, PageData, PageSection, Section } from '@/types/entityType'
 import { localizeDigits } from '@/lib/utils'
-import { fallbackCardImage } from '@/data/landingImages'
 
 const ICONS: Record<IconName | 'sprout' | 'store', typeof Heart> = { heart: Heart, leaf: Leaf, book: BookOpen, scale: Scale, users: Users, sun: Sun, droplets: Droplets, briefcase: Briefcase, coins: Coins, building: Building2, megaphone: Megaphone, shield: ShieldCheck, play: Play, arrow: ArrowRight, check: CheckCircle2, sprout: Sprout, store: Store }
 const dial = (phone: string) => `tel:${phone.replace(/[^\d+]/g, '')}`
-
-type Localized = { en: string; bn: string }
 
 /** One prop-driven renderer keeps CMS section behavior in one place and shares the same UI primitives. */
 export default function SectionContent({ section, page }: { section: Section; page?: PageData }) {
@@ -28,11 +27,15 @@ export default function SectionContent({ section, page }: { section: Section; pa
   const readMore = site?.global.ui[lang]?.readMore ?? (lang === 'en' ? 'Read more' : 'আরও পড়ুন')
   const t = (en: string, bn: string) => lang === 'en' ? en : bn
   const isContactPage = page?.slug ? `/${page.slug.replace(/^\/+|\/+$/g, '')}` === '/contact' : false
+  const collection = (section as PageSection).contentCollection?.enabled ? (section as PageSection).contentCollection : undefined
+  const collectionGap = collection ? `${collection.gap}px` : undefined
+  const collectionVisibleCount = collection?.viewportItems ?? collection?.columns ?? 3
+  const collectionCardWidth = collection ? `calc((100% - ${(Math.max(1, collectionVisibleCount) - 1) * collection.gap}px) / ${Math.max(1, collectionVisibleCount)})` : undefined
 
   switch (section.type) {
     case 'richText':
       return <section className={`sf-block sf-split ${section.image ? '' : 'sf-split--single'} ${section.reverse ? 'is-reverse' : ''}`}>
-        <div className="sf-split-copy">
+        <div className="sf-split-copy" style={collection ? { display: 'grid', gap: collectionGap } : undefined}>
           <SectionHeading eyebrow={section.eyebrow} heading={section.heading} lang={lang} />
           {section.body.map((paragraph, index) => <p key={index} className="sf-body">{paragraph[lang]}</p>)}
         </div>
@@ -43,25 +46,26 @@ export default function SectionContent({ section, page }: { section: Section; pa
       </section>
 
     case 'stats':
-      return <section className="sf-block"><Stats items={section.items} lang={lang} animated /></section>
+      return <section className="sf-block"><Stats items={section.items} lang={lang} animated showIcons={section.items.some((item) => Boolean(item.icon || item.illustration || item.image?.src))} className={collection ? `cms-stats-collection ${collection.layout === 'list' ? 'sf-grid--cms-list' : ''}` : ''} style={collection ? { '--cols': collection.columns, '--collection-gap': collectionGap } as CSSProperties : undefined} /></section>
 
     case 'cards': {
       const profiles = section.items.length > 0 && section.items.every((item) => item.image && item.tag)
       return <section className="sf-block">
         <SectionHeading eyebrow={section.eyebrow} heading={section.heading} lang={lang} />
-        <div className={`sf-grid ${profiles ? 'sf-grid--people' : ''} ${section.variant === 'impact' ? 'sf-grid--impact' : ''}`} style={{ '--cols': section.columns ?? 3 } as CSSProperties}>
+        <div className={`sf-grid ${profiles ? 'sf-grid--people' : ''} ${section.variant === 'impact' ? 'sf-grid--impact' : ''} ${collection ? `sf-grid--cms-${collection.layout}` : ''}`} style={{ '--cols': collection?.columns ?? section.columns ?? 3, '--cols-tablet': Math.min(collection?.columns ?? section.columns ?? 3, 2), '--cols-mobile': 1, '--visible-count': collection?.viewportItems ?? collection?.columns ?? section.columns ?? 3, '--collection-gap': collectionGap ?? '24px', '--carousel-card-width': collectionCardWidth ?? 'min(320px, 82%)', ...(collectionGap ? { gap: collectionGap } : {}) } as CSSProperties}>
           {section.items.map((item, index) => {
             const Icon = ICONS[item.icon ?? 'check']
-            // Linked programme/content cards always get a relevant image even when older CMS data omitted one.
-            // People cards intentionally require editor-supplied portraits and are not given synthetic photos.
-            const imageSrc = item.image?.src || (!profiles && item.href ? fallbackCardImage(item.title, item.href) : '')
+            // Display media only when the editor explicitly supplied it.
+            const imageSrc = item.image?.src || ''
             const imageAlt = item.image?.alt?.[lang] || item.title[lang]
             return <AnimatedCard key={`${item.title.en}-${index}`} href={item.href} delay={index * 70} className={profiles ? 'sf-user-card' : ''}>
               {imageSrc && <div className={profiles ? 'sf-person-media' : 'sf-card-media'}>
                 <SafeImage src={imageSrc} alt={imageAlt} fill sizes="(max-width: 700px) 100vw, 33vw" className="sf-cover" />
                 {!profiles && item.tag && <span className="sf-chip sf-chip--float">{item.tag[lang]}</span>}
               </div>}
-              {!profiles && !imageSrc && <span className="sf-card-icon" aria-hidden="true"><Icon size={26} /></span>}
+              {!profiles && !imageSrc && (item.illustration
+                ? <div className="sf-card-illustration-wrap"><CmsCardIllustration name={item.illustration} alt={item.title[lang]} compact /></div>
+                : <span className="sf-card-icon" aria-hidden="true"><Icon size={26} /></span>)}
               <div className="sf-card-body">
                 {item.tag && (profiles || !imageSrc) && <span className="sf-chip">{item.tag[lang]}</span>}
                 <h3 className="sf-h3">{item.title[lang]}</h3>
@@ -77,7 +81,7 @@ export default function SectionContent({ section, page }: { section: Section; pa
     case 'gallery':
       return <section className="sf-block">
         <SectionHeading heading={section.heading} lang={lang} />
-        <div className="sf-grid sf-grid--gallery" style={{ '--cols': section.columns ?? 3 } as CSSProperties}>
+        <div className={`sf-grid sf-grid--gallery ${collection ? `sf-grid--cms-${collection.layout}` : ''}`} style={{ '--cols': collection?.columns ?? section.columns ?? 3, '--cols-tablet': Math.min(collection?.columns ?? section.columns ?? 3, 2), '--cols-mobile': 1, '--visible-count': collection?.viewportItems ?? collection?.columns ?? section.columns ?? 3, '--collection-gap': collectionGap ?? '24px', '--carousel-card-width': collectionCardWidth ?? 'min(320px, 82%)', ...(collectionGap ? { gap: collectionGap } : {}) } as CSSProperties}>
           {section.items.map((media, index) => <figure key={`${media.src}-${index}`} className="sf-gallery-item">
             <div className="sf-ratio sf-ratio--43"><SafeImage src={media.src} alt={media.alt[lang]} fill sizes="(max-width: 700px) 100vw, 33vw" className="sf-cover" /></div>
             {media.caption && <figcaption>{media.caption[lang]}</figcaption>}
@@ -88,7 +92,7 @@ export default function SectionContent({ section, page }: { section: Section; pa
     case 'timeline':
       return <section className="sf-block">
         <SectionHeading heading={section.heading} lang={lang} />
-        <ol className={`sf-timeline ${section.variant === 'journey' ? 'sf-timeline--journey' : ''}`}>
+        <ol className={`sf-timeline ${section.variant === 'journey' ? 'sf-timeline--journey' : ''}`} style={collection ? { gap: collectionGap } : undefined}>
           {section.items.map((item, index) => <li key={`${item.year}-${item.title.en}-${index}`}>
             <span className="sf-timeline-year">{localizeDigits(item.year, lang)}</span>
             <div className="sf-card"><h3 className="sf-h3">{item.title[lang]}</h3><p className="sf-body">{item.body[lang]}</p>
@@ -102,7 +106,7 @@ export default function SectionContent({ section, page }: { section: Section; pa
       return <section className="sf-block">
         <SectionHeading heading={section.heading} lang={lang} />
         <div className="sf-table-wrap" tabIndex={0} role="region" aria-label={section.heading?.[lang] || t('Table', 'টেবিল')}>
-          <table className="sf-table">
+          <table className="sf-table" style={collection ? { borderCollapse: 'separate', borderSpacing: `0 ${collection.gap}px` } : undefined}>
             <thead><tr>{section.headers.map((header, index) => <th key={index} scope="col">{header[lang]}</th>)}</tr></thead>
             <tbody>{section.rows.map((row, rowIndex) => <tr key={rowIndex}>{row.map((cell, columnIndex) => columnIndex === 0 ? <th key={columnIndex} scope="row">{cell[lang]}</th> : <td key={columnIndex}>{cell[lang]}</td>)}</tr>)}</tbody>
           </table>
@@ -131,7 +135,7 @@ export default function SectionContent({ section, page }: { section: Section; pa
 
     case 'noticeList':
       return <section className="sf-block"><SectionHeading heading={section.heading} lang={lang} />
-        <ul className="sf-notices">{section.items.map((item, index) => {
+        <ul className="sf-notices" style={collection ? { gap: collectionGap } : undefined}>{section.items.map((item, index) => {
           const content = <><time className="sf-notice-date">{item.date}</time><div><strong>{item.title[lang]}</strong>{item.body && <p>{item.body[lang]}</p>}</div>{item.href && <ArrowRight size={18} aria-hidden="true" />}</>
           return <li key={`${item.date}-${item.title.en}-${index}`}>{item.href ? <Link href={item.href} className="sf-notice">{content}</Link> : <div className="sf-notice">{content}</div>}</li>
         })}</ul>
@@ -158,10 +162,10 @@ export default function SectionContent({ section, page }: { section: Section; pa
 
     case 'carousel':
       return <section className="sf-block"><SectionHeading eyebrow={section.eyebrow} heading={section.heading} lead={section.body} lang={lang} />
-        <div className={section.presentation === 'scroller' ? 'sf-scroller' : 'sf-grid'} style={{ '--cols': 3 } as CSSProperties}>
+        <div className={collection?.layout === 'carousel' || section.presentation === 'scroller' ? 'sf-scroller' : `sf-grid ${collection ? `sf-grid--cms-${collection.layout}` : ''}`} style={{ '--cols': collection?.viewportItems ?? collection?.columns ?? 3, '--visible-count': collection?.viewportItems ?? collection?.columns ?? 3, '--collection-gap': collectionGap ?? '24px', '--carousel-card-width': collectionCardWidth ?? 'min(320px, 82%)', ...(collectionGap ? { gap: collectionGap } : {}) } as CSSProperties}>
           {section.items.map((item, index) => <AnimatedCard key={`${item.title.en}-${index}`} href={item.href} className="sf-news-card">
-            <div className="sf-card-media"><SafeImage src={item.image?.src || fallbackCardImage(item.title, item.href)} alt={item.image?.alt?.[lang] || item.title[lang]} fill sizes="(max-width: 700px) 85vw, 33vw" className="sf-cover" />
-              {item.tag && <span className="sf-chip sf-chip--float">{item.tag[lang]}</span>}</div>
+            {item.image?.src ? <div className="sf-card-media"><SafeImage src={item.image.src} alt={item.image.alt?.[lang] || item.title[lang]} fill sizes="(max-width: 700px) 85vw, 33vw" className="sf-cover" />
+              {item.tag && <span className="sf-chip sf-chip--float">{item.tag[lang]}</span>}</div> : <span className="sf-card-icon" aria-hidden="true"><BookOpen size={24} /></span>}
             <div className="sf-card-body"><h3 className="sf-h3">{item.title[lang]}</h3>{item.body && <p className="sf-body sf-clamp-3">{item.body[lang]}</p>}
               {item.href && <span className="sf-more">{readMore} <span aria-hidden="true">→</span></span>}
             </div>
@@ -172,7 +176,7 @@ export default function SectionContent({ section, page }: { section: Section; pa
     case 'reports': {
       const items = section.items.filter((item) => item.title?.en || item.title?.bn || item.file)
       return <section className="sf-block"><SectionHeading eyebrow={section.eyebrow} heading={section.heading} lead={section.body} lang={lang} />
-        <ul className="sf-notices">{items.map((item, index) => <li key={`${item.title.en}-${index}`}>
+        <ul className="sf-notices" style={collection ? { gap: collectionGap } : undefined}>{items.map((item, index) => <li key={`${item.title.en}-${index}`}>
           {item.file ? <a className="sf-notice" href={item.file} target="_blank" rel="noopener noreferrer"><time className="sf-notice-date">{localizeDigits(item.publishedAt ?? item.category?.[lang] ?? '', lang)}</time><div><strong>{item.title[lang]}</strong>{item.description && <p>{item.description[lang]}</p>}</div><Download size={18} aria-hidden="true" /></a>
             : <div className="sf-notice"><time className="sf-notice-date">{localizeDigits(item.publishedAt ?? item.category?.[lang] ?? '', lang)}</time><div><strong>{item.title[lang]}</strong>{item.description && <p>{item.description[lang]}</p>}</div></div>}
         </li>)}</ul>
@@ -187,21 +191,19 @@ export default function SectionContent({ section, page }: { section: Section; pa
       return <section className="sf-block"><SectionHeading heading={section.heading} lead={section.body} lang={lang} /><DonationForm /></section>
 
     case 'contentFeed': {
-      const labels: Record<string, Localized> = {
-        project: { en: 'Project', bn: 'প্রকল্প' }, news: { en: 'News', bn: 'সংবাদ' }, enterprise: { en: 'Enterprise', bn: 'উদ্যোগ' },
-        'partner-agency': { en: 'Partner agency', bn: 'অংশীদার সংস্থা' }, 'health-service': { en: 'Health service', bn: 'স্বাস্থ্যসেবা' },
-        'loan-product': { en: 'Loan product', bn: 'ঋণ পণ্য' }, product: { en: 'Product / service', bn: 'পণ্য ও সেবা' }, team: { en: 'Team', bn: 'টিম' },
-        notice: { en: 'Notice', bn: 'নোটিশ' }, report: { en: 'Report', bn: 'প্রতিবেদন' }, job: { en: 'Job', bn: 'চাকরি' },
-      }
-      return <section className="sf-block"><SectionHeading heading={section.heading} lang={lang} />
-        <div className="sf-grid" style={{ '--cols': 2 } as CSSProperties}>
-          {section.items.map((item) => <AnimatedCard key={`${item.component}-${item.id}`} href={item.href} className="sf-feed-card">
-            <div className="sf-card-media"><SafeImage src={item.image || fallbackCardImage(item.title, item.href)} alt={item.title[lang]} fill sizes="(max-width: 700px) 100vw, 50vw" className="sf-cover" /></div>
-            <div className="sf-card-body"><small>{labels[item.component]?.[lang] ?? item.component}{item.deadline ? ` · ${item.deadline}` : ''}</small><h3 className="sf-h3">{item.title[lang]}</h3>
-              {item.summary[lang] && <p className="sf-body">{item.summary[lang]}</p>}<time>{item.date}</time>
-            </div>
-          </AnimatedCard>)}
-          {section.items.length === 0 && <p>{t('Nothing to show yet.', 'এখনও কিছু নেই।')}</p>}
+      const feedComponent = section.components?.[0] ?? 'project'
+      const fixedTwoColumnFeed = feedComponent === 'notice' || feedComponent === 'job'
+      const desktopColumns = fixedTwoColumnFeed ? 2 : section.columns ?? 3
+      const tabletColumns = fixedTwoColumnFeed ? 2 : Math.min(section.columns ?? 3, 2)
+      const feedLayoutClass = fixedTwoColumnFeed ? '' : collection ? `sf-grid--cms-${collection.layout}` : ''
+      const feedColumns = fixedTwoColumnFeed ? 2 : collection?.columns ?? desktopColumns
+      const feedTabletColumns = fixedTwoColumnFeed ? 2 : Math.min(collection?.columns ?? tabletColumns, 2)
+      const feedViewportItems = fixedTwoColumnFeed ? 2 : collection?.viewportItems ?? collection?.columns ?? desktopColumns
+      const feedGap = fixedTwoColumnFeed ? '18px' : collectionGap ?? '24px'
+      return <section className={`sf-block sf-content-feed sf-content-feed--${feedComponent}`}><SectionHeading heading={section.heading} lang={lang} />
+        <div className={`sf-grid sf-feed-grid ${feedLayoutClass}`} style={{ '--cols': feedColumns, '--cols-tablet': feedTabletColumns, '--cols-mobile': 1, '--visible-count': feedViewportItems, '--collection-gap': feedGap, '--carousel-card-width': collectionCardWidth ?? 'min(320px, 82%)', ...(fixedTwoColumnFeed || collectionGap ? { gap: feedGap } : {}) } as CSSProperties}>
+          {section.items.map((item, index) => <ContentFeedCard key={`${item.component}-${item.id}`} item={item} lang={lang} index={index} />)}
+          {section.items.length === 0 && <p className="sf-feed-empty">{t('Nothing to show yet.', 'এখনও কিছু নেই।')}</p>}
         </div>
       </section>
     }

@@ -1,2 +1,5 @@
-import { systemData } from '../data/data'
-export function getFooterDisplay() { return { primaryNav: systemData.primaryNav, navGroups: systemData.navGroups, ui: systemData.ui, contactInfo: systemData.contactInfo, logo: systemData.images.logo } }
+import { getPublicSiteSnapshot } from '@/lib/site'
+export async function getFooterDisplay() {
+  const { global } = await getPublicSiteSnapshot('/')
+  return { primaryNav: global.primaryNav, navGroups: global.navGroups, ui: global.ui, contactInfo: global.contactInfo, logo: global.siteIdentity.logo || global.images.logo }
+}

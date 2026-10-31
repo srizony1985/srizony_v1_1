@@ -8,7 +8,7 @@
   gap: 14px;
   min-height: 220px;
   text-align: center;
-  color: var(--sf-primary);
+  color:var(--sf-link,var(--sf-primary));
   animation: fadeIn 0.25s ease both;
 }
 :global(html[data-mode="dark"]) .loader { color: var(--sf-footer-ink); }

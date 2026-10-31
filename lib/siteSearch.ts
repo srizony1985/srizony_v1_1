@@ -33,7 +33,7 @@ export async function searchPublicSite(query: string, lang: Lang, limit = 30): P
     const titleText = `${title.en} ${title.bn} ${subtitle.en || ''} ${subtitle.bn || ''}`.toLocaleLowerCase()
     if (`${titleText} ${searchable}`.includes(normalized)) {
       const sourceText = lang === 'bn' ? { title: title.bn, subtitle: subtitle.bn, excerpt: snippet(source || page, normalized) } : { title: title.en, subtitle: subtitle.en, excerpt: snippet(source || page, normalized) }
-      results.push({ slug: page.slug, title: { en: String(title.en || page.slug), bn: String(title.bn || title.en || page.slug) }, subtitle: { en: String(subtitle.en || ''), bn: String(subtitle.bn || '') }, excerpt: { en: sourceText.excerpt, bn: sourceText.excerpt }, kind: page.slug === '/reports' ? 'report' : 'page' })
+      results.push({ slug: page.slug, title: { en: String(title.en || page.slug), bn: String(title.bn || title.en || page.slug) }, subtitle: { en: String(subtitle.en || ''), bn: String(subtitle.bn || '') }, excerpt: { en: sourceText.excerpt, bn: sourceText.excerpt }, kind: page.slug === '/resources' ? 'report' : 'page' })
     }
     if (results.length >= limit) break
   }

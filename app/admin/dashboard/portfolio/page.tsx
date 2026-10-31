@@ -8,9 +8,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { getPortfolioGlobal, savePortfolioGlobal } from '@/lib/api/portfolio'
-import { BRANCHES } from '@/data/branches'
 import { AdminErrorState, PageLoading, SectionToolbar } from '../_components/AdminCommon'
 import { MediaField } from '../_components/MediaField'
+import PortfolioBranchLocationsEditor from '../_components/PortfolioBranchLocationsEditor'
 
 type Bi = { en: string; bn: string }
 type Portfolio = Record<string, any>
@@ -94,26 +94,6 @@ function PeopleListEditor({ title, value, onChange }: { title: string; value: an
   </div>
 }
 
-function BranchesEditor({ value, onChange }: { value: any[]; onChange: (next: any[]) => void }) {
-  const [expanded, setExpanded] = useState<number[]>(value.length ? [0] : [])
-  function update(index: number, patch: Record<string, any>) { onChange(value.map((branch, i) => i === index ? { ...branch, ...patch } : branch)) }
-  function add() { const id = `branch-new-${Date.now()}`; onChange([...value, { id, kind: 'branch', name: emptyBi(), district: emptyBi(), division: emptyBi(), address: emptyBi(), lat: 0, lng: 0, manager: { name: emptyBi(), title: emptyBi(), phone: '', email: '' } }]); setExpanded((old) => [...old, value.length]) }
-  return <div className="portfolio-structured-list">
-    <div className="portfolio-structured-list-top"><div><strong>Branches directory</strong><small>Manage office names, locations, coordinates and manager contact details.</small></div><Button size="sm" variant="outline" onClick={add}><Plus size={14} /> Add branch</Button></div>
-    {value.map((branch, index) => { const open = expanded.includes(index); const manager = branch.manager ?? {}; const name = asBi(branch.name); return <div className="portfolio-structured-item" key={`${branch.id || 'branch'}-${index}`}>
-      <div className="portfolio-structured-item-head"><button type="button" onClick={() => setExpanded((old) => open ? old.filter((n) => n !== index) : [...old, index])}>{open ? <ChevronUp size={14} /> : <ChevronDown size={14} />}<strong>{name.en || name.bn || `Branch ${index + 1}`}</strong><span>{branch.kind === 'head' ? 'Head office' : 'Branch'}</span></button><div><button type="button" className="cms-icon-button" aria-label="Move branch up" disabled={index === 0} onClick={() => { const next = [...value]; [next[index - 1], next[index]] = [next[index], next[index - 1]]; onChange(next); setExpanded((old) => old.map((n) => n === index ? index - 1 : n === index - 1 ? index : n)) }}><ArrowUp size={14} /></button><button type="button" className="cms-icon-button" aria-label="Move branch down" disabled={index === value.length - 1} onClick={() => { const next = [...value]; [next[index + 1], next[index]] = [next[index], next[index + 1]]; onChange(next); setExpanded((old) => old.map((n) => n === index ? index + 1 : n === index + 1 ? index : n)) }}><ArrowDown size={14} /></button><button type="button" className="cms-icon-button danger" aria-label="Remove branch" onClick={() => { if (!confirm(`Remove ${name.en || name.bn || `branch ${index + 1}`}?`)) return; onChange(value.filter((_, i) => i !== index)); setExpanded((old) => old.filter((n) => n !== index).map((n) => n > index ? n - 1 : n)) }}><Trash2 size={14} /></button></div></div>
-      {open && <div className="portfolio-structured-fields">
-        <div className="cms-form-grid"><label className="cms-field"><span>Location type</span><select className="ui-select" value={branch.kind === 'head' ? 'head' : 'branch'} onChange={(e) => update(index, { kind: e.target.value })}><option value="head">Head office</option><option value="branch">Branch office</option></select></label><label className="cms-field"><span>Branch ID</span><Input value={String(branch.id ?? '')} onChange={(e) => update(index, { id: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-') })} /></label></div>
-        <BiFields title="Branch / office name" value={name} onChange={(next) => update(index, { name: next })} />
-        <BiFields title="District" value={asBi(branch.district)} onChange={(next) => update(index, { district: next })} />
-        <BiFields title="Division" value={asBi(branch.division)} onChange={(next) => update(index, { division: next })} />
-        <BiFields title="Street address" value={asBi(branch.address)} multiline onChange={(next) => update(index, { address: next })} />
-        <div className="cms-form-grid"><label className="cms-field"><span>Latitude</span><Input type="number" step="any" value={String(branch.lat ?? '')} onChange={(e) => update(index, { lat: e.target.value === '' ? 0 : Number(e.target.value) })} /></label><label className="cms-field"><span>Longitude</span><Input type="number" step="any" value={String(branch.lng ?? '')} onChange={(e) => update(index, { lng: e.target.value === '' ? 0 : Number(e.target.value) })} /></label></div>
-        <fieldset className="cms-array-fieldset"><legend>Branch manager</legend><BiFields title="Manager name" value={asBi(manager.name)} onChange={(next) => update(index, { manager: { ...manager, name: next } })} /><BiFields title="Manager title" value={asBi(manager.title)} onChange={(next) => update(index, { manager: { ...manager, title: next } })} /><div className="cms-form-grid"><label className="cms-field"><span>Manager phone</span><Input value={String(manager.phone ?? '')} onChange={(e) => update(index, { manager: { ...manager, phone: e.target.value } })} /></label><label className="cms-field"><span>Manager email</span><Input type="email" value={String(manager.email ?? '')} onChange={(e) => update(index, { manager: { ...manager, email: e.target.value } })} /></label></div></fieldset>
-      </div>}
-    </div> })}
-  </div>
-}
 
 export default function PortfolioPage() {
   const [global, setGlobal] = useState<Record<string, any> | null>(null)
@@ -134,7 +114,6 @@ export default function PortfolioPage() {
       const saved = data.portfolio && typeof data.portfolio === 'object' ? data.portfolio : {}
       const imageData = data.images && typeof data.images === 'object' ? data.images : {}
       const contactData = data.contactInfo && typeof data.contactInfo === 'object' ? data.contactInfo : {}
-      const defaultBranches = BRANCHES.map((branch) => ({ ...branch }))
       const nextPortfolio: Portfolio = {
         ...saved,
         brandIdentity: {
@@ -146,7 +125,6 @@ export default function PortfolioPage() {
         },
         about: asBi(saved.about), mission: asBi(saved.mission), vision: asBi(saved.vision),
         values: Array.isArray(saved.values) ? saved.values : [],
-        branches: Array.isArray(saved.branches) ? saved.branches : defaultBranches,
         teams: Array.isArray(saved.teams) ? saved.teams : [],
         governingBody: Array.isArray(saved.governingBody) ? saved.governingBody : [],
         executiveCommittee: Array.isArray(saved.executiveCommittee) ? saved.executiveCommittee : [],
@@ -167,23 +145,13 @@ export default function PortfolioPage() {
 
   async function save() {
     if (!global) return
-    const invalidBranch = (portfolio.branches || []).find((branch: any) => !String(branch.id || '').trim() || !Number.isFinite(Number(branch.lat)) || !Number.isFinite(Number(branch.lng)) || Math.abs(Number(branch.lat)) > 90 || Math.abs(Number(branch.lng)) > 180 || (Number(branch.lat) === 0 && Number(branch.lng) === 0))
-    if (invalidBranch) { const message = `Branch “${invalidBranch.name?.en || invalidBranch.id || 'unnamed'}” needs a valid, non-zero latitude and longitude.`; setSaveError(message); toast.error(message); return }
     const logo = String(portfolio.brandIdentity?.logo || images.logo || '/images/Logo-SF.png').trim()
-    // Keep the portfolio's flexible schema (including branches) in the type
-    // rather than letting object-spread inference narrow it to brandIdentity.
+    // Branch and office records have one canonical home: Website Essentials.
+    // Strip the legacy portfolio.branches key so a save here cannot revive stale data.
     const updatedPortfolio: Portfolio = { ...portfolio, brandIdentity: { ...portfolio.brandIdentity, logo } }
-    // Preserve the current global document and update only the portfolio-managed fields.
+    delete updatedPortfolio.branches
     const address = asBi(contact.address)
-    const branchFootprint = (updatedPortfolio.branches || []).map((branch: any) => ({
-      ...branch,
-      name: asBi(branch.name),
-      address: asBi(branch.address),
-      mapQuery: String(branch.address?.en || branch.name?.en || branch.district?.en || ''),
-      kind: branch.kind === 'head' ? 'site' : 'branch',
-      manager: branch.manager || undefined,
-    }))
-    const nextContact = { ...contact, address, footprint: branchFootprint }
+    const nextContact = { ...contact, address }
     const nextGlobal = {
       ...global,
       images: { ...images, logo },
@@ -202,7 +170,7 @@ export default function PortfolioPage() {
   }
 
   return <>
-    <SectionToolbar title="Portfolio" description="Manage the public identity and organizational profile from one database-backed workspace. These values feed the site header, footer, branch map, contact details and portfolio-driven pages." onRefresh={() => void load()} refreshing={loading} actions={<Button onClick={() => void save()} disabled={loading || saving || !global}><Save size={15} />{saving ? 'Saving…' : 'Save portfolio'}</Button>} />
+    <SectionToolbar title="Portfolio" description="Manage the public identity, organizational profile, branch map details, branch-manager contacts, mission, vision and values through database-backed CMS records." onRefresh={() => void load()} refreshing={loading} actions={<Button onClick={() => void save()} disabled={loading || saving || !global}><Save size={15} />{saving ? 'Saving…' : 'Save portfolio'}</Button>} />
     {loading && !global ? <PageLoading rows={5} /> : error ? <AdminErrorState message={error} onRetry={() => void load()} /> : global && <div className="portfolio-page-grid">
       <Card><CardHeader><CardTitle><ImageIcon size={18} /> Brand identity</CardTitle><CardDescription>Logo, brand naming, tagline and identity statement used in shared site chrome.</CardDescription></CardHeader><CardContent><div className="cms-form-grid">
         <div className="cms-span-2"><MediaField label="Brand logo" value={String(brand.logo || '')} onChange={(value) => { updateBrand('logo', value); setImages((current) => ({ ...current, logo: value })) }} alt={String(brand.name?.en || 'Srizony Foundation logo')} helper="For best results, use a transparent PNG. You can upload JPG, PNG, WebP, AVIF or GIF, or paste an existing SVG/HTTPS URL." /></div>
@@ -221,9 +189,8 @@ export default function PortfolioPage() {
         <label className="cms-field"><span>Head-office map URL</span><Input value={String(contact.maps?.headOffice || '')} onChange={(e) => updateContact('maps', { ...(contact.maps || {}), headOffice: e.target.value })} /></label>
       </div></CardContent></Card>
 
-      <Card><CardHeader><CardTitle><Building2 size={18} /> Branches & managers</CardTitle><CardDescription>Each branch supports bilingual names and addresses, map coordinates, manager name/title, phone and email. Enter verified coordinates for each real branch.</CardDescription></CardHeader><CardContent><BranchesEditor value={portfolio.branches || []} onChange={(v) => updatePortfolio('branches', v)} /></CardContent></Card>
-
-      <Card><CardHeader><CardTitle>About, mission, vision & values</CardTitle><CardDescription>Bilingual organization statements; used to populate corresponding sections on matching public pages.</CardDescription></CardHeader><CardContent><div className="cms-form-grid">
+      <PortfolioBranchLocationsEditor />
+      <Card><CardHeader><CardTitle>About, mission, vision & values</CardTitle><CardDescription>Bilingual organization statements; these values automatically populate the homepage and matching organizational pages.</CardDescription></CardHeader><CardContent><div className="cms-form-grid">
         <div className="cms-span-2"><BiFields title="About Srizony" value={asBi(portfolio.about)} multiline onChange={(v) => updatePortfolio('about', v)} /></div>
         <div className="cms-span-2"><BiFields title="Mission" value={asBi(portfolio.mission)} multiline onChange={(v) => updatePortfolio('mission', v)} /></div>
         <div className="cms-span-2"><BiFields title="Vision" value={asBi(portfolio.vision)} multiline onChange={(v) => updatePortfolio('vision', v)} /></div>

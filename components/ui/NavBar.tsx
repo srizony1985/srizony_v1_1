@@ -5,6 +5,8 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { ChevronDown, Heart, Menu, Moon, Sun, X } from 'lucide-react'
+import { SiFacebook, SiInstagram, SiYoutube } from 'react-icons/si'
+import { FaLinkedin } from 'react-icons/fa'
 import NavMenuTree from '@/components/ui/NavMenuTree'
 import { FALLBACK_HOME_LABEL, FALLBACK_LOGO } from '@/lib/siteFallback'
 import LanguageFlag from '@/components/ui/LanguageFlag'
@@ -20,21 +22,26 @@ export default function NavBar() {
   const pathname = usePathname() ?? '/'
   const [openGroup, setOpenGroup] = useState<string | null>(null)
   const [mobileOpen, setMobileOpen] = useState(false)
-  const [mobileOpenGroup, setMobileOpenGroup] = useState<string | null>(null)
   const [mobileExpandedItems, setMobileExpandedItems] = useState<Record<string, boolean>>({})
   const [stuck, setStuck] = useState(false)
-  const closeTimer = useRef<number | null>(null)
-  const panelRef = useRef<HTMLDivElement | null>(null)
+  const [officialSocials, setOfficialSocials] = useState<Record<string, string>>({ linkedin: 'https://bd.linkedin.com/company/srizonyfoundation' })
   const headerRef = useRef<HTMLElement | null>(null)
 
   const closeAll = useCallback(() => {
     setOpenGroup(null)
     setMobileOpen(false)
-    setMobileOpenGroup(null)
     setMobileExpandedItems({})
   }, [])
 
   useEffect(() => closeAll(), [pathname, closeAll])
+
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/website-essentials', { cache: 'no-store' }).then((response) => response.ok ? response.json() : null).then((payload) => {
+      if (!cancelled && payload?.socials) setOfficialSocials(payload.socials)
+    }).catch(() => undefined)
+    return () => { cancelled = true }
+  }, [])
 
   useEffect(() => {
     if (!mobileOpen) return
@@ -45,13 +52,14 @@ export default function NavBar() {
 
   // Sub-menus always open to the right; slide the dropdown left just enough that they stay on screen.
   useLayoutEffect(() => {
-    const panel = panelRef.current
+    const header = headerRef.current
+    const panel = header?.querySelector<HTMLElement>('.sf-dd--group.is-open > .sf-group-panel')
     if (!panel) return
     panel.style.translate = '0 0'
-    const hasSub = panel.querySelector('.has-sub')
-    const need = hasSub ? 272 : 0
+    const flyout = panel.querySelector<HTMLElement>('.sf-menu--sub')
+    const flyoutWidth = flyout?.getBoundingClientRect().width ?? 0
     const r = panel.getBoundingClientRect()
-    const overflow = r.right + need - (window.innerWidth - 16)
+    const overflow = r.right + flyoutWidth - (window.innerWidth - 16)
     if (overflow > 0) panel.style.translate = `${-Math.min(overflow, Math.max(r.left - 16, 0))}px 0`
   }, [openGroup])
 
@@ -91,13 +99,6 @@ export default function NavBar() {
     }
   }, [closeAll])
 
-  useEffect(
-    () => () => {
-      if (closeTimer.current) window.clearTimeout(closeTimer.current)
-    },
-    [],
-  )
-
   const data = site?.global
   const tr = (en: string, bn: string) => (lang === 'en' ? en : bn)
 
@@ -116,22 +117,15 @@ export default function NavBar() {
   const brandDescriptor = brandText(portfolioBrand.descriptor, tr('Foundation', 'ফাউন্ডেশন'))
   const brandLabel = `${brandName} ${brandDescriptor}`.trim()
   const primaryNav = data.primaryNav ?? []
-  const navGroups = data.navGroups ?? []
   const logo = data.images?.logo?.trim() || FALLBACK_LOGO
   const home = primaryNav[0] ?? { label: FALLBACK_HOME_LABEL, href: '/' }
-  const extraNav = primaryNav.slice(1).filter((i) => i.href !== '/donate')
+  const mainNavigationLinks = (home.children?.length ? home.children : primaryNav.slice(1)).filter((item) => item.href !== '/donate')
+  const socialIcons = { facebook: SiFacebook, instagram: SiInstagram, youtube: SiYoutube, linkedin: FaLinkedin }
+  const socialLabels: Record<string, { en: string; bn: string }> = { facebook: { en: 'Facebook', bn: 'ফেসবুক' }, instagram: { en: 'Instagram', bn: 'ইনস্টাগ্রাম' }, youtube: { en: 'YouTube', bn: 'ইউটিউব' }, linkedin: { en: 'LinkedIn', bn: 'লিংকডইন' } }
+  const activeSocials = Object.entries(officialSocials).filter(([key, url]) => key in socialIcons && typeof url === 'string' && /^https:\/\//i.test(url.trim()))
 
-  const isActive = (href: string) => (href === '/' ? pathname === '/' : pathname === href || pathname.startsWith(`${href}/`))
-  const itemActive = (item: NavItem): boolean => isActive(item.href) || Boolean(item.children?.some(itemActive))
-
-  const hoverOpen = (key: string) => {
-    if (closeTimer.current) window.clearTimeout(closeTimer.current)
-    setOpenGroup(key)
-  }
-  const hoverClose = () => {
-    if (closeTimer.current) window.clearTimeout(closeTimer.current)
-    closeTimer.current = window.setTimeout(() => setOpenGroup(null), 160)
-  }
+  const isActive = (href: string) => !href ? false : (href === '/' ? pathname === '/' : pathname === href || pathname.startsWith(`${href}/`))
+  const itemActive = (item: NavItem): boolean => item.menuType === 'folder' ? Boolean(item.children?.some(itemActive)) : isActive(item.href) || Boolean(item.children?.some(itemActive))
 
   const brand = brandLabel
 
@@ -145,18 +139,30 @@ export default function NavBar() {
     const hasChildren = Boolean(item.children?.length)
     const expanded = Boolean(mobileExpandedItems[key])
     const active = itemActive(item)
-    const style = { paddingInlineStart: `${16 + depth * 16}px` }
+    const indent = { paddingInlineStart: `${16 + depth * 16}px` }
     const label = <span>{item.label[lang]}</span>
+    const toggle = () => toggleMobileItem(item)
     return (
       <div className="sf-drawer-item" key={key}>
-        {hasChildren ? (
-          <button type="button" className={`sf-drawer-link ${active ? 'is-active' : ''}`} style={style} aria-expanded={expanded} onClick={() => toggleMobileItem(item)}>
+        {item.menuType === 'folder' ? (
+          <button type="button" className={`sf-drawer-link ${active ? 'is-active' : ''}`} style={indent} aria-expanded={expanded} onClick={toggle}>
             {label}<ChevronDown size={16} className={expanded ? 'is-rot' : ''} aria-hidden="true" />
           </button>
+        ) : hasChildren ? (
+          <div className="sf-drawer-item-row" style={indent}>
+            {item.menuType === 'external' ? (
+              <a href={item.href} target="_blank" rel="noopener noreferrer" className={`sf-drawer-link sf-drawer-row-link ${active ? 'is-active' : ''}`} onClick={closeAll}>{label}</a>
+            ) : (
+              <Link href={item.href} className={`sf-drawer-link sf-drawer-row-link ${active ? 'is-active' : ''}`} aria-current={isActive(item.href) ? 'page' : undefined} onClick={closeAll}>{label}</Link>
+            )}
+            <button type="button" className="sf-drawer-expand" aria-label={`${expanded ? 'Collapse' : 'Expand'} ${item.label[lang]}`} aria-expanded={expanded} onClick={toggle}>
+              <ChevronDown size={16} className={expanded ? 'is-rot' : ''} aria-hidden="true" />
+            </button>
+          </div>
         ) : item.menuType === 'external' ? (
-          <a href={item.href} target="_blank" rel="noopener noreferrer" className={`sf-drawer-link ${active ? 'is-active' : ''}`} style={style} onClick={closeAll}>{label}<ChevronDown size={14} aria-hidden="true" className="sf-drawer-external" /></a>
+          <a href={item.href} target="_blank" rel="noopener noreferrer" className={`sf-drawer-link ${active ? 'is-active' : ''}`} style={indent} onClick={closeAll}>{label}</a>
         ) : (
-          <Link href={item.href} className={`sf-drawer-link ${active ? 'is-active' : ''}`} style={style} aria-current={active ? 'page' : undefined} onClick={closeAll}>{label}</Link>
+          <Link href={item.href} className={`sf-drawer-link ${active ? 'is-active' : ''}`} style={indent} aria-current={isActive(item.href) ? 'page' : undefined} onClick={closeAll}>{label}</Link>
         )}
         {hasChildren && expanded && <div className="sf-drawer-subitems">{item.children!.map((child) => renderMobileItem(child, depth + 1))}</div>}
       </div>
@@ -165,6 +171,7 @@ export default function NavBar() {
 
   return (
     <header className={`sf-header ${stuck ? 'is-stuck' : ''}`} ref={headerRef}>
+      {activeSocials.length > 0 && <div className="sf-social-topbar"><div className="sf-container sf-social-topbar-in"><span>{tr('Connect with us', 'আমাদের সঙ্গে যুক্ত থাকুন')}</span><div className="sf-social-topbar-links">{activeSocials.map(([key, url]) => { const Icon = socialIcons[key as keyof typeof socialIcons]; return <a key={key} href={url} target="_blank" rel="noopener noreferrer" aria-label={socialLabels[key]?.[lang] || key} title={socialLabels[key]?.[lang] || key}><Icon size={15} aria-hidden="true"/><span className="sf-sr">{socialLabels[key]?.[lang] || key}</span></a> })}</div></div></div>}
       <div className="sf-navbar">
         <div className="sf-container sf-navbar-in">
           <Link href="/" className="sf-brand" aria-label={brand}>
@@ -178,37 +185,57 @@ export default function NavBar() {
           </Link>
 
           <nav className="sf-nav" aria-label={tr('Primary navigation', 'প্রধান মেনু')}>
-            <Link href="/" className={`sf-nav-link ${isActive('/') ? 'is-active' : ''}`}><span className="sf-nav-label">{home.label[lang]}</span></Link>
-
-            {navGroups.map((group) => {
-              const key = group.label.en
-              const open = openGroup === key
-              return (
-                <div key={key} className="sf-dd" onPointerEnter={(e) => e.pointerType === 'mouse' && hoverOpen(key)} onPointerLeave={(e) => e.pointerType === 'mouse' && hoverClose()}>
+            <Link href="/" className={`sf-nav-link ${isActive('/') ? 'is-active' : ''}`} aria-current={isActive('/') ? 'page' : undefined}>
+              <span className="sf-nav-label">{home.label[lang]}</span>
+            </Link>
+            {mainNavigationLinks.map((item) => {
+              if (item.menuType === 'folder' && item.children?.length) {
+                const key = `menu:${item.label.en}`
+                const expanded = openGroup === key
+                const active = itemActive(item)
+                return <div
+                  key={key}
+                  className={`sf-dd sf-dd--group ${expanded ? 'is-open' : ''}`}
+                  onPointerEnter={(event) => {
+                    // CSS also opens the panel on :hover; state keeps ARIA in sync.
+                    if (event.pointerType === 'mouse' || event.pointerType === 'pen') setOpenGroup(key)
+                  }}
+                  onPointerLeave={(event) => {
+                    if (event.pointerType === 'mouse' || event.pointerType === 'pen') {
+                      if (!event.currentTarget.contains(document.activeElement)) {
+                        setOpenGroup((current) => current === key ? null : current)
+                      }
+                    }
+                  }}
+                  onFocusCapture={() => setOpenGroup(key)}
+                  onBlurCapture={(event) => {
+                    const nextTarget = event.relatedTarget as Node | null
+                    if (!nextTarget || !event.currentTarget.contains(nextTarget)) {
+                      setOpenGroup((current) => current === key ? null : current)
+                    }
+                  }}
+                >
                   <button
                     type="button"
-                    className={`sf-nav-link ${group.items.some(itemActive) || open ? 'is-active' : ''}`}
+                    className={`sf-nav-link sf-nav-group-trigger ${active || expanded ? 'is-active' : ''}`}
                     aria-haspopup="true"
-                    aria-expanded={open}
-                    onClick={() => { setOpenGroup(open ? null : key) }}
+                    aria-expanded={expanded}
+                    onClick={() => setOpenGroup((current) => current === key ? null : key)}
                   >
-                    <span className="sf-nav-label">{group.label[lang]}</span>
-                    <ChevronDown size={14} className={open ? 'is-rot' : ''} aria-hidden="true" />
+                    <span className="sf-nav-label">{item.label[lang]}</span>
+                    <ChevronDown size={14} className={expanded ? 'is-rot' : ''} aria-hidden="true" />
                   </button>
-                  {open && (
-                    <div className="sf-dd-panel" ref={panelRef}>
-                      <NavMenuTree items={group.items} lang={lang} isActive={isActive} onNavigate={closeAll} />
-                    </div>
-                  )}
+                  {/* Keep the panel mounted: CSS :hover/:focus-within can open it even before React state updates. */}
+                  <div className="sf-dd-panel sf-group-panel" aria-label={`${item.label[lang]} submenu`}>
+                    <NavMenuTree items={item.children} lang={lang} isActive={isActive} onNavigate={closeAll} />
+                  </div>
                 </div>
-              )
+              }
+              if (item.menuType === 'external') return <a key={item.href} href={item.href} target="_blank" rel="noopener noreferrer" className="sf-nav-link"><span className="sf-nav-label">{item.label[lang]}</span></a>
+              return <Link key={item.href} href={item.href} className={`sf-nav-link ${itemActive(item) ? 'is-active' : ''}`} aria-current={isActive(item.href) ? 'page' : undefined}>
+                <span className="sf-nav-label">{item.label[lang]}</span>
+              </Link>
             })}
-
-            {extraNav.map((item) => item.menuType === 'external' ? (
-              <a key={item.href} href={item.href} target="_blank" rel="noopener noreferrer" className={`sf-nav-link ${isActive(item.href) ? 'is-active' : ''}`}><span className="sf-nav-label">{item.label[lang]}</span></a>
-            ) : (
-              <Link key={item.href} href={item.href} className={`sf-nav-link ${isActive(item.href) ? 'is-active' : ''}`}><span className="sf-nav-label">{item.label[lang]}</span></Link>
-            ))}
           </nav>
 
           <div className="sf-navbar-cta">
@@ -256,24 +283,12 @@ export default function NavBar() {
           <>
             <div id="sf-mobile-drawer" className="sf-drawer" role="dialog" aria-modal="true" aria-label={tr('Navigation menu', 'নেভিগেশন মেনু')}>
               <nav className="sf-drawer-nav" aria-label={tr('Mobile navigation', 'মোবাইল নেভিগেশন')}>
-                <Link href="/" className={`sf-drawer-link ${isActive('/') ? 'is-active' : ''}`} onClick={closeAll}>{home.label[lang]}</Link>
-                {navGroups.map((group) => {
-                  const key = group.label.en
-                  const expanded = mobileOpenGroup === key
-                  return (
-                    <div className="sf-drawer-group" key={key}>
-                      <button type="button" className={`sf-drawer-link ${group.items.some(itemActive) ? 'is-active' : ''}`} aria-expanded={expanded} onClick={() => setMobileOpenGroup(expanded ? null : key)}>
-                        <span>{group.label[lang]}</span><ChevronDown size={16} className={expanded ? 'is-rot' : ''} aria-hidden="true" />
-                      </button>
-                      {expanded && <div className="sf-drawer-subitems">{group.items.map((item) => renderMobileItem(item))}</div>}
-                    </div>
-                  )
-                })}
-                {extraNav.map((item) => item.menuType === 'external' ? (
-                  <a key={item.href} href={item.href} target="_blank" rel="noopener noreferrer" className="sf-drawer-link" onClick={closeAll}>{item.label[lang]}</a>
-                ) : (
-                  <Link key={item.href} href={item.href} className={`sf-drawer-link ${isActive(item.href) ? 'is-active' : ''}`} onClick={closeAll}>{item.label[lang]}</Link>
-                ))}
+                <div className="sf-drawer-landing">
+                  <Link href="/" className={`sf-drawer-link ${isActive('/') ? 'is-active' : ''}`} onClick={closeAll}>{home.label[lang]}</Link>
+                </div>
+                <section className="sf-drawer-menu-section sf-drawer-main-links" aria-label={tr('Navigation links', 'নেভিগেশন লিংক')}>
+                  {mainNavigationLinks.map((item) => renderMobileItem(item))}
+                </section>
               </nav>
               <div className="sf-drawer-foot">
                 <Link href="/donate" className="sf-btn sf-btn--primary sf-btn--block" onClick={closeAll}><Heart size={16} aria-hidden="true" /> {ui[lang].donate}</Link>

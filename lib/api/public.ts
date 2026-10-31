@@ -15,13 +15,17 @@ export const requestEmailCode = (email: string) => request<any>('/api/auth/email
 export const verifyEmailCode = (payload: unknown) => request<any>('/api/auth/email', { method: 'POST', json: { action: 'verify', purpose: 'enquiry', ...(payload as object) } })
 export const submitQuery = (payload: unknown) => request<any>('/api/queries', { method: 'POST', json: payload })
 
-export const getNewsletterStatus = (email: string, signal?: AbortSignal) => request<{ status: any; unsubscribeUrl?: string }>(`/api/newsletter?email=${encodeURIComponent(email)}`, { cache: 'no-store', signal })
-export const requestNewsletterCode = (email: string) => request<any>('/api/newsletter', { method: 'POST', json: { action: 'request', email } })
-export const confirmNewsletter = (email: string, code: string) => request<any>('/api/newsletter', { method: 'POST', json: { action: 'confirm', email, code, consent: true } })
 
 export const trackVisit = (visitorId: string, path: string, referrer?: string) =>
   request('/api/visitors', { method: 'POST', json: { visitorId, path, referrer }, keepalive: true }).catch(() => undefined)
 export const initiateDonation = (payload: unknown) => request<any>('/api/donations/initiate', { method: 'POST', json: payload })
 
 export const getNews = (limit = 30) => request<{ items: any[] }>(`/api/news?limit=${limit}`)
-export const applyForJob = (payload: { jobSlug: string; name: string; email: string; phone?: string; coverLetter?: string; resumeUrl?: string }) => request('/api/jobs/apply', { method: 'POST', json: payload })
+export const uploadJobResume = (file: File, website = '') => {
+  const form = new FormData()
+  form.append('resume', file)
+  form.append('website', website)
+  return request<{ ok?: boolean; resumeToken?: string; fileName?: string; sizeBytes?: number; expiresInMinutes?: number; error?: string }>('/api/jobs/resume', { method: 'POST', body: form, cache: 'no-store' })
+}
+
+export const applyForJob = (payload: { jobSlug: string; jobRouteParent: string; name: string; email: string; phone?: string; coverLetter?: string; resumeToken: string; website?: string }) => request<{ ok?: boolean; reference?: string; error?: string; fields?: Record<string, string> }>('/api/jobs/apply', { method: 'POST', json: payload, cache: 'no-store' })

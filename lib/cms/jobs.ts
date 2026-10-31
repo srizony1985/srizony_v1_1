@@ -1,6 +1,8 @@
+import { createHash } from 'node:crypto'
 import { sql } from 'drizzle-orm'
 import { db, withDbRetry } from '@/lib/db'
 import { ensureCmsSchema } from './ensureSchema'
+import { isApplicationDeadlineOpen } from '@/lib/jobApplicationValidation'
 
 type Row = Record<string, any>
 export class JobError extends Error { constructor(message: string, public status = 400) { super(message) } }
@@ -9,6 +11,22 @@ const run = (q: ReturnType<typeof sql>) => withDbRetry(() => database().execute(
 const iso = (v: unknown) => (v instanceof Date ? v.toISOString() : String(v || ''))
 
 export const APPLICATION_STATUSES = ['new', 'reviewing', 'shortlisted', 'rejected', 'hired'] as const
+
+/** Rate-limit public job uploads/submissions by a hash of the request IP, never raw IP. */
+export async function enforcePublicJobRateLimit(action: 'resume-upload' | 'apply', subject: string, limit: number) {
+  await ensureCmsSchema()
+  const subjectHash = createHash('sha256').update(subject || 'unknown').digest('hex')
+  const rateKey = `${action}:${subjectHash}`
+  const result = await run(sql`
+    INSERT INTO job_public_rate_limits (rate_key, window_started_at, attempts)
+    VALUES (${rateKey}, now(), 1)
+    ON CONFLICT (rate_key) DO UPDATE SET
+      attempts = CASE WHEN job_public_rate_limits.window_started_at < now() - interval '1 hour' THEN 1 ELSE job_public_rate_limits.attempts + 1 END,
+      window_started_at = CASE WHEN job_public_rate_limits.window_started_at < now() - interval '1 hour' THEN now() ELSE job_public_rate_limits.window_started_at END
+    RETURNING attempts
+  `)
+  return Number((result.rows[0] as Row | undefined)?.attempts ?? limit + 1) <= limit
+}
 
 export async function listJobSummaries() {
   await ensureCmsSchema()
@@ -34,13 +52,38 @@ export async function setApplicationStatus(id: number, status: string) {
   if (!(await run(sql`UPDATE job_applications SET status = ${status} WHERE id = ${id} RETURNING id`)).rows.length) throw new JobError('Application not found.', 404)
 }
 
-export async function submitApplication(input: { jobSlug: string; name: string; email: string; phone?: string; coverLetter?: string; resumeUrl?: string }) {
+export async function submitApplication(input: { jobSlug: string; jobRouteParent: string; name: string; email: string; phone?: string; coverLetter?: string; resumeToken: string }) {
   await ensureCmsSchema()
-  const job = (await run(sql`SELECT id, attributes FROM cms_content_items WHERE component = 'job' AND slug = ${input.jobSlug} AND status = 'published' LIMIT 1`)).rows[0] as Row | undefined
+  const job = (await run(sql`
+    SELECT id, attributes FROM cms_content_items
+    WHERE component = 'job' AND slug = ${input.jobSlug} AND status = 'published'
+      AND COALESCE(NULLIF(attributes->>'routeParent', ''), '/carrer-job') = ${input.jobRouteParent}
+    LIMIT 1
+  `)).rows[0] as Row | undefined
   if (!job) throw new JobError('This job is no longer available.', 404)
-  const deadline = job.attributes?.deadline
-  if (deadline && new Date(`${deadline}T23:59:59`).getTime() < Date.now()) throw new JobError('The application deadline has passed.', 410)
-  const dup = await run(sql`SELECT id FROM job_applications WHERE job_id = ${Number(job.id)} AND lower(email) = ${input.email.toLowerCase()} LIMIT 1`)
+  const deadline = typeof job.attributes?.deadline === 'string' ? job.attributes.deadline : ''
+  if (!isApplicationDeadlineOpen(deadline)) throw new JobError('The application deadline has passed.', 410)
+
+  const email = input.email.trim().toLowerCase()
+  const dup = await run(sql`SELECT id FROM job_applications WHERE job_id = ${Number(job.id)} AND lower(email) = ${email} LIMIT 1`)
   if (dup.rows.length) throw new JobError('You have already applied for this job.', 409)
-  await run(sql`INSERT INTO job_applications (job_id, name, email, phone, cover_letter, resume_url) VALUES (${Number(job.id)}, ${input.name}, ${input.email.toLowerCase()}, ${input.phone || null}, ${input.coverLetter || null}, ${input.resumeUrl || null})`)
+
+  const tokenHash = createHash('sha256').update(input.resumeToken).digest('hex')
+  // Claim the one-time, short-lived upload token and insert the application in a single SQL statement.
+  // The resume remains private; admins can open it through the authenticated /api/media/:id route.
+  const inserted = await run(sql`
+    WITH claimed_resume AS (
+      UPDATE job_resume_uploads
+      SET consumed_at = now()
+      WHERE token_hash = ${tokenHash} AND consumed_at IS NULL AND expires_at > now()
+      RETURNING media_id
+    )
+    INSERT INTO job_applications (job_id, name, email, phone, cover_letter, resume_url)
+    SELECT ${Number(job.id)}, ${input.name.trim()}, ${email}, ${input.phone?.trim() || null}, ${input.coverLetter?.trim() || null}, '/api/media/' || claimed_resume.media_id::text
+    FROM claimed_resume
+    RETURNING id
+  `)
+  const row = inserted.rows[0] as Row | undefined
+  if (!row) throw new JobError('Your resume upload has expired or was already used. Please upload it again.', 410)
+  return Number(row.id)
 }

@@ -2,6 +2,7 @@ import { notFound, redirect } from 'next/navigation'
 import ContentPage from '@/components/pages/ContentPage'
 import type { Metadata } from 'next'
 import { getCmsMenuIndex, getPublicSiteSnapshot, resolvePagePath } from '@/lib/site'
+import { isNavigationPagePath } from '@/lib/cms/routes'
 
 export const dynamic = 'force-dynamic'
 
@@ -36,5 +37,6 @@ export default async function SlugPage({ params }: { params: Promise<{ slug: str
   if (canonical !== path) redirect(canonical)
   const snapshot = await getPublicSiteSnapshot(canonical)
   if (snapshot.notFound || !snapshot.page) notFound()
+  if (!isNavigationPagePath(canonical, snapshot.global) && !snapshot.page.contentComponent) notFound()
   return <ContentPage slug={canonical} />
 }

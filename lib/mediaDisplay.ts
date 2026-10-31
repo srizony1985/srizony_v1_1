@@ -1,2 +1,5 @@
-import { systemData } from '../data/data'
-export function getMediaDisplay() { return { media: systemData.media } }
+import { getPublicSiteSnapshot } from '@/lib/site'
+export async function getMediaDisplay() {
+  const { global } = await getPublicSiteSnapshot('/')
+  return { media: global.media }
+}

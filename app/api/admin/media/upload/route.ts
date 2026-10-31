@@ -34,6 +34,8 @@ export async function POST(req: Request) {
     const altEn = z.string().trim().max(500).optional().parse(form.get('altEn') || undefined)
     const altBn = z.string().trim().max(500).optional().parse(form.get('altBn') || undefined)
     const kind = z.enum(['image', 'document']).default('image').parse(String(form.get('kind') || 'image'))
+    const visibility = z.enum(['private', 'public']).default('private').parse(String(form.get('visibility') || 'private'))
+    const isPublicUpload = kind === 'image' || (kind === 'document' && visibility === 'public')
     if (!(file instanceof File)) return NextResponse.json({ ok: false, error: { code: 'FILE_REQUIRED', message: 'Choose a file.' } }, { status: 400 })
     if (!kinds.has(kind)) return NextResponse.json({ ok: false, error: { code: 'INVALID_KIND', message: 'Unsupported media kind.' } }, { status: 400 })
     if (!file.size) return NextResponse.json({ ok: false, error: { code: 'EMPTY_FILE', message: 'The uploaded file is empty.' } }, { status: 400 })
@@ -55,13 +57,13 @@ export async function POST(req: Request) {
 
     const extension = extensionFor(file.type, file.name)
     const objectKey = `media/${new Date().getUTCFullYear()}/${String(new Date().getUTCMonth() + 1).padStart(2, '0')}/${randomUUID()}-${sanitizeFileName(file.name).replace(/\.[^.]+$/, '')}.${extension}`
-    // Approved images go to a public-read bucket for direct browser/CDN delivery.
-    // Documents always stay in the private bucket and are served only after auth.
-    const storageBucket = kind === 'image' ? getPublicAssetsBucket() : getPrivateStorageBucket()
-    const cacheControl = kind === 'image'
-      ? 'public, max-age=31536000, immutable'
+    // Public-facing PDFs may be placed in the public-read bucket only when an authorized
+    // editor explicitly requests public visibility. Other documents stay private.
+    const storageBucket = isPublicUpload ? getPublicAssetsBucket() : getPrivateStorageBucket()
+    const cacheControl = isPublicUpload
+      ? 'public, max-age=300, must-revalidate'
       : 'private, max-age=300, must-revalidate'
-    const publicSrc = kind === 'image' ? getPublicObjectUrl(objectKey, storageBucket) : ''
+    const publicSrc = isPublicUpload ? getPublicObjectUrl(objectKey, storageBucket) : ''
 
     await uploadObject(objectKey, bytes, file.type, cacheControl, storageBucket)
     let insertedId: number | null = null
@@ -72,7 +74,7 @@ export async function POST(req: Request) {
         storageBucket,
         contentType: file.type,
         sizeBytes: file.size,
-        isPublic: kind === 'image',
+        isPublic: isPublicUpload,
         status: 'ready',
         uploadedBy: admin.email.toLowerCase(),
         altEn: altEn || '',
@@ -81,14 +83,14 @@ export async function POST(req: Request) {
       }).returning({ id: mediaItems.id })
       insertedId = row.id
 
-      // Private documents get an application URL, never a raw storage URL/key.
+      // Private documents get an authenticated application URL, never a raw storage key.
       const src = publicSrc || `/api/media/${row.id}`
       if (!publicSrc) {
         await db.update(mediaItems).set({ src, updatedAt: new Date() }).where(eq(mediaItems.id, row.id))
       }
 
-      await auditAdminAction({ actorEmail: admin.email, action: 'media.upload', entity: 'media_items', entityId: String(row.id), metadata: { kind, contentType: file.type, sizeBytes: file.size, storageBucket, isPublic: kind === 'image' }, request: req })
-      return NextResponse.json({ ok: true, id: row.id, src, kind, contentType: file.type, sizeBytes: file.size, storageBucket, isPublic: kind === 'image' }, { status: 201 })
+      await auditAdminAction({ actorEmail: admin.email, action: 'media.upload', entity: 'media_items', entityId: String(row.id), metadata: { kind, contentType: file.type, sizeBytes: file.size, storageBucket, isPublic: isPublicUpload }, request: req })
+      return NextResponse.json({ ok: true, id: row.id, src, kind, contentType: file.type, sizeBytes: file.size, storageBucket, isPublic: isPublicUpload }, { status: 201 })
     } catch (databaseError) {
       // Do not leave a database row or storage object behind if the upload record
       // cannot be finalized. Storage deletion is best effort; errors are logged.
