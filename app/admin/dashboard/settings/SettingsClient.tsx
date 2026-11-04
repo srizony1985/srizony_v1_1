@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import type { LucideIcon } from 'lucide-react'
 import { useSearchParams } from 'next/navigation'
 import {
-  Activity, Download, Eye, EyeOff, FileJson,
+  Activity, Copy, Download, Eye, EyeOff, FileJson, HardDrive,
   FileSpreadsheet, KeyRound, LockKeyhole, Plus, RefreshCw, Search, ShieldCheck,
   Trash2, Upload, UserPlus, Users, X,
 } from 'lucide-react'
@@ -490,6 +490,7 @@ function DatabaseView({ role }: { role: Role }) {
   if (loading && !data) return <PageLoading rows={3} />
   if (error || !data) return <AdminErrorState message={error || 'No data.'} onRetry={() => void reload()} />
   return <>
+    <GoogleDriveBackupPanel />
     <DatabaseTransfer />
     <Card><CardHeader><CardTitle>Database information</CardTitle><CardDescription>{data.connected ? 'Connected. Record counts per table:' : 'DATABASE_URL is not configured — counts are unavailable.'}</CardDescription></CardHeader><CardContent>
       <div className="settings-database-table-wrap">
@@ -508,6 +509,95 @@ function DatabaseView({ role }: { role: Role }) {
       </div>
     </CardContent></Card>
   </>
+}
+
+type DriveBackupItem = {
+  id: string
+  name: string
+  createdTime: string | null
+  sizeBytes: number
+  webViewLink: string | null
+  sha256: string | null
+}
+
+type DriveBackupStatus = {
+  configured: boolean
+  folderName?: string
+  isSharedDrive?: boolean
+  canAddChildren?: boolean
+  backups?: DriveBackupItem[]
+  error?: string
+}
+
+function formatBackupSize(bytes: number) {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '—'
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  let value = bytes
+  let unit = 0
+  while (value >= 1024 && unit < units.length - 1) { value /= 1024; unit += 1 }
+  return `${value.toFixed(unit === 0 ? 0 : 1)} ${units[unit]}`
+}
+
+function GoogleDriveBackupPanel() {
+  const [status, setStatus] = useState<DriveBackupStatus | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  const reload = useCallback(async () => {
+    setLoading(true)
+    setError('')
+    try {
+      const response = await fetch('/api/admin/database/drive-backups', { cache: 'no-store' })
+      const payload = await response.json() as DriveBackupStatus & { error?: string }
+      if (!response.ok) throw new Error(payload.error || 'Unable to read Google Drive backup status.')
+      setStatus(payload)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Unable to read Google Drive backup status.')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { void reload() }, [reload])
+
+  const backups = status?.backups ?? []
+  return <Card>
+    <CardHeader>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex items-start gap-3">
+          <span className="settings-panel-icon"><HardDrive size={17} /></span>
+          <div><CardTitle>Google Drive JSON mirror</CardTitle><CardDescription>Incremental Neon table snapshots with image files embedded as Base64. This updates files you create in your personal My Drive folder.</CardDescription></div>
+        </div>
+        <Button variant="outline" size="sm" onClick={() => void reload()} disabled={loading}><RefreshCw size={14} className={loading ? 'settings-spin' : ''} /> Refresh</Button>
+      </div>
+    </CardHeader>
+    <CardContent>
+      {loading && !status ? <PageLoading rows={2} /> : error ? <div className="cms-save-error" role="alert">{error}</div> : status?.configured ? <>
+        <div className="settings-report-summary">
+          <div><strong className="text-base">Connected</strong><span>Google Drive status</span></div>
+          <div><strong className="text-base">{status.folderName || 'Backup folder'}</strong><span>Destination folder</span></div>
+          <div><strong className="text-base">{backups.length.toLocaleString()}</strong><span>Recent backup files</span></div>
+        </div>
+        {status.canAddChildren === false && <p className="admin-small-note">The service account cannot create new files in this folder. That is expected: the JSON files must be created by your Gmail account first; the service account only updates those existing files.</p>}
+        {backups.length ? <div className="settings-database-table-wrap">
+          <table className="admin-table settings-database-table" aria-label="Recent Google Drive backups">
+            <thead><tr><th scope="col">JSON mirror file</th><th scope="col">Last updated</th><th scope="col">Size</th><th scope="col">Integrity</th></tr></thead>
+            <tbody>{backups.slice(0, 10).map((backup) => <tr key={backup.id}>
+              <td>{backup.webViewLink ? <a href={backup.webViewLink} target="_blank" rel="noreferrer" className="settings-api-path">{backup.name}</a> : <code>{backup.name}</code>}</td>
+              <td>{formatDate(backup.createdTime)}</td>
+              <td>{formatBackupSize(backup.sizeBytes)}</td>
+              <td>{backup.sha256 ? <Button type="button" variant="ghost" size="sm" onClick={() => { void navigator.clipboard.writeText(backup.sha256 || '').then(() => toast.success('SHA-256 copied.')).catch(() => toast.error('Could not copy the checksum.')) }} aria-label="Copy backup SHA-256"><Copy size={13} />{backup.sha256.slice(0, 12)}…</Button> : '—'}</td>
+            </tr>)}</tbody>
+          </table>
+        </div> : <p className="admin-small-note">No JSON snapshots found in this folder yet. Create the required .json files from your Gmail account, share the folder with the service account as Editor, and run the incremental backup workflow.</p>}
+        <p className="admin-small-note">The GitHub Actions workflow checks for changed tables every hour (GitHub may delay scheduled runs). Run a full snapshot manually with the documented workflow option. Drive is a recovery mirror, not a live SQL failover database.</p>
+      </> : <>
+        <div className="flex items-center gap-2"><Badge variant="outline">Not configured</Badge><span className="admin-small-note">Google Drive backup connection is not ready.</span></div>
+        <p className="settings-inline-error" role="alert">{status?.error || 'Configure the Google service account and backup folder environment variables.'}</p>
+        <p className="admin-small-note">See <code>docs/GOOGLE_DRIVE_BACKUPS.md</code> for personal Gmail My Drive setup, pre-created JSON filenames, service-account sharing, environment secrets and restore boundaries.</p>
+      </>}
+    </CardContent>
+  </Card>
 }
 
 function DatabaseTransfer() {

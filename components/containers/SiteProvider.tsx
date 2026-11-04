@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { usePathname } from 'next/navigation'
 import type { ColorMode, Lang, ShapeName, ThemeName } from '@/types/entityType'
 import type { PublicSiteSnapshot } from '@/types/site'
@@ -83,6 +83,8 @@ export default function SiteProvider({
   const [loading, setLoading] = useState(!initialSite)
 
   const [error, setError] = useState<string | null>(null)
+  const navigationLastSyncAt = useRef(0)
+  const navigationRequestInFlight = useRef(false)
 
   /**
    * Keep the public site's default palette consistent. The appearance
@@ -179,6 +181,11 @@ export default function SiteProvider({
 
     const controller = new AbortController()
     const syncNavigation = () => {
+      // The server-rendered snapshot already contains navigation. Refresh at most
+      // once per minute on initial mount/focus, not on every client-side route.
+      if (document.visibilityState === 'hidden') return
+      if (navigationRequestInFlight.current || Date.now() - navigationLastSyncAt.current < 60_000) return
+      navigationRequestInFlight.current = true
       getNavigationSnapshot(controller.signal)
         .then((response) => {
           if (!response.ok || !Array.isArray(response.data?.primaryNav) || !Array.isArray(response.data?.navGroups)) return
@@ -191,10 +198,12 @@ export default function SiteProvider({
               ...(response.data.ui ? { ui: response.data.ui } : {}),
             },
           } : current)
+          navigationLastSyncAt.current = Date.now()
         })
         .catch((err) => {
           if (err?.name !== 'AbortError') console.error('Unable to refresh CMS navigation', err)
         })
+        .finally(() => { navigationRequestInFlight.current = false })
     }
 
     const onVisibilityChange = () => {
@@ -207,10 +216,11 @@ export default function SiteProvider({
 
     return () => {
       controller.abort()
+      navigationRequestInFlight.current = false
       window.removeEventListener('focus', syncNavigation)
       document.removeEventListener('visibilitychange', onVisibilityChange)
     }
-  }, [pathname, hasSite])
+  }, [hasSite])
 
   /**
    * Explicit content refresh.

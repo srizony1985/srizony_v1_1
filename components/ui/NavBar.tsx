@@ -72,8 +72,13 @@ export default function NavBar() {
   }, [mobileOpen, stuck])
 
   useEffect(() => {
+    let previous = false
     const onScroll = () => {
-      setStuck(window.scrollY > 24)
+      const next = window.scrollY > 24
+      if (next !== previous) {
+        previous = next
+        setStuck(next)
+      }
     }
     onScroll()
     window.addEventListener('scroll', onScroll, { passive: true })

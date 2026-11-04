@@ -1,10 +1,10 @@
 'use client'
 
+import { useEffect, useRef } from 'react'
 import Button from '@/components/ui/ActionButton'
 import { ArrowRight } from 'lucide-react'
 import type { Lang, PageData } from '@/types/entityType'
 import Illustration from '@/components/home/Illustration'
-import { useInView } from '@/components/hooks/useInView'
 import Container from '@/components/containers/Container'
 import Stats from '@/components/ui/Stats'
 
@@ -21,7 +21,21 @@ export default function GrowthSection({ lang, page }: { lang: Lang; page: PageDa
   const eyebrow = section?.eyebrow
   const heading = section?.heading
   const button = section?.buttonConfig
-  const [ref, inView] = useInView<HTMLElement>(0.25)
+  const ref = useRef<HTMLElement | null>(null)
+  useEffect(() => {
+    const node = ref.current
+    if (!node) return
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches || !('IntersectionObserver' in window)) {
+      node.classList.add('is-in', 'is-visible')
+      return
+    }
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry?.isIntersecting) node.classList.add('is-in', 'is-visible')
+      else if (node.classList.contains('is-in')) node.classList.remove('is-visible')
+    }, { threshold: 0.15 })
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [])
   if (!section || section.visible === false || !heading || !eyebrow) return null
   const isSecondaryOnly = button?.mode === 'secondary'
   const aboutLabel = button?.visible ? (isSecondaryOnly ? (button.secondaryLabel ?? button.label) : button.label) : undefined
@@ -30,7 +44,7 @@ export default function GrowthSection({ lang, page }: { lang: Lang; page: PageDa
   const showPrimary = button?.visible && (button.mode === 'primary' || button.mode === 'both')
   const showSecondary = Boolean(button?.visible && button.mode === 'both' && button.secondaryLabel && button.secondaryHref)
   return (
-    <section ref={ref} className={`sf-section sf-growth sf-anim ${inView ? 'is-in' : ''}`} aria-labelledby="sf-growth-title">
+    <section ref={ref} className="sf-section sf-growth sf-anim" aria-labelledby="sf-growth-title">
       <Container className="sf-growth-grid">
         <div className="sf-growth-art"><Illustration kind="growth" label={heading[lang]} year={section?.illustrationYear || '1985'} /></div>
         <div className="sf-growth-copy">

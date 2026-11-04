@@ -623,7 +623,7 @@ function hydrateProjectsEditorPage(page: PageData | null, entries: Awaited<Retur
   return { ...page, sections }
 }
 
-export async function getPublicSiteSnapshot(path = '/') {
+async function getPublicSiteSnapshotUncached(path = '/') {
   const canonicalSlug = resolvePagePath(path)
   // Public content never silently falls back to data.ts at runtime. Use the bundled
   // catalogue only during the build or when an operator explicitly enables preview mode.
@@ -923,6 +923,19 @@ export async function getPublicSiteSnapshot(path = '/') {
   }
   if (page) page = applyPortfolioToPage(page, global as Record<string, any>)
   return { global, page, canonicalSlug, notFound: !page, updatedAt: rawPageOverride?.__cmsMeta?.updatedAt || null }
+}
+
+// Metadata generation, the root layout and page rendering can request the same
+// public snapshot during one navigation. Cache the complete public result for
+// 60 seconds and invalidate it whenever CMS content/navigation is changed.
+const cachedPublicSiteSnapshot = unstable_cache(
+  async (path: string) => getPublicSiteSnapshotUncached(path),
+  ['srizony-public-site-snapshot-v4'],
+  { revalidate: 60, tags: ['site-content'] },
+)
+
+export async function getPublicSiteSnapshot(path = '/') {
+  return cachedPublicSiteSnapshot(resolvePagePath(path))
 }
 
 /** Public appearance is controlled by the versioned design system, not editable CMS palette data. */

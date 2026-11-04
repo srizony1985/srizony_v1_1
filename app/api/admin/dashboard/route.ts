@@ -30,6 +30,11 @@ export async function GET(request: Request) {
     await Promise.all([ensureDonationsSchema(), ensureCmsSchema()])
     const [result, trendsResult, topPagesResult, referrersResult] = await Promise.all([
       withDbRetry(() => database.execute(sql`
+        WITH bounds AS (
+          SELECT
+            (((now() AT TIME ZONE 'Asia/Dhaka')::date - (${days - 1}::int))::timestamp AT TIME ZONE 'Asia/Dhaka') AS start_at,
+            (((now() AT TIME ZONE 'Asia/Dhaka')::date + 1)::timestamp AT TIME ZONE 'Asia/Dhaka') AS end_at
+        )
         SELECT
           (SELECT COUNT(*)::int FROM pages WHERE status = 'published') AS pages,
           (SELECT COUNT(*)::int FROM cms_content_items WHERE component = 'job' AND status = 'published') AS posted_jobs,
@@ -41,57 +46,74 @@ export async function GET(request: Request) {
           ) AS open_jobs,
           (SELECT COUNT(*)::int FROM job_applications) AS applicants,
           (SELECT COUNT(*)::int FROM site_visitors) AS visitors,
-          (SELECT COUNT(*)::int FROM visitor_events) AS visits,
+          (SELECT COUNT(*)::int FROM visitor_events ve, bounds b WHERE ve.created_at >= b.start_at AND ve.created_at < b.end_at) AS visits,
           (SELECT COUNT(*)::int FROM site_visitors WHERE page_views > 1) AS returning_visitors,
           (SELECT COUNT(*)::int FROM donations) AS donations,
           COALESCE((SELECT SUM(amount::numeric) FROM donations WHERE status IN ('paid', 'success')), 0) AS donation_total,
-          COALESCE((SELECT SUM(amount::numeric) FROM donations WHERE status IN ('paid', 'success') AND (created_at AT TIME ZONE 'Asia/Dhaka')::date >= (now() AT TIME ZONE 'Asia/Dhaka')::date - (${days - 1} * INTERVAL '1 day')), 0) AS range_donation_total
+          COALESCE((SELECT SUM(d.amount::numeric) FROM donations d, bounds b WHERE d.status IN ('paid', 'success') AND d.created_at >= b.start_at AND d.created_at < b.end_at), 0) AS range_donation_total
       `)),
       withDbRetry(() => database.execute(sql`
-        WITH date_bounds AS (
+        WITH bounds AS (
           SELECT
             (now() AT TIME ZONE 'Asia/Dhaka')::date AS today,
-            ((now() AT TIME ZONE 'Asia/Dhaka')::date - ${days - 1}::int) AS start_day
+            ((now() AT TIME ZONE 'Asia/Dhaka')::date - ${days - 1}::int) AS start_day,
+            (((now() AT TIME ZONE 'Asia/Dhaka')::date - ${days - 1}::int)::timestamp AT TIME ZONE 'Asia/Dhaka') AS start_at,
+            (((now() AT TIME ZONE 'Asia/Dhaka')::date + 1)::timestamp AT TIME ZONE 'Asia/Dhaka') AS end_at
         ), days AS (
-          SELECT generate_series(
-            date_bounds.start_day::timestamp,
-            date_bounds.today::timestamp,
-            INTERVAL '1 day'
-          )::date AS day
-          FROM date_bounds
+          SELECT generate_series(bounds.start_day::timestamp, bounds.today::timestamp, INTERVAL '1 day')::date AS day
+          FROM bounds
+        ), visitor_daily AS (
+          SELECT (ve.created_at AT TIME ZONE 'Asia/Dhaka')::date AS day, COUNT(*)::int AS visitors
+          FROM visitor_events ve CROSS JOIN bounds b
+          WHERE ve.created_at >= b.start_at AND ve.created_at < b.end_at
+          GROUP BY 1
         ), application_daily AS (
-          SELECT
-            (job_applications.created_at AT TIME ZONE 'Asia/Dhaka')::date AS day,
-            COUNT(*)::int AS applications
-          FROM job_applications
-          CROSS JOIN date_bounds
-          WHERE job_applications.created_at >= (date_bounds.start_day::timestamp AT TIME ZONE 'Asia/Dhaka')
-            AND job_applications.created_at < ((date_bounds.today + 1)::timestamp AT TIME ZONE 'Asia/Dhaka')
+          SELECT (ja.created_at AT TIME ZONE 'Asia/Dhaka')::date AS day, COUNT(*)::int AS applications
+          FROM job_applications ja CROSS JOIN bounds b
+          WHERE ja.created_at >= b.start_at AND ja.created_at < b.end_at
+          GROUP BY 1
+        ), donation_daily AS (
+          SELECT (d.created_at AT TIME ZONE 'Asia/Dhaka')::date AS day,
+                 COUNT(*)::int AS donations,
+                 COALESCE(SUM(d.amount::numeric) FILTER (WHERE d.status IN ('paid','success')), 0) AS donation_amount
+          FROM donations d CROSS JOIN bounds b
+          WHERE d.created_at >= b.start_at AND d.created_at < b.end_at
           GROUP BY 1
         )
         SELECT
           to_char(days.day, 'YYYY-MM-DD') AS date,
           to_char(days.day, 'DD Mon') AS label,
-          (SELECT COUNT(*)::int FROM visitor_events ve WHERE (ve.created_at AT TIME ZONE 'Asia/Dhaka')::date = days.day) AS visitors,
+          COALESCE(visitor_daily.visitors, 0)::int AS visitors,
           COALESCE(application_daily.applications, 0)::int AS applications,
-          (SELECT COUNT(*)::int FROM donations d WHERE (d.created_at AT TIME ZONE 'Asia/Dhaka')::date = days.day) AS donations,
-          COALESCE((SELECT SUM(d.amount::numeric) FROM donations d WHERE d.status IN ('paid','success') AND (d.created_at AT TIME ZONE 'Asia/Dhaka')::date = days.day), 0) AS donation_amount
-        FROM days LEFT JOIN application_daily ON application_daily.day = days.day
+          COALESCE(donation_daily.donations, 0)::int AS donations,
+          COALESCE(donation_daily.donation_amount, 0) AS donation_amount
+        FROM days
+        LEFT JOIN visitor_daily ON visitor_daily.day = days.day
+        LEFT JOIN application_daily ON application_daily.day = days.day
+        LEFT JOIN donation_daily ON donation_daily.day = days.day
         ORDER BY days.day
       `)),
       withDbRetry(() => database.execute(sql`
+        WITH bounds AS (
+          SELECT (((now() AT TIME ZONE 'Asia/Dhaka')::date - (${days - 1}::int))::timestamp AT TIME ZONE 'Asia/Dhaka') AS start_at,
+                 (((now() AT TIME ZONE 'Asia/Dhaka')::date + 1)::timestamp AT TIME ZONE 'Asia/Dhaka') AS end_at
+        )
         SELECT ve.path, COUNT(*)::int AS visits
-        FROM visitor_events ve
-        WHERE (ve.created_at AT TIME ZONE 'Asia/Dhaka')::date >= (now() AT TIME ZONE 'Asia/Dhaka')::date - (${days - 1} * INTERVAL '1 day')
+        FROM visitor_events ve CROSS JOIN bounds b
+        WHERE ve.created_at >= b.start_at AND ve.created_at < b.end_at
         GROUP BY ve.path
         ORDER BY visits DESC, ve.path ASC
         LIMIT 5
       `)),
       withDbRetry(() => database.execute(sql`
+        WITH bounds AS (
+          SELECT (((now() AT TIME ZONE 'Asia/Dhaka')::date - (${days - 1}::int))::timestamp AT TIME ZONE 'Asia/Dhaka') AS start_at,
+                 (((now() AT TIME ZONE 'Asia/Dhaka')::date + 1)::timestamp AT TIME ZONE 'Asia/Dhaka') AS end_at
+        )
         SELECT ve.referrer, COUNT(*)::int AS visits
-        FROM visitor_events ve
-        WHERE NULLIF(TRIM(ve.referrer), '') IS NOT NULL
-          AND (ve.created_at AT TIME ZONE 'Asia/Dhaka')::date >= (now() AT TIME ZONE 'Asia/Dhaka')::date - (${days - 1} * INTERVAL '1 day')
+        FROM visitor_events ve CROSS JOIN bounds b
+        WHERE ve.created_at >= b.start_at AND ve.created_at < b.end_at
+          AND NULLIF(TRIM(ve.referrer), '') IS NOT NULL
         GROUP BY ve.referrer
         ORDER BY visits DESC, ve.referrer ASC
         LIMIT 5

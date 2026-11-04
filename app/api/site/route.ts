@@ -15,7 +15,7 @@ export async function GET(request: Request) {
       : { ok: true, ...snapshot }
     return NextResponse.json(payload, {
       headers: {
-        'Cache-Control': 'private, no-store, max-age=0, must-revalidate',
+        'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300',
       },
     })
   } catch (error) {

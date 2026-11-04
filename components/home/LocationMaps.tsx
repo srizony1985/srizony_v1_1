@@ -309,9 +309,10 @@ export default function LocationMaps({ page, variant = 'default' }: { page: Page
   const [pinnedId, setPinnedId] = useState<string | null>(null)
   const [mode, setMode] = useState<'loading' | 'map' | 'svg'>('loading')
   const [size, setSize] = useState({ w: 560, h: 560 })
+  const measuredSizeRef = useRef({ w: 560, h: 560 })
   const [districtFeatures, setDistrictFeatures] = useState<MapFeature[]>([])
   const [countryFeature, setCountryFeature] = useState<MapFeature | null>(null)
-  const [, setTick] = useState(0)
+  const pinLayerRef = useRef<HTMLDivElement | null>(null)
   const hoverTimer = useRef<number | null>(null)
   const closeTimer = useRef<number | null>(null)
   const boxRef = useRef<HTMLDivElement | null>(null)
@@ -402,8 +403,12 @@ export default function LocationMaps({ page, variant = 'default' }: { page: Page
     const el = boxRef.current
     if (!el) return
     const update = () => {
-      setSize({ w: el.clientWidth, h: el.clientHeight })
-      mapRef.current?.invalidateSize()
+      const next = { w: el.clientWidth, h: el.clientHeight }
+      const previous = measuredSizeRef.current
+      if (previous.w === next.w && previous.h === next.h) return
+      measuredSizeRef.current = next
+      setSize(next)
+      mapRef.current?.invalidateSize({ pan: false, debounceMoveend: true })
     }
     update()
     const ro = new ResizeObserver(update)
@@ -515,6 +520,8 @@ export default function LocationMaps({ page, variant = 'default' }: { page: Page
     }
     let cancelled = false
     let map: any
+    let pinFrame = 0
+    let updatePinPositions: (() => void) | undefined
     const timeout = new Promise<never>((_, rej) => window.setTimeout(() => rej(new Error('timeout')), 8000))
     Promise.race([loadLeaflet(), timeout])
       .then((L) => {
@@ -571,8 +578,27 @@ export default function LocationMaps({ page, variant = 'default' }: { page: Page
           map.fitBounds(fitRef.current, { padding, maxZoom: 6.5, animate })
         }
         map.whenReady(() => fit(false))
-        // Responsive fitting is handled below so a selected district remains in focus on mobile.
-        map.on('move zoom resize', () => setTick((n) => n + 1))
+        // Reposition only the pin DOM nodes during map movement. Updating React
+        // state for every Leaflet move event re-rendered the complete map and all
+        // branch cards at interaction frame rate.
+        updatePinPositions = () => {
+          if (pinFrame) return
+          pinFrame = window.requestAnimationFrame(() => {
+            pinFrame = 0
+            const layer = pinLayerRef.current
+            if (!layer || !map?._loaded) return
+            const pins = layer.querySelectorAll<HTMLElement>('[data-map-lat][data-map-lng]')
+            pins.forEach((pin) => {
+              const lat = Number(pin.dataset.mapLat)
+              const lng = Number(pin.dataset.mapLng)
+              if (!Number.isFinite(lat) || !Number.isFinite(lng)) return
+              const point = map.latLngToContainerPoint([lat, lng])
+              pin.style.left = `${point.x}px`
+              pin.style.top = `${point.y}px`
+            })
+          })
+        }
+        map.on('move zoom resize', updatePinPositions)
         map.on('focus', () => map.scrollWheelZoom.enable())
         map.on('blur', () => map.scrollWheelZoom.disable())
         // setView above initializes Leaflet synchronously; the ready callback
@@ -584,6 +610,8 @@ export default function LocationMaps({ page, variant = 'default' }: { page: Page
       })
     return () => {
       cancelled = true
+      if (pinFrame) window.cancelAnimationFrame(pinFrame)
+      if (map && updatePinPositions) map.off('move zoom resize', updatePinPositions)
       map?.remove()
       mapRef.current = null
       tileRef.current = null
@@ -789,7 +817,7 @@ export default function LocationMaps({ page, variant = 'default' }: { page: Page
                 return <div className="sf-fp-selected-area" aria-hidden="true" style={{ left: point.x, top: point.y }} />
               })()}
 
-              <div className="sf-fp-pins">
+              <div className="sf-fp-pins" ref={pinLayerRef}>
                 {visible.map((r, i) => {
                   const { x, y } = pixel(r)
                   if (x < -30 || y < -30 || x > size.w + 30 || y > size.h + 30) return null
@@ -799,6 +827,8 @@ export default function LocationMaps({ page, variant = 'default' }: { page: Page
                     <div
                       key={r.branch.id}
                       className={`sf-fp-pin ${isHead ? 'is-head' : ''} ${isActive ? 'is-active' : ''} ${hoverId === r.branch.id ? 'is-hovered' : ''}`}
+                      data-map-lat={mode === 'map' ? r.branch.lat : undefined}
+                      data-map-lng={mode === 'map' ? r.branch.lng : undefined}
                       style={{ left: x, top: y, ['--i' as string]: i } as CSSProperties}
                       onPointerEnter={(e) => e.pointerType === 'mouse' && openHover(r.branch.id)}
                       onPointerLeave={(e) => e.pointerType === 'mouse' && scheduleClose()}

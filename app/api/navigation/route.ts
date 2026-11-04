@@ -9,7 +9,7 @@ export async function GET() {
     const site = await getPublicSiteSnapshot('/')
     return NextResponse.json(
       { primaryNav: site.global.primaryNav, navGroups: site.global.navGroups, ui: site.global.ui },
-      { headers: { 'Cache-Control': 'private, no-store, max-age=0, must-revalidate', Vary: 'Cookie' } },
+      { headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300' } },
     )
   } catch (error) {
     console.error('Public navigation read failed', error)

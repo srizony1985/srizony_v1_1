@@ -34,10 +34,10 @@ test('job application frequency is grouped by Dhaka calendar date', () => {
 
 test('application trend query has a created-at index for range scans', () => {
   assert.match(ddl, /job_applications_created_idx ON job_applications\(created_at DESC\)/)
-  assert.match(route, /WITH date_bounds AS \(/)
-  assert.match(route, /AS start_day/)
-  assert.match(route, /date_bounds\.start_day::timestamp AT TIME ZONE 'Asia\/Dhaka'/)
-  assert.match(route, /date_bounds\.today \+ 1/)
+  assert.match(route, /WITH bounds AS \(/)
+  assert.match(route, /AS start_at/)
+  assert.match(route, /AS end_at/)
+  assert.match(route, /created_at >= b\.start_at AND .*created_at < b\.end_at/s)
   assert.match(route, /\$\{days - 1\}::int/)
-  assert.doesNotMatch(route, /- \?\)::timestamp/)
+  assert.doesNotMatch(route, /created_at AT TIME ZONE 'Asia\/Dhaka'\) >=/)
 })

@@ -447,7 +447,13 @@ a.sf-notice:hover { border-color: var(--sf-primary); }
 @keyframes il-draw { to { stroke-dashoffset: 0; } }
 
 /* Area icons: idle motion after reveal, livelier on hover */
+.sf-reveal:not(.is-visible) :is(.ar *, .il *) { animation-play-state: paused !important; }
 .sf-reveal:not(.is-in) .ar * { animation-play-state: paused; }
+.sf-growth:not(.is-visible) .sf-growth-art * { animation-play-state: paused !important; }
+.sf-story-stage:not(.is-visible) .sf-story-panel * { animation-play-state: paused !important; }
+@media (prefers-reduced-motion: reduce) {
+  .sf-reveal, .sf-reveal *, .sf-growth *, .sf-story-stage * { animation: none !important; transition: none !important; }
+}
 .ar-beat { animation: ar-beat 1.5s ease-in-out infinite; }
 .ar-ecg { fill: none; stroke: var(--sf-primary); stroke-width: 3.5; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 150; animation: ar-ecg 2.4s linear infinite; }
 .ar-ring { animation: sf-spin 16s linear infinite; }

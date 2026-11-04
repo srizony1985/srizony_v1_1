@@ -5,7 +5,11 @@ import { ArrowUp } from 'lucide-react'
 export default function BackToTop(){
  const [visible,setVisible]=React.useState(false)
  React.useEffect(()=>{
-  const onScroll=()=>setVisible(window.scrollY>500)
+  let previous = false
+  const onScroll=()=>{
+   const next = window.scrollY > 500
+   if (next !== previous) { previous = next; setVisible(next) }
+  }
   onScroll(); window.addEventListener('scroll',onScroll,{passive:true})
   return()=>window.removeEventListener('scroll',onScroll)
  },[])

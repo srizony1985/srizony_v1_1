@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, type CSSProperties } from 'react'
+import { useEffect, type CSSProperties } from 'react'
 
 import { Briefcase, Building2, Home, Users, BookOpen, CheckCircle2, Coins, Droplets, Heart, Leaf, Megaphone, Scale, ShieldCheck, Sun } from 'lucide-react'
 import type { Bilingual, IconName, Lang } from '@/types/entityType'
@@ -14,22 +14,32 @@ type StatItem = { id?: string; value: string | number; label: Bilingual; note?: 
 const ICONS = { users: Users, briefcase: Briefcase, home: Home, building: Building2, heart: Heart, leaf: Leaf, book: BookOpen, scale: Scale, sun: Sun, droplets: Droplets, coins: Coins, megaphone: Megaphone, shield: ShieldCheck, play: CheckCircle2, arrow: CheckCircle2, check: CheckCircle2 } as const
 
 function AnimatedValue({ value, lang }: { value: number; lang: Lang }) {
-  const [ref, inView] = useInView<HTMLSpanElement>(0.4)
-  const [shown, setShown] = useState(0)
+  const [viewRef, inView] = useInView<HTMLSpanElement>(0.4)
+
+  // Animate the text node directly. Updating React state on every animation frame
+  // re-rendered every stat tile at 60 FPS, even though only the number changes.
   useEffect(() => {
-    if (!inView) return
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { setShown(value); return }
+    const node = viewRef.current
+    if (!node || !inView) return
+    const format = (amount: number) => localizeDigits(amount.toLocaleString('en-US'), lang)
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      node.textContent = format(value)
+      return
+    }
+
     let frame = 0
     const start = performance.now()
     const tick = (now: number) => {
-      const progress = Math.min((now - start) / 1400, 1)
-      setShown(Math.round(value * (1 - Math.pow(1 - progress, 3))))
+      const progress = Math.min((now - start) / 1100, 1)
+      const eased = 1 - Math.pow(1 - progress, 3)
+      node.textContent = format(Math.round(value * eased))
       if (progress < 1) frame = requestAnimationFrame(tick)
     }
     frame = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(frame)
-  }, [inView, value])
-  return <span ref={ref}>{localizeDigits(shown.toLocaleString('en-US'), lang)}</span>
+  }, [inView, value, lang, viewRef])
+
+  return <span ref={viewRef}>{localizeDigits('0', lang)}</span>
 }
 
 /** Consistent stats collection used for both the home story and CMS-managed pages. */

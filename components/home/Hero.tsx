@@ -18,6 +18,7 @@ import SafeImage from '@/components/ui/SafeImage'
 import AppLink from '@/components/ui/AppLink'
 import Button from '@/components/ui/ActionButton'
 import Container from '@/components/containers/Container'
+import { useInView } from '@/components/hooks/useInView'
 
 const MAX_VISIBLE_DOTS = 3
 const DEFAULT_AUTOPLAY_INTERVAL = 6500
@@ -52,7 +53,7 @@ export default function Hero({
   const [index, setIndex] = useState(0)
   const [paused, setPaused] = useState(false)
 
-  const heroRef = useRef<HTMLElement | null>(null)
+  const [heroRef, heroInView] = useInView<HTMLElement>(0.05, false)
   const touchX = useRef<number | null>(null)
 
   const tr = (en: string, bn: string) =>
@@ -81,7 +82,7 @@ export default function Hero({
   // Autoplay respects user preference, reduced motion,
   // hover pause, and browser tab visibility.
   useEffect(() => {
-    if (count < 2 || paused || hero.autoplay === false) return
+    if (count < 2 || paused || !heroInView || hero.autoplay === false) return
 
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
       return
@@ -99,7 +100,7 @@ export default function Hero({
     }, interval)
 
     return () => window.clearInterval(timer)
-  }, [count, paused, hero.autoplay, hero.autoplayInterval])
+  }, [count, paused, heroInView, hero.autoplay, hero.autoplayInterval])
 
   // Gentle background parallax, disabled for reduced motion.
   useEffect(() => {
@@ -107,6 +108,7 @@ export default function Hero({
 
     if (
       !element ||
+      !heroInView ||
       window.matchMedia('(prefers-reduced-motion: reduce)').matches
     ) {
       return
@@ -135,7 +137,7 @@ export default function Hero({
 
       if (frame) window.cancelAnimationFrame(frame)
     }
-  }, [])
+  }, [heroInView])
 
   // Display at most five pagination dots, centered around
   // the active slide whenever possible.

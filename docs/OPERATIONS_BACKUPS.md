@@ -1,39 +1,23 @@
-# Production backups and restore drill
+# Production backups and restore drills
 
-The repository includes a scheduled GitHub Actions workflow (`.github/workflows/production-backup.yml`) and the executable backup task (`scripts/backup-production.sh`). The workflow is **not active until repository secrets/variables and a destination bucket are configured**. Do not treat the existing maintenance cron as a backup; it only prunes operational data.
+SF_V1.2 supports two independent backup destinations:
 
-## One-time setup
+- **Google Drive personal My Drive JSON mirror:** incremental Neon table snapshots, Base64 image payloads, an upload manifest, and a daily full snapshot. It uses a service account only to update `.json` files created by the Gmail folder owner. See [`GOOGLE_DRIVE_BACKUPS.md`](./GOOGLE_DRIVE_BACKUPS.md) and `.github/workflows/production-google-drive-backup.yml`.
+- **S3-compatible backup bucket:** the existing `scripts/backup-production.sh` workflow, using `BACKUP_DATABASE_URL`, S3 credentials and a dedicated destination bucket.
 
-1. Create a dedicated, private S3-compatible backup bucket. Prefer a separate account/provider with access controls independent from the application media buckets. Enable encryption and a lifecycle rule (for example, retain daily backups for 35 days and monthly copies for 12 months) on that backup bucket.
-2. Add these repository **secrets**:
-   - `BACKUP_DATABASE_URL`: a direct, non-pooled PostgreSQL connection URL with permission to read all application schemas. Use a URL-encoded password and never commit it.
-   - `AWS_ENDPOINT_URL_S3`: the S3-compatible endpoint URL.
-   - `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`: scoped credentials that can read the two source media buckets and write to the backup bucket.
-3. Add these repository **variables**:
-   - `AWS_REGION` (the storage region)
-   - `BACKUP_S3_BUCKET` (the dedicated backup bucket name)
-   - `BACKUP_S3_PREFIX` (optional; defaults to `srizony-production`)
-   - `NEON_OBJECT_STORAGE_BUCKET` (optional; defaults to `uploads`)
-   - `NEON_PUBLIC_ASSETS_BUCKET` (optional; defaults to `public-assets`)
-   - `PG_DUMP_MAJOR` (optional; defaults to `17`; the workflow image, installed `pg_dump`, and compatibility check all use this value)
-4. Run **Actions → Scheduled production backup → Run workflow** once. Verify a timestamped backup contains `database.dump`, its SHA-256 file, a manifest, and copies of both storage buckets. The workflow runs daily at 20:35 UTC (02:35 Bangladesh time the following day).
-5. Configure alerts for failed workflow runs and apply a retention lifecycle policy to the backup bucket. A successful upload is not a restore test.
+Keep backup destinations private, alert on failed scheduled runs, and perform a restore drill to an isolated staging environment at least quarterly. A successful upload alone is not a restore test.
 
-The script rejects a destination bucket equal to either source bucket to avoid recursively backing a bucket into itself. It creates a custom-format `pg_dump` archive and copies both private `uploads` and public `public-assets` objects. It never makes the backup bucket public.
+The `backup:google-drive` command mirrors changed Neon tables to pre-created JSON files. The `backup:google-drive:full` command includes all public tables, including high-churn analytics/security tables. The `backup:google-drive:archive` command is the older timestamped archive uploader and requires a Drive destination that can create new files; it is not used by the personal Gmail JSON workflow.
 
-## Restore drill
+The `backup:production` command continues to back up PostgreSQL and the two media buckets to S3. Neither backup workflow changes the live database provider. Google Drive is a recovery mirror, not an automatic live SQL failover database.
 
-At least quarterly, restore into an isolated staging project, never over production:
+For S3 backup setup, provide:
 
-1. Download the chosen `database.dump` and `database.dump.sha256`; verify with `sha256sum -c database.dump.sha256` (run this in the directory containing the downloaded archive).
-2. Restore the database into an empty staging database using the matching PostgreSQL tools, for example `pg_restore --no-owner --no-privileges --dbname="$STAGING_DATABASE_URL" database.dump`. Review extension/role requirements before restoring into an existing database; this example is for a fresh staging database.
-3. Copy the saved `storage/uploads/` and `storage/public-assets/` contents into staging media buckets, then configure staging environment variables to use those buckets.
-4. Run migrations only if needed for the selected restore point, then test login, public assets, PDFs, content rendering, job application/resume privacy and menu/content routing.
-5. Record the restore date, backup timestamp, duration and any issues. Keep this procedure and credentials in the organization's approved secret manager.
+- `BACKUP_DATABASE_URL`: direct, non-pooled PostgreSQL URL.
+- `AWS_ENDPOINT_URL_S3`, `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`.
+- `BACKUP_S3_BUCKET`: a dedicated bucket different from both source media buckets.
+- Optional `BACKUP_S3_PREFIX`, `NEON_OBJECT_STORAGE_BUCKET`, and `NEON_PUBLIC_ASSETS_BUCKET`.
 
-The project archive cannot configure GitHub repository secrets, provision the backup bucket, or prove that a backup/restore completed in the user's hosting account. Those are deployment operations and must be verified after upload.
+The S3 script rejects a destination bucket equal to either source bucket to prevent recursive backup. It creates a custom-format `pg_dump` archive, checksum and manifest, then syncs private `uploads` and public `public-assets` objects. It never makes the backup bucket public.
 
-
-## Trusted client IP configuration
-
-Public API rate limits use PostgreSQL counters so limits are shared across serverless instances. The application does not trust arbitrary `X-Forwarded-For` values. Set `TRUSTED_CLIENT_IP_HEADER` to exactly one of `x-vercel-forwarded-for`, `cf-connecting-ip`, or `x-real-ip` only after confirming that the production ingress strips any client-supplied value and writes the authoritative client IP. If no trusted header is configured, IP-specific counters are intentionally skipped; subject and global budgets still apply. Verify this behavior through the deployed ingress before launch.
+The repository cannot configure production secrets, provision cloud destinations, or prove that an external restore completed. Verify these deployment tasks after configuration.

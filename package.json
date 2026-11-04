@@ -24,7 +24,14 @@
     "test:functional": "tsx --test tests/*.test.ts && node --test tests/*.test.mjs",
     "db:seed:demo": "tsx scripts/seed-demo-preview.ts",
     "db:seed:demo:remove": "tsx scripts/remove-demo-preview.ts",
-    "backup:production": "bash scripts/backup-production.sh"
+    "backup:production": "bash scripts/backup-production.sh",
+    "backup:google-drive": "node scripts/backup-google-drive-json.mjs",
+    "backup:google-drive:json": "node scripts/backup-google-drive-json.mjs",
+    "backup:google-drive:json:full": "node scripts/backup-google-drive-json.mjs --full",
+    "backup:google-drive:json:list": "node scripts/backup-google-drive-json.mjs --list-required",
+    "backup:google-drive:full": "node scripts/backup-google-drive-json.mjs --full",
+    "backup:google-drive:list": "node scripts/backup-google-drive-json.mjs --list-required",
+    "backup:google-drive:archive": "node scripts/backup-google-drive.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1146.0",

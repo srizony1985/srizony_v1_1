@@ -26,33 +26,60 @@ export default function MissionVisionValues({ lang, page }: { lang: Lang; page: 
   const wrapRef = useRef<HTMLElement | null>(null)
   const stageRef = useRef<HTMLDivElement | null>(null)
   const [index, setIndex] = useState(0)
+  const indexRef = useRef(0)
   const [seen, setSeen] = useState(false)
   const count = Math.max(steps.length, 1)
 
   useEffect(() => {
     let raf = 0
+    let stick = 0
+    let stageHeight = 1
+    let hasSeen = false
+    const measure = () => {
+      const stage = stageRef.current
+      if (!stage) return
+      stick = parseFloat(getComputedStyle(stage).top) || 0
+      stageHeight = Math.max(1, stage.offsetHeight || window.innerHeight - stick)
+      scheduleUpdate()
+    }
     const update = () => {
       raf = 0
       const el = wrapRef.current
-      const stage = stageRef.current
-      if (!el || !stage) return
-      const stick = parseFloat(getComputedStyle(stage).top) || 0
-      const stageH = stage.offsetHeight || window.innerHeight - stick
-      const r = el.getBoundingClientRect()
-      const p = Math.min(Math.max((stick - r.top) / stageH, 0), count - 1)
-      el.style.setProperty('--sp', p.toFixed(3))
-      setIndex(Math.round(p))
-      if (r.top < window.innerHeight * 0.6) setSeen(true)
+      if (!el) return
+      const rect = el.getBoundingClientRect()
+      const progress = Math.min(Math.max((stick - rect.top) / stageHeight, 0), count - 1)
+      el.style.setProperty('--sp', progress.toFixed(3))
+      const nextIndex = Math.round(progress)
+      if (indexRef.current !== nextIndex) {
+        indexRef.current = nextIndex
+        setIndex(nextIndex)
+      }
+      if (!hasSeen && rect.top < window.innerHeight * 0.6) {
+        hasSeen = true
+        setSeen(true)
+      }
     }
-    const onScroll = () => {
+    const scheduleUpdate = () => {
       if (!raf) raf = requestAnimationFrame(update)
     }
-    update()
-    window.addEventListener('scroll', onScroll, { passive: true })
-    window.addEventListener('resize', onScroll)
+    const observer = typeof ResizeObserver !== 'undefined' && stageRef.current
+      ? new ResizeObserver(measure)
+      : null
+    if (stageRef.current) observer?.observe(stageRef.current)
+    const stage = stageRef.current
+    const visibilityObserver = stage && 'IntersectionObserver' in window
+      ? new IntersectionObserver(([entry]) => { stage.classList.toggle('is-visible', Boolean(entry?.isIntersecting)) }, { threshold: 0.01 })
+      : null
+    if (stage && !visibilityObserver) stage.classList.add('is-visible')
+    if (stage) visibilityObserver?.observe(stage)
+    measure()
+    window.addEventListener('scroll', scheduleUpdate, { passive: true })
+    window.addEventListener('resize', measure, { passive: true })
     return () => {
-      window.removeEventListener('scroll', onScroll)
-      window.removeEventListener('resize', onScroll)
+      observer?.disconnect()
+      visibilityObserver?.disconnect()
+      window.removeEventListener('scroll', scheduleUpdate)
+      window.removeEventListener('resize', measure)
       if (raf) cancelAnimationFrame(raf)
     }
   }, [count])
