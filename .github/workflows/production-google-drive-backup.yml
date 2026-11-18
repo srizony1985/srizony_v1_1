@@ -44,7 +44,7 @@ jobs:
       GOOGLE_SERVICE_ACCOUNT_JSON_BASE64: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON_BASE64 }}
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: Set up project Node.js
         uses: actions/setup-node@v4
         with:
@@ -84,7 +84,7 @@ jobs:
       BACKUP_DRIVE_RETENTION_DAYS: ${{ vars.BACKUP_DRIVE_RETENTION_DAYS || '0' }}
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: Set up project Node.js
         uses: actions/setup-node@v4
         with:
@@ -125,7 +125,7 @@ jobs:
       BACKUP_DRIVE_RETENTION_DAYS: ${{ vars.BACKUP_DRIVE_RETENTION_DAYS || '0' }}
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: Set up project Node.js
         uses: actions/setup-node@v4
         with:
