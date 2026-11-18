@@ -109,7 +109,7 @@ export async function POST(req: Request) {
       id: donations.id, transactionId: donations.transactionId,
     })
 
-    let donation = inserted[0]
+    const donation = inserted[0]
     if (!donation) {
       const existingRows = await db.select({
         id: donations.id, transactionId: donations.transactionId, amount: donations.amount,
