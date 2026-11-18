@@ -30,7 +30,7 @@ jobs:
       NEON_PUBLIC_ASSETS_BUCKET: ${{ vars.NEON_PUBLIC_ASSETS_BUCKET || 'public-assets' }}
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: Set up project Node.js
         uses: actions/setup-node@v4
         with:
