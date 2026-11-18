@@ -15,8 +15,8 @@ test('Documents & Resources resolves as an ordinary CMS slug rendered by the sha
   assert.doesNotMatch(content, /sf-essentials-hero|PublicBreadcrumb|<main/)
   assert.match(contentPage, /PageTemplate/)
   assert.match(template, /<Container variant="page" className=\{wrapperClass\}>/)
-  assert.match(template, /<h1 className="sf-h1 sf-h1--page">\{page\.title\[lang\]\}<\/h1>/)
-  assert.match(template, /page\.slug === '\/resources' && <ResourcesContent \/>/)
+  assert.match(template, /<h1 className="sf-h1 sf-h1--page">\{plainSectionTitle\(page\.title\[lang\]\)\}<\/h1>/)
+  assert.match(template, /page\.pageView === 'resource-library' && <ResourcesContent reports=\{resourceReports\} page=\{page\} \/>/)
   assert.equal(existsSync(new URL('../app/resources/page.tsx', import.meta.url)), false)
 })
 
@@ -28,14 +28,14 @@ test('Management Staff resolves as an ordinary CMS slug and keeps the staff dire
   assert.match(content, /sf-block sf-staff-directory/)
   assert.match(content, /essentials\.staff/)
   assert.doesNotMatch(content, /sf-essentials-hero|PublicBreadcrumb|<main/)
-  assert.match(template, /page\.slug === '\/management-staff' && <ManagementStaffContent \/>/)
+  assert.match(template, /page\.pageView === 'staff-directory' && <ManagementStaffContent page=\{page\} \/>/)
   assert.equal(existsSync(new URL('../app/management-staff/page.tsx', import.meta.url)), false)
   assert.equal(existsSync(new URL('../app/bn/management-staff/page.tsx', import.meta.url)), false)
   assert.equal(existsSync(new URL('../app/bn/resources/page.tsx', import.meta.url)), false)
 })
 
 test('resource and staff cards use semantic surfaces and stretch consistently', () => {
-  const css = read('app/site-polish.css')
+  const css = read('app/globals.css')
   assert.match(css, /\.sf-staff-card,\.sf-resource-card[\s\S]*background: var\(--sf-essentials-surface\)/)
   assert.match(css, /\.sf-staff-grid[\s\S]*grid-auto-rows: 1fr[\s\S]*align-items: stretch/)
   assert.match(css, /\.sf-resource-grid[\s\S]*grid-auto-rows: 1fr[\s\S]*align-items: stretch/)
@@ -44,10 +44,10 @@ test('resource and staff cards use semantic surfaces and stretch consistently', 
 
 test('notice cards are 40% shorter while job circular card geometry remains unchanged', () => {
   const renderer = read('components/pages/SectionContent.tsx')
-  const css = read('app/site-polish.css')
+  const css = read('app/globals.css')
   assert.match(renderer, /feedColumns = fixedTwoColumnFeed \? 2/)
   assert.match(renderer, /feedTabletColumns = fixedTwoColumnFeed \? 2/)
-  assert.match(renderer, /feedGap = fixedTwoColumnFeed \? '18px'/)
+  assert.match(renderer, /feedGap = fixedTwoColumnFeed \? 'var\(--sf-space-feed\)'/)
   assert.match(renderer, /feedLayoutClass = fixedTwoColumnFeed \? ''/)
   assert.match(css, /\.sf-content-feed--notice \.sf-feed-grid \{[\s\S]*grid-auto-rows: minmax\(134\.4px, 1fr\)/)
   assert.match(css, /\.sf-content-feed--job \.sf-feed-grid \{[\s\S]*grid-auto-rows: minmax\(224px, 1fr\)/)
@@ -61,5 +61,7 @@ test('notice cards are 40% shorter while job circular card geometry remains unch
 })
 
 test('stylesheets live only under app/ (no stale root copies)', () => {
-  for (const file of ['site-components.css', 'site-polish.css']) assert.equal(existsSync(new URL(`../${file}`, import.meta.url)), false)
+  assert.equal(existsSync(new URL('../app/site-components.css', import.meta.url)), false)
+  assert.equal(existsSync(new URL('../app/site-polish.css', import.meta.url)), false)
+  assert.equal(existsSync(new URL('../app/globals.css', import.meta.url)), true)
 })

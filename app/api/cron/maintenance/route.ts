@@ -2,6 +2,10 @@ import { NextResponse } from 'next/server'
 import { sql } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { processDonationReceiptJobs } from '@/lib/donations/receiptQueue'
+import { processJobEmailOutbox } from '@/lib/cms/job-mail-outbox'
+
+export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
 
 export async function GET(req: Request) {
   const cronSecret = process.env.CRON_SECRET?.trim()
@@ -15,7 +19,8 @@ export async function GET(req: Request) {
     await db.execute(sql`DELETE FROM job_public_rate_limits WHERE window_started_at < now() - interval '30 days'`)
     await db.execute(sql`DELETE FROM public_api_rate_limits WHERE updated_at < now() - interval '30 days'`)
     const receipts = await processDonationReceiptJobs(25)
-    return NextResponse.json({ ok: true, maintenance: 'completed', donationReceipts: receipts })
+    const jobEmails = await processJobEmailOutbox(25)
+    return NextResponse.json({ ok: true, maintenance: 'completed', donationReceipts: receipts, jobEmails })
   } catch (error) {
     console.error('Maintenance failed', error)
     return NextResponse.json({ ok: false, error: 'Maintenance failed.' }, { status: 503 })

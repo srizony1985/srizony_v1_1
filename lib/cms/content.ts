@@ -1,25 +1,50 @@
+import type { ExternalValue, JsonObject } from '@/types/json'
 import { sql } from 'drizzle-orm'
 import { revalidatePath, revalidateTag } from 'next/cache'
 import { contentData, contentEntries, contentDetails, imageForSlug, openImageUrlForPath } from '@/lib/cms/fallback-gateway'
-import { db, withDbRetry } from '@/lib/db'
+import { db, isTransientDatabaseError, withDbRetry } from '@/lib/db'
 import { buildContentRoute, canonicalizeCmsRoute, getContentRouteParent } from '@/lib/cms/routes'
 import { normalizeMediaSrc } from '@/lib/mediaUrl'
 import { ensureCmsSchema } from './ensureSchema'
 import { COMPONENTS, CONTENT_COLLECTION_ROUTES, CORE_KEYS, DEFAULT_CONTENT_PARENT, NEWS_COMPONENTS, FIXED_CONTENT_PARENT, SLUG_PATTERN, storageKeys, type ContentComponent, type ContentRecord, type ContentValues, type FeedItem } from './components'
+import { normalizeCmsTypography } from './typography'
+import { readDriveTableSnapshot } from '@/lib/google/drive-snapshot'
 import type { PageData, Bilingual } from '@/types/entityType'
 
-type Row = Record<string, any>
+type Row = {
+  id?: number | string | null
+  component?: string | null
+  slug?: string | null
+  status?: string | null
+  title_en?: string | null
+  title_bn?: string | null
+  summary_en?: string | null
+  summary_bn?: string | null
+  body_en?: string | null
+  body_bn?: string | null
+  image_src?: string | null
+  published_at?: Date | string | null
+  updated_at?: Date | string | null
+  attributes?: unknown
+  render_cache?: unknown
+  href?: string | null
+  menu_type?: string | null
+  [key: string]: unknown
+}
+type MutableSection = JsonObject
+const asRecord = (value: unknown): JsonObject | null => value && typeof value === 'object' && !Array.isArray(value) && !(value instanceof Date) && !(value instanceof Uint8Array) ? value as JsonObject : null
+const stringValue = (value: unknown): string => typeof value === 'string' ? value : ''
 const isoDate = (v: unknown) => (v instanceof Date ? v.toISOString().slice(0, 10) : String(v || '').slice(0, 10))
 const database = () => { if (!db) throw new Error('DATABASE_URL is not configured'); return db }
 
 export class ContentError extends Error { constructor(message: string, public status = 400, public field?: string) { super(message) } }
 
-export function isComponent(value: unknown): value is ContentComponent { return typeof value === 'string' && value in COMPONENTS }
+export function isComponent(value: ExternalValue): value is ContentComponent { return typeof value === 'string' && value in COMPONENTS }
 
 /** Identify known seed-catalogue images, including older rows whose seed image
  * was externalized to a remote photo URL by an earlier migration. An editor-uploaded
  * URL differs from these known defaults and remains eligible when imageManaged=true. */
-function isSeedCatalogueImage(row: Row, attrs: Record<string, unknown>): boolean {
+function isSeedCatalogueImage(row: Row, attrs: JsonObject): boolean {
   const image = String(row.image_src || '')
   if (!image) return false
   const component = String(row.component || '')
@@ -40,8 +65,9 @@ function isSeedCatalogueImage(row: Row, attrs: Record<string, unknown>): boolean
   // detail paths and have no contentDetails-v1 marker. Their source images are not
   // CMS uploads, even if an earlier edit mistakenly marked the default as managed.
   if (component === 'job' && String(attrs.detailPath || '').startsWith('/job-circular/')) {
-    const seed = contentEntries.find((entry) => entry.category === 'career' && entry.slug === slug) as any
-    const source = String(seed?.image?.src || '')
+    const seed = contentEntries.find((entry) => entry.category === 'career' && entry.slug === slug)
+    const seedImage = seed?.image
+    const source = String(seedImage && typeof seedImage === 'object' && 'src' in seedImage && typeof seedImage.src === 'string' ? seedImage.src : '')
     if (!source) return false
     const candidates = new Set<string>([source])
     if (source.startsWith('/images/')) candidates.add(openImageUrlForPath(source))
@@ -56,7 +82,7 @@ function isSeedCatalogueImage(row: Row, attrs: Record<string, unknown>): boolean
  * browser-safe public URL and keep legacy private-bucket paths on the guarded
  * compatibility endpoint.
  */
-function storedImageSource(row: Row, attrs: Record<string, unknown>) {
+function storedImageSource(row: Row, attrs: JsonObject) {
   const imageManaged = String(attrs.imageManaged || '').toLowerCase() === 'true'
   const attributeCandidates = [attrs.image, attrs.imageSrc, attrs.image_url]
   // When the editor has explicitly selected a new CMS image, that value takes
@@ -68,7 +94,7 @@ function storedImageSource(row: Row, attrs: Record<string, unknown>) {
 
   for (const raw of candidates) {
     const candidate = raw && typeof raw === 'object' && !Array.isArray(raw)
-      ? (raw as Record<string, unknown>).src ?? (raw as Record<string, unknown>).url
+      ? (raw as JsonObject).src ?? (raw as JsonObject).url
       : raw
     if (typeof candidate !== 'string') continue
     const value = candidate.trim()
@@ -83,7 +109,7 @@ function storedImageSource(row: Row, attrs: Record<string, unknown>) {
 }
 
 function toRecord(row: Row): ContentRecord {
-  const attrs = (row.attributes && typeof row.attributes === 'object' ? row.attributes : {}) as Record<string, unknown>
+  const attrs = (asRecord(row.attributes) ?? {}) as JsonObject
   const seedSource = String(attrs.seedSource || '')
   const imageManaged = String(attrs.imageManaged || '').toLowerCase() === 'true'
   const knownSeedImage = !imageManaged && isSeedCatalogueImage(row, attrs)
@@ -92,16 +118,18 @@ function toRecord(row: Row): ContentRecord {
   const savedImage = storedImageSource(row, attrs)
   const editableImage = savedImage && !knownSeedImage && (imageManaged || !seedSource) ? savedImage : ''
   const values: ContentValues = {
-    title_en: row.title_en || '', title_bn: row.title_bn || '', summary_en: row.summary_en || '', summary_bn: row.summary_bn || '',
-    body_en: row.body_en || '', body_bn: row.body_bn || '', image: editableImage, date: isoDate(row.published_at),
+    title_en: stringValue(row.title_en), title_bn: stringValue(row.title_bn), summary_en: stringValue(row.summary_en), summary_bn: stringValue(row.summary_bn),
+    body_en: stringValue(row.body_en), body_bn: stringValue(row.body_bn), image: editableImage, date: isoDate(row.published_at),
   }
-  for (const [k, v] of Object.entries(attrs)) values[k] = v == null ? '' : String(v)
+  for (const [k, v] of Object.entries(attrs)) values[k] = v == null ? '' : k === 'typography' && typeof v === 'object' ? JSON.stringify(v) : String(v)
   values.image = editableImage
-  return { id: Number(row.id), component: row.component, slug: row.slug, status: row.status, values, publishedAt: isoDate(row.published_at), updatedAt: row.updated_at instanceof Date ? row.updated_at.toISOString() : String(row.updated_at || '') }
+  const component = isComponent(row.component) ? row.component : 'project'
+  const status = row.status === 'draft' || row.status === 'hidden' ? row.status : 'published'
+  return { id: Number(row.id), component, slug: stringValue(row.slug), status, values, publishedAt: isoDate(row.published_at), updatedAt: row.updated_at instanceof Date ? row.updated_at.toISOString() : String(row.updated_at || '') }
 }
 
 /** Validates form values against the component's field definitions and splits core columns from attributes. */
-export function validateValues(component: ContentComponent, slug: string, input: Record<string, unknown>, existingRouteParent?: string) {
+export function validateValues(component: ContentComponent, slug: string, input: JsonObject, existingRouteParent?: string) {
   const def = COMPONENTS[component]
   if (!SLUG_PATTERN.test(slug) || slug.length > 120) throw new ContentError('Slug must use lowercase letters, numbers and single hyphens (e.g. safe-water-project).', 400, 'slug')
   // News and success stories belong to their dedicated canonical collections.
@@ -134,17 +162,19 @@ export function validateValues(component: ContentComponent, slug: string, input:
       clean[key] = value
     }
   }
-  const attributes: Record<string, string> = {}
+  const attributes: JsonObject = {}
   for (const key of storageKeys(def)) if (!CORE_KEYS.includes(key) && clean[key]) attributes[key] = clean[key]
+  const typography = normalizeCmsTypography(input.typography)
+  if (typography) attributes.typography = typography
   return { clean, attributes, routeParent }
 }
 
-function collectionPageSnapshot(routeParent: string) {
+function collectionPageSnapshot(routeParent: string): PageData | null {
   // The landing page is a special, unique route. If an older database has no stored
   // page row for '/', bootstrap it from the bundled landing composition instead of
   // refusing to publish content assigned to Home.
   if (routeParent === '/') {
-    const home = contentData.allPages['/']
+    const home: PageData | undefined = contentData.allPages['/']
     if (!home) return null
     return { ...home, slug: '/', status: 'published', sortOrder: -1, sections: [...home.sections] }
   }
@@ -170,11 +200,11 @@ async function ensureCollectionSection(routeParent: string, component: ContentCo
     row = (await runCms(sql`SELECT slug, title_en, title_bn, render_cache, status FROM pages WHERE slug = ${destinationPage} LIMIT 1`)).rows[0] as Row | undefined
   }
   if (!row) throw new ContentError(`Unable to initialize destination page ${destinationPage}.`, 503, 'routeParent')
-  const raw = row.render_cache && typeof row.render_cache === 'object' ? row.render_cache as Record<string, any> : {}
-  const sections: Array<Record<string, any>> = Array.isArray(raw.sections) ? [...raw.sections] : []
+  const raw = asRecord(row.render_cache) ?? {}
+  const sections: MutableSection[] = Array.isArray(raw.sections) ? raw.sections.flatMap((section) => { const record = asRecord(section); return record ? [record] : [] }) : []
   const existingCollectionIndex = sections.findIndex((section) =>
-    section?.contentCollection?.component === component
-    || (section?.type === 'contentFeed' && Array.isArray(section.components) && section.components[0] === component)
+    asRecord(section.contentCollection)?.component === component
+    || (section.type === 'contentFeed' && Array.isArray(section.components) && section.components[0] === component)
   )
   if (existingCollectionIndex >= 0) {
     const current = sections[existingCollectionIndex]
@@ -195,7 +225,7 @@ async function ensureCollectionSection(routeParent: string, component: ContentCo
     return
   }
 
-  const existingCareerSlot = destinationPage === '/carrer-job' ? sections.findIndex((section) => section?.type === 'noticeList' && /career|job|open opportunities|current vacancies/i.test(String(section.heading?.en || ''))) : -1
+  const existingCareerSlot = destinationPage === '/carrer-job' ? sections.findIndex((section) => section.type === 'noticeList' && /career|job|open opportunities|current vacancies/i.test(stringValue(asRecord(section.heading)?.en))) : -1
   const definition = COMPONENTS[component]
   const labels: Record<ContentComponent, { en: string; bn: string }> = {
     project: { en: 'Projects', bn: 'প্রকল্পসমূহ' }, news: { en: 'News', bn: 'সংবাদ' }, enterprise: { en: 'Enterprises', bn: 'উদ্যোগসমূহ' },
@@ -280,7 +310,7 @@ export async function getItem(id: number) {
 
 function touch() { revalidatePath('/', 'layout'); revalidateTag('site-content', 'max') }
 
-export async function createItem(component: ContentComponent, slug: string, input: Record<string, unknown>, status: 'published' | 'draft' | 'hidden' = 'published') {
+export async function createItem(component: ContentComponent, slug: string, input: JsonObject, status: 'published' | 'draft' | 'hidden' = 'published') {
   if (!['published', 'draft', 'hidden'].includes(status)) throw new ContentError('Choose a valid visibility status.', 400, 'status')
   const { clean, attributes, routeParent } = validateValues(component, slug, input)
   await assertPublicRouteAvailable(component, slug, routeParent)
@@ -300,14 +330,14 @@ export async function createItem(component: ContentComponent, slug: string, inpu
   return toRecord(r.rows[0] as Row)
 }
 
-export async function updateItem(id: number, slug: string, input: Record<string, unknown>, expectedUpdatedAt?: string) {
+export async function updateItem(id: number, slug: string, input: JsonObject, expectedUpdatedAt?: string) {
   const existing = await getItem(id)
   if (!existing) throw new ContentError('This item no longer exists.', 404)
   if (expectedUpdatedAt && new Date(expectedUpdatedAt).getTime() !== new Date(existing.updatedAt).getTime()) throw new ContentError('This item changed in another session. Reload it before saving.', 409)
   const { clean, attributes, routeParent } = validateValues(existing.component, slug, input, existing.values.routeParent)
   await assertPublicRouteAvailable(existing.component, slug, routeParent, id)
   await ensureCollectionSection(routeParent, existing.component)
-  const preservedSystemAttributes = Object.fromEntries(['fieldNews', 'seedSample', 'seedSource', 'detailPath', 'detailType'].filter((key) => existing.values[key]).map((key) => [key, existing.values[key]])) as Record<string, unknown>
+  const preservedSystemAttributes = Object.fromEntries(['fieldNews', 'seedSample', 'seedSource', 'detailPath', 'detailType'].filter((key) => existing.values[key]).map((key) => [key, existing.values[key]])) as JsonObject
   const canonicalDetailParent = FIXED_CONTENT_PARENT[existing.component]
   if (canonicalDetailParent) {
     preservedSystemAttributes.detailType = existing.component
@@ -405,7 +435,7 @@ const FIELD_NEWS_ENGLISH: Record<string, { title: string; summary: string }> = {
   'climate-resilience-update': { title: 'Climate Resilience Update', summary: 'This update covers climate adaptation, environmental care, sustainable agriculture, clean energy and disaster preparedness for resilient livelihoods.' },
   'community-partnership-update': { title: 'Community Partnership Update', summary: 'Discover updates about collaboration between community groups, institutions and development partners working toward shared priorities and local initiatives.' },
 }
-const hasEnglishCopy = (value: unknown) => typeof value === 'string' && /[A-Za-z]{2}/.test(value) && !/[\u0980-\u09FF]{4}/.test(value)
+const hasEnglishCopy = (value: ExternalValue) => typeof value === 'string' && /[A-Za-z]{2}/.test(value) && !/[\u0980-\u09FF]{4}/.test(value)
 
 function toFeed(row: Row): FeedItem {
   const rec = toRecord(row)
@@ -427,16 +457,32 @@ function toFeed(row: Row): FeedItem {
 
 /** Published items of the given components, newest first. Used by public pages (server side). */
 export async function getPublishedFeed(components: ContentComponent[], limit = 60, parentPath?: string): Promise<FeedItem[]> {
-  if (!db || !components.length) return []
+  if (!components.length) return []
+  const fixedContentParent = components.length === 1 ? FIXED_CONTENT_PARENT[components[0]] : undefined
+  const detailParent = parentPath
+    ? (fixedContentParent || (parentPath === DEFAULT_CONTENT_PARENT.news ? (FIXED_CONTENT_PARENT.news || '/news')
+      : parentPath === DEFAULT_CONTENT_PARENT['success-story'] ? (FIXED_CONTENT_PARENT['success-story'] || '/success-stories')
+      : parentPath))
+    : ''
+  const fromDrive = async () => {
+    const rows = await readDriveTableSnapshot('cms_content_items')
+    if (!rows) return []
+    const today = new Date().toISOString().slice(0, 10)
+    return rows.filter((row) => row.status === 'published' && components.includes(String(row.component) as ContentComponent))
+      .filter((row) => !parentPath || String((row.attributes as JsonObject | undefined)?.routeParent || DEFAULT_CONTENT_PARENT[String(row.component) as ContentComponent] || '/') === detailParent)
+      .filter((row) => String(row.component) !== 'job' || !(row.attributes as JsonObject | undefined)?.deadline || String((row.attributes as JsonObject).deadline) >= today)
+      .sort((a, b) => {
+        const av = Number((a.attributes as JsonObject | undefined)?.displayOrder)
+        const bv = Number((b.attributes as JsonObject | undefined)?.displayOrder)
+        const ah = Number.isInteger(av) && av >= 0 && av <= 999999
+        const bh = Number.isInteger(bv) && bv >= 0 && bv <= 999999
+        return (ah !== bh ? (ah ? -1 : 1) : ah && bh && av !== bv ? av - bv : String(b.published_at || '').localeCompare(String(a.published_at || ''))) || Number(a.sort_order || 0) - Number(b.sort_order || 0) || Number(b.id) - Number(a.id)
+      }).slice(0, Math.max(1, limit)).map((row) => toFeed(row as Row))
+  }
+  if (!db) return fromDrive()
   try {
     await ensureCmsSchema()
     const list = sql.join(components.map((c) => sql`${c}`), sql`, `)
-    const fixedContentParent = components.length === 1 ? FIXED_CONTENT_PARENT[components[0]] : undefined
-    const detailParent = parentPath
-      ? (fixedContentParent || (parentPath === DEFAULT_CONTENT_PARENT.news ? (FIXED_CONTENT_PARENT.news || '/news')
-        : parentPath === DEFAULT_CONTENT_PARENT['success-story'] ? (FIXED_CONTENT_PARENT['success-story'] || '/success-stories')
-        : parentPath))
-      : ''
     const r = await withDbRetry(() => database().execute(sql`
       SELECT * FROM cms_content_items WHERE status = 'published' AND component IN (${list})
         ${parentPath ? sql`AND (
@@ -453,7 +499,11 @@ export async function getPublishedFeed(components: ContentComponent[], limit = 6
         CASE WHEN COALESCE(attributes->>'displayOrder', '') ~ '^[0-9]{1,6}$' THEN (attributes->>'displayOrder')::integer ELSE 0 END ASC,
         published_at DESC, sort_order ASC, id DESC LIMIT ${limit}`))
     return (r.rows as Row[]).map(toFeed)
-  } catch (error) { console.error('Content feed failed', error); return [] }
+  } catch (error) {
+    if (!isTransientDatabaseError(error)) throw error
+    console.error('[site-failover] Transient Neon content feed failure; attempting the Drive mirror.', error)
+    return fromDrive()
+  }
 }
 
 
@@ -470,6 +520,96 @@ const ROUTED_DETAIL_COMPONENTS: Array<{ prefix: string; component: ContentCompon
   { prefix: '/notice/', component: 'notice' },
   { prefix: '/carrer-job/', component: 'job' },
 ]
+
+function buildContentDetailPage(row: Row, normalized: string, pathSlug: string): PageData {
+  const attributes = row.attributes && typeof row.attributes === 'object' ? row.attributes as JsonObject : {}
+  const title: Bilingual = { en: String(row.title_en || ''), bn: String(row.title_bn || row.title_en || '') }
+  const summary: Bilingual = { en: String(row.summary_en || ''), bn: String(row.summary_bn || row.summary_en || '') }
+  const bodyEn = String(row.body_en || '').trim() || summary.en
+  const bodyBn = String(row.body_bn || '').trim() || summary.bn
+  const englishParagraphs = bodyEn.split(/\n\s*\n/).map((x) => x.trim()).filter(Boolean)
+  const banglaParagraphs = bodyBn.split(/\n\s*\n/).map((x) => x.trim()).filter(Boolean)
+  const count = Math.max(englishParagraphs.length, banglaParagraphs.length, 1)
+  const body: Bilingual[] = Array.from({ length: count }, (_, index) => ({
+    en: englishParagraphs[index] || englishParagraphs[englishParagraphs.length - 1] || summary.en,
+    bn: banglaParagraphs[index] || banglaParagraphs[banglaParagraphs.length - 1] || summary.bn,
+  }))
+  const imageSrc = storedImageSource(row, attributes)
+  const imageManagedValue = String(attributes.imageManaged ?? '').toLowerCase()
+  const cmsMediaManaged = Boolean(imageSrc) && !isSeedCatalogueImage(row, attributes) && (imageManagedValue === 'true' || !attributes.seedSource)
+  const locationEn = String(attributes.location_en || attributes.location || '')
+  const locationBn = String(attributes.location_bn || attributes.location_en || attributes.location || '')
+  return {
+    slug: normalized,
+    contentComponent: row.component as ContentComponent,
+    contentSlug: String(row.slug || pathSlug),
+    cmsMediaManaged,
+    jobDetails: row.component === 'job' ? {
+      ...(locationEn || locationBn ? { location: { en: locationEn, bn: locationBn } } : {}),
+      ...(attributes.employmentType ? { employmentType: String(attributes.employmentType) } : {}),
+      ...(attributes.vacancies ? { vacancies: String(attributes.vacancies) } : {}),
+      ...(attributes.salary ? { salary: String(attributes.salary) } : {}),
+      ...(attributes.deadline ? { deadline: String(attributes.deadline) } : {}),
+      ...(attributes.file || attributes.attachment ? { attachmentUrl: String(attributes.file || attributes.attachment) } : {}),
+      postedAt: isoDate(row.published_at),
+    } : undefined,
+    title,
+    typography: normalizeCmsTypography(attributes.typography),
+    subtitle: summary.en || summary.bn ? summary : undefined,
+    heroImage: cmsMediaManaged ? imageSrc : undefined,
+    metaDescription: summary.en || summary.bn ? summary : undefined,
+    status: 'published',
+    sections: [{ type: 'richText', heading: title, body, image: cmsMediaManaged ? { src: imageSrc, alt: title } : undefined }],
+  }
+}
+
+async function readContentDetailFromDrive(normalized: string, routedCandidate: { prefix: string; component: ContentComponent } | undefined): Promise<{ handled: boolean; page: PageData | null }> {
+  const [contentRows, pageRows, navRows] = await Promise.all([
+    readDriveTableSnapshot('cms_content_items'), readDriveTableSnapshot('pages'), readDriveTableSnapshot('nav_items'),
+  ])
+  if (!contentRows) return { handled: Boolean(routedCandidate), page: null }
+  if (pageRows?.some((row) => String(row.slug) === normalized) || navRows?.some((row) => String(row.href) === normalized && (row.menu_type || 'page') === 'page')) {
+    return { handled: false, page: null }
+  }
+  const segments = normalized.split('/').filter(Boolean)
+  const pathSlug = routedCandidate ? normalized.slice(routedCandidate.prefix.length) : segments.at(-1) || ''
+  const parentPath = getContentRouteParent(normalized)
+  let allowed = routedCandidate ? [routedCandidate.component] : []
+  if (!routedCandidate) {
+    const parent = pageRows?.find((row) => String(row.slug) === parentPath && String(row.status || 'published') === 'published')
+    let parentDocument = parent?.render_cache
+    if (typeof parentDocument === 'string') { try { parentDocument = JSON.parse(parentDocument) } catch { parentDocument = null } }
+    const sections = parentDocument && typeof parentDocument === 'object' && Array.isArray((parentDocument as JsonObject).sections)
+      ? (parentDocument as { sections: JsonObject[] }).sections : []
+    allowed = Array.from(new Set(sections.flatMap((section) => {
+      const feed = section.type === 'contentFeed' && Array.isArray(section.components) ? section.components[0] : undefined
+      const collection = section.contentCollection && typeof section.contentCollection === 'object' ? section.contentCollection as JsonObject : undefined
+      const selected = collection?.enabled === true ? collection.component : undefined
+      return [feed, selected].filter((component): component is ContentComponent => typeof component === 'string' && component in COMPONENTS)
+    })))
+    if (['/carrer-job', '/job-circular', '/career-job'].includes(parentPath)) allowed = Array.from(new Set([...allowed, 'job']))
+    if (!allowed.length) return { handled: false, page: null }
+  }
+  const defaultParents: Record<string, string> = {
+    project: '/projects', news: '/news', enterprise: '/enterprise-development', 'partner-agency': '/about-us/partners-networks',
+    'health-service': '/social-development/health-program', 'loan-product': '/organizational-development', product: '/enterprise-development',
+    team: '/management-staff', notice: '/notice', report: '/resources', job: '/carrer-job', 'success-story': '/success-stories', stat: '/impact/statistics',
+  }
+  const today = new Date().toISOString().slice(0, 10)
+  const matches = contentRows.filter((row) => {
+    if (row.status !== 'published' || !allowed.includes(String(row.component) as ContentComponent) || String(row.slug) !== pathSlug) return false
+    const attrs = row.attributes && typeof row.attributes === 'object' ? row.attributes as JsonObject : {}
+    const routeParent = String(attrs.routeParent || defaultParents[String(row.component)] || '/')
+    if (routeParent !== parentPath && String(attrs.detailPath || '') !== normalized) return false
+    return String(row.component) !== 'job' || !attrs.deadline || String(attrs.deadline) >= today
+  }) as Row[]
+  if (matches.length > 1 && new Set(matches.map((row) => String(row.component))).size > 1) {
+    console.error('[site-failover] Ambiguous Drive content slug across collections', { path: normalized, pathSlug })
+    return { handled: true, page: null }
+  }
+  const row = matches[0]
+  return { handled: true, page: row ? buildContentDetailPage(row, normalized, pathSlug) : null }
+}
 
 /**
  * Resolve detail routes from published CMS records. `handled` also distinguishes a
@@ -510,13 +650,13 @@ export async function getPublishedContentDetailPage(path: string): Promise<{ han
         SELECT render_cache FROM pages WHERE slug = ${parentPath} AND status = 'published' LIMIT 1
       `))
       const parentRow = parentResult.rows[0] as Row | undefined
-      const parentPage = parentRow?.render_cache && typeof parentRow.render_cache === 'object' ? parentRow.render_cache as Record<string, unknown> : null
-      const sectionList = Array.isArray(parentPage?.sections) ? parentPage!.sections as Array<Record<string, unknown>> : []
+      const parentPage = parentRow?.render_cache && typeof parentRow.render_cache === 'object' ? parentRow.render_cache as JsonObject : null
+      const sectionList = Array.isArray(parentPage?.sections) ? parentPage!.sections as JsonObject[] : []
       allowedComponents = Array.from(new Set(sectionList.flatMap((section) => {
         const feedComponent = section?.type === 'contentFeed' && Array.isArray(section.components) ? section.components[0] : undefined
         const rawCollection = section?.contentCollection
         const collection = rawCollection && typeof rawCollection === 'object' && !Array.isArray(rawCollection)
-          ? rawCollection as Record<string, unknown>
+          ? rawCollection as JsonObject
           : undefined
         const collectionComponent = collection?.enabled === true ? collection.component : undefined
         return [feedComponent, collectionComponent].filter((component): component is ContentComponent => typeof component === 'string' && component in COMPONENTS)
@@ -588,63 +728,23 @@ export async function getPublishedContentDetailPage(path: string): Promise<{ han
     }
     if (!row || row.status !== 'published') return { handled: true, page: null }
 
-    const attributes = row.attributes && typeof row.attributes === 'object' ? row.attributes as Record<string, unknown> : {}
-    const title: Bilingual = { en: String(row.title_en || ''), bn: String(row.title_bn || row.title_en || '') }
-    const summary: Bilingual = { en: String(row.summary_en || ''), bn: String(row.summary_bn || row.summary_en || '') }
-    const bodyEn = String(row.body_en || '').trim() || summary.en
-    const bodyBn = String(row.body_bn || '').trim() || summary.bn
-    const englishParagraphs = bodyEn.split(/\n\s*\n/).map((x) => x.trim()).filter(Boolean)
-    const banglaParagraphs = bodyBn.split(/\n\s*\n/).map((x) => x.trim()).filter(Boolean)
-    const count = Math.max(englishParagraphs.length, banglaParagraphs.length, 1)
-    const body: Bilingual[] = Array.from({ length: count }, (_, index) => ({
-      en: englishParagraphs[index] || englishParagraphs[englishParagraphs.length - 1] || summary.en,
-      bn: banglaParagraphs[index] || banglaParagraphs[banglaParagraphs.length - 1] || summary.bn,
-    }))
-
-    const imageSrc = storedImageSource(row, attributes)
-    const imageManagedValue = String(attributes.imageManaged ?? '').toLowerCase()
-    // Older seed records contain bundled photos, not images selected in the CMS.
-    // Hide those until an editor explicitly saves a CMS media selection.
-    const cmsMediaManaged = Boolean(imageSrc) && !isSeedCatalogueImage(row, attributes) && (imageManagedValue === 'true' || !attributes.seedSource)
-    const locationEn = String(attributes.location_en || attributes.location || '')
-    const locationBn = String(attributes.location_bn || attributes.location_en || attributes.location || '')
-
-    const page: PageData = {
-      slug: normalized,
-      contentComponent: row.component as ContentComponent,
-      contentSlug: String(row.slug || pathSlug),
-      cmsMediaManaged,
-      jobDetails: row.component === 'job' ? {
-        ...(locationEn || locationBn ? { location: { en: locationEn, bn: locationBn } } : {}),
-        ...(attributes.employmentType ? { employmentType: String(attributes.employmentType) } : {}),
-        ...(attributes.vacancies ? { vacancies: String(attributes.vacancies) } : {}),
-        ...(attributes.salary ? { salary: String(attributes.salary) } : {}),
-        ...(attributes.deadline ? { deadline: String(attributes.deadline) } : {}),
-        postedAt: isoDate(row.published_at),
-      } : undefined,
-      title,
-      subtitle: summary.en || summary.bn ? summary : undefined,
-      heroImage: cmsMediaManaged ? imageSrc : undefined,
-      metaDescription: summary.en || summary.bn ? summary : undefined,
-      status: 'published',
-      sections: [{
-        type: 'richText',
-        heading: title,
-        body,
-        image: cmsMediaManaged ? { src: imageSrc, alt: title } : undefined,
-      }],
-    }
-    return { handled: true, page }
+    return { handled: true, page: buildContentDetailPage(row, normalized, pathSlug) }
   } catch (error) {
-    console.error('CMS detail page read failed', { path: normalized, error })
-    // Fail closed for CMS-managed detail routes instead of rendering a stale snapshot.
-    return { handled: routed !== undefined || legacyLoan || genericRoute, page: null }
+    if (!isTransientDatabaseError(error)) throw error
+    console.error('[site-failover] Transient Neon CMS detail failure; attempting the Drive mirror.', { path: normalized, error })
+    try {
+      const fallback = await readContentDetailFromDrive(normalized, routedCandidate)
+      if (fallback.handled || fallback.page) return fallback
+    } catch (fallbackError) {
+      console.warn('[site-failover] Drive content detail snapshot could not be resolved.', fallbackError)
+    }
+    return { handled: routed !== undefined || legacyLoan || genericRoute || Boolean(routedCandidate), page: null }
   }
 }
 
 /** Published CMS news items for the homepage News rail. Success Stories are excluded. */
 export async function getPublishedFieldNews(limit = 12): Promise<FeedItem[]> {
-  if (!db) return []
+  if (!db) return getPublishedFeed(['news'], limit, '/news')
   try {
     await ensureCmsSchema()
     const safeLimit = Math.max(2, Math.min(30, Math.trunc(limit) || 12))
@@ -661,8 +761,9 @@ export async function getPublishedFieldNews(limit = 12): Promise<FeedItem[]> {
     `))
     return (r.rows as Row[]).map((row) => ({ ...toFeed(row), href: `/news/${String(row.slug || '')}` }))
   } catch (error) {
-    console.error('CMS field-news feed failed', error)
-    return []
+    if (!isTransientDatabaseError(error)) throw error
+    console.error('[site-failover] Transient Neon field-news failure; attempting the Drive mirror.', error)
+    return getPublishedFeed(['news'], limit, '/news')
   }
 }
 

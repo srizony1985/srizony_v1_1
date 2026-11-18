@@ -6,6 +6,7 @@ import type { Lang, PageData } from '@/types/entityType'
 import CmsCardIllustration from '@/components/home/CmsCardIllustration'
 import type { IllustrationName } from '@/types/entityType'
 import SectionActions from '@/components/ui/SectionActions'
+import { plainSectionTitle } from '@/lib/sectionTitle'
 
 type MissionSection = Extract<PageData['sections'][number], { type: 'cards' }>
 const normalizeHeading = (value?: string) => (value ?? '').trim().toLocaleLowerCase().replace(/[\s_-]+/g, ' ')
@@ -97,7 +98,7 @@ export default function MissionVisionValues({ lang, page }: { lang: Lang; page: 
   if (!source || source.visible === false || !intro.title || !intro.eyebrow || !steps.length) return null
 
   return (
-    <section className="sf-story" ref={wrapRef} style={{ '--steps': count } as CSSProperties} aria-label={intro.title[lang]}>
+    <section className="sf-story" ref={wrapRef} style={{ '--sf-story-step-count': count } as CSSProperties} aria-label={intro.title[lang]}>
       <div ref={stageRef} className={`sf-story-stage ${seen ? 'is-seen' : ''}`} data-step={index}>
         <div className="sf-story-bg" aria-hidden="true">
           <span className="sf-story-blob sf-story-blob--a" />
@@ -107,7 +108,7 @@ export default function MissionVisionValues({ lang, page }: { lang: Lang; page: 
         <div className="sf-container sf-story-inner">
           <header className="sf-story-head">
             <span className="sf-eyebrow">{intro.eyebrow[lang]}</span>
-            <h2 className="sf-h2">{intro.title[lang]}</h2>
+            <h2 className="sf-h2">{plainSectionTitle(intro.title[lang])}</h2>
           </header>
 
           <div className="sf-story-grid">
@@ -126,9 +127,9 @@ export default function MissionVisionValues({ lang, page }: { lang: Lang; page: 
               {steps.map((step, i) => {
                 const state = i === index ? 'is-active' : i < index ? 'is-past' : 'is-next'
                 return (
-                  <div key={step.stepKey} className={`sf-story-text ${state} backdrop-blur-2xl rounded-lg`} aria-hidden={i !== index}>
+                  <div key={step.stepKey} className={`sf-story-text ${state} sf-story-text-glass`} aria-hidden={i !== index}>
                     <span className="sf-story-num">{localizeDigits(`0${i + 1}`, lang)}</span>
-                    <h3 className="sf-h2 sf-story-title">{step.kicker[lang]}</h3>
+                    <h3 className="sf-h2 sf-story-title">{plainSectionTitle(step.kicker[lang])}</h3>
                     <p className="sf-story-body">{step.body[lang]}</p>
                   </div>
                 )

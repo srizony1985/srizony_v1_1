@@ -1,16 +1,20 @@
 import type { MetadataRoute } from 'next'
 import { getCmsMenuIndex } from '@/lib/site'
 import { getPublishedFeed } from '@/lib/cms/content'
-
-const base = 'https://srizonyfoundation.org.bd'
+import { getActiveCmsSite } from '@/lib/cms/site-config'
+import { getPublicSiteSnapshot } from '@/lib/site'
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+  const site = await getActiveCmsSite().catch(() => null)
+  const fallback = site?.siteKey === 'default' ? await getPublicSiteSnapshot('/').catch(() => null) : null
+  const base = String(site?.baseUrl || site?.identity?.canonicalUrl || fallback?.global?.siteIdentity?.canonicalUrl || '').replace(/\/$/, '')
+  if (!base || !/^https?:\/\//i.test(base)) return []
   const index = await getCmsMenuIndex()
   const pages = index.availablePages.filter((page) => page.status !== 'draft' && page.status !== 'archived')
   const entries: MetadataRoute.Sitemap = []
   for (const page of pages) {
     const path = page.slug === '/' ? '' : page.slug
-    const modified = page.updatedAt ? new Date(page.updatedAt) : undefined
+    const modified = 'updatedAt' in page && page.updatedAt ? new Date(page.updatedAt) : undefined
     entries.push({ url: `${base}${path}`, lastModified: modified, changeFrequency: page.slug === '/' ? 'weekly' : 'monthly', priority: page.slug === '/' ? 1 : (page.slug === '/news' || page.slug.startsWith('/news/')) ? 0.8 : 0.6 })
     entries.push({ url: `${base}/bn${path}`, lastModified: modified, changeFrequency: page.slug === '/' ? 'weekly' : 'monthly', priority: page.slug === '/' ? 0.9 : 0.5 })
   }

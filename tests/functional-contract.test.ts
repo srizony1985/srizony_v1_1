@@ -19,17 +19,17 @@ test('job applications are scoped to the canonical parent route as well as the s
   const api = read('app/api/jobs/apply/route.ts')
   const service = read('lib/cms/jobs.ts')
   assert.match(read('components/pages/JobPostingDetail.tsx'), /getContentRouteParent\(canonicalPath\)/)
-  assert.match(form, /applyForJob\(\{ jobSlug, jobRouteParent,/)
+  assert.match(form, /applyForJob\(\{[\s\S]*?jobSlug,[\s\S]*?jobRouteParent,[\s\S]*?customFields,/)
   assert.match(api, /jobRouteParent: z\.string\(\)/)
   assert.match(service, /COALESCE\(NULLIF\(attributes->>'routeParent', ''\), '\/carrer-job'\) = \$\{input\.jobRouteParent\}/)
 })
 
 test('application UI uploads a resume and submits the returned one-time token', () => {
   const form = read('components/pages/JobApplicationForm.tsx')
-  assert.match(form, /type="file" accept="application\/pdf,\.pdf" required/)
+  assert.match(form, /type="file" accept="application\/pdf,\.pdf" required=\{field\.required\}/)
   assert.match(form, /uploadJobResume\(file, honeypot\)/)
-  assert.match(form, /token = upload\.data\.resumeToken/)
-  assert.match(form, /Submit application/)
+  assert.match(form, /const token = upload\.data\.resumeToken/)
+  assert.match(form, /formConfig\.fields\.map/)
 })
 
 test('resume upload stays private and has rate limiting, validation and expiry-token support', () => {
@@ -42,18 +42,22 @@ test('resume upload stays private and has rate limiting, validation and expiry-t
   assert.match(read('lib/cms/jobs.ts'), /consumed_at IS NULL AND expires_at > now\(\)/)
 })
 
-test('application API enforces origin, required resume token, anti-spam and rate limits', () => {
+test('application API validates every CMS-defined field and supports optional or required resume uploads', () => {
   const route = read('app/api/jobs/apply/route.ts')
+  const form = read('lib/jobApplicationForm.ts')
   assert.match(route, /sameOrigin\(req\)/)
-  assert.match(route, /resumeToken: z\.string\(\)\.min\(40\)/)
+  assert.match(route, /resumeToken: z\.string\(\)\.min\(40\)\.max\(100\)\.optional\(\)/)
+  assert.match(route, /validateCustomJobFields/)
+  assert.match(route, /getMappedJobApplicationValues/)
   assert.match(route, /enforcePublicJobRateLimit\('apply'/)
-  assert.match(route, /validateJobApplicationFields/)
+  assert.match(form, /type JobApplicationSystemField/)
+  assert.match(form, /field\.type === 'resume'/)
   assert.match(route, /SF-JOB-/)
 })
 
 test('admin applications can see and open the authenticated resume endpoint', () => {
   const admin = read('app/admin/dashboard/jobs/page.tsx')
-  assert.match(admin, /a\.resumeUrl \? <a href=\{a\.resumeUrl\}/)
+  assert.match(admin, /selectedApplicant\.resumeUrl[\s\S]*?<a[^>]*href=\{selectedApplicant\.resumeUrl\}/)
   assert.match(read('app/api/media/[id]/route.ts'), /Authentication required to access this media/)
 })
 
@@ -94,9 +98,10 @@ test('functional test commands and migrations are registered', () => {
 
 test('location map loads CMS locations and retains responsive, colorful markers', () => {
   const map = read('components/home/LocationMaps.tsx')
-  const css = read('app/site-components.css')
+  const css = read('app/globals.css')
   assert.match(map, /useWebsiteEssentials/)
-  assert.match(read('components/hooks/useWebsiteEssentials.ts'), /fetch\('\/api\/website-essentials'/)
+  assert.match(read('components/hooks/useWebsiteEssentials.ts'), /getWebsiteEssentials\(\)/)
+  assert.match(read('lib/api/public.ts'), /getWebsiteEssentials = \(signal\?: AbortSignal\) => request<WebsiteEssentials>\('\/api\/website-essentials'/)
   assert.match(map, /essentials\.locations/)
   assert.match(css, /\.sf-fp-pin\.is-head \.sf-fp-dot-core[^}]*background:\s*var\(--sf-accent\)/)
   assert.match(css, /@media \(max-width: 700px\)/)
@@ -155,7 +160,8 @@ test("the CMS content list displays each item's concrete route and the seed sets
   const list = read('app/admin/dashboard/site-content/page.tsx')
   const seed = read('seed-structural.ts')
   const demo = read('scripts/seed-demo-preview.ts')
-  assert.match(list, /cms-list-route/)
+  assert.match(list, /className="cms-list-route"/)
+  assert.match(list, /<code className="cms-list-route">\{route\}<\/code>/)
   assert.match(list, /DEFAULT_CONTENT_PARENT\[r\.component\]/)
   assert.match(seed, /DEFAULT_CONTENT_PARENT\[component as keyof typeof DEFAULT_CONTENT_PARENT\]/)
   assert.match(demo, /routeParent: '\/carrer-job'/)
@@ -203,7 +209,7 @@ test('management staff is a normal slug rendered by the shared template with saf
   const route = read('app/[...slug]/page.tsx')
   const admin = read('app/admin/dashboard/website-essentials/page.tsx')
   assert.match(route, /ContentPage slug=\{canonical\}/)
-  assert.match(template, /page\.slug === '\/management-staff' && <ManagementStaffContent \/>/)
+  assert.match(template, /page\.pageView === 'staff-directory' && <ManagementStaffContent page=\{page\} \/>/)
   assert.match(page, /Management staff information will be published soon/)
   assert.match(page, /person\.published/)
   assert.match(admin, /Add staff/)
@@ -235,9 +241,9 @@ test('canonical route helper builds landing, menu and submenu detail URLs', () =
   assert.equal(getContentRouteParent('/our-projects'), '/')
   assert.equal(normalizeCmsRoutePath('/about-us/our-team/'), '/about-us/our-team')
   assert.throws(() => normalizeCmsRoutePath('/About Us'))
-  assert.match(read('lib/cms/ddl.ts'), /cms_content_items_route_slug_uq/)
-  assert.doesNotMatch(read('lib/cms/ddl.ts'), /CREATE UNIQUE INDEX IF NOT EXISTS cms_content_items_component_slug_uq/)
-  assert.match(read('lib/cms/ddl.ts'), /DROP INDEX IF EXISTS cms_content_items_component_slug_uq/)
+  assert.match(read('drizzle/0024_site_configurable_cms.sql'), /cms_content_items_route_slug_uq/)
+  assert.doesNotMatch(read('drizzle/0024_site_configurable_cms.sql'), /CREATE UNIQUE INDEX IF NOT EXISTS cms_content_items_component_slug_uq/)
+  assert.match(read('drizzle/0024_site_configurable_cms.sql'), /DROP INDEX IF EXISTS cms_content_items_component_slug_uq/)
 })
 
 test('content destinations and navigation menus allow unlimited nested levels', () => {
@@ -260,26 +266,27 @@ test('updated pages have safe shared CSS-token aliases and theme preview default
   assert.match(globals, /--sf-body:\s*var\(--sf-font-body/)
   assert.match(globals, /--sf-radius:\s*var\(--sf-radius-shape/)
   assert.match(globals, /--sf-container:\s*var\(--sf-container-wide/)
-  assert.match(adminTheme, /'--primary': `rgb\(\$\{primary\}\)`/)
+  assert.match(adminTheme, /'--cms-font-body': THEME_FONT_FAMILIES/)
+  assert.match(adminTheme, /'--cms-base-font-size': `\$\{typography\.baseSize\}px`/)
 })
 
 test('new public staff/resources and social/map labels use contrast-aware semantic link tokens', () => {
-  const polish = read('app/site-polish.css')
-  const components = read('app/site-components.css')
-  assert.match(polish, /\.sf-staff-designation[^}]*color:var\(--sf-link,var\(--sf-primary\)\)/)
-  assert.match(polish, /\.sf-resource-download[^}]*color:var\(--sf-link,var\(--sf-primary\)\)/)
-  assert.match(polish, /\.sf-social-topbar-links a[^}]*color:var\(--sf-link,var\(--sf-primary\)\)/)
-  assert.match(components, /\.sf-fp-maplink[^}]*color:var\(--sf-link,var\(--sf-primary\)\)/)
-  assert.match(components, /\.sf-fp-card-icon[^}]*color:var\(--sf-link,var\(--sf-primary\)\)/)
+  const polish = read('app/globals.css')
+  const components = read('app/globals.css')
+  assert.match(polish, /\.sf-page-main \.sf-staff-designation[^}]*color:\s*var\(--sf-link/)
+  assert.match(polish, /\.sf-page-main \.sf-resource-download[^}]*color:\s*var\(--sf-link/)
+  assert.match(polish, /\.sf-social-topbar-links a\{[^}]*color:\s*var\(--sf-link/)
+  assert.match(components, /\.sf-fp-maplink\{[^}]*color:\s*var\(--sf-link/)
+  assert.match(components, /\.sf-fp-card-icon\{[^}]*color:\s*var\(--sf-link/)
 })
 
 test('district map uses a distinct theme-aware palette for colorful working locations', () => {
   const map = read('components/home/LocationMaps.tsx')
-  const css = read('app/site-components.css')
-  assert.match(map, /function districtPaletteFill\(name: string\)/)
-  assert.match(map, /fill: selected \? 'var\(--sf-accent\)' : districtPaletteFill\(featureDistrictName\(feature\)\)/)
-  assert.match(css, /--sf-fp-district-1: #72c7c4/)
-  assert.match(css, /html\[data-mode='dark'\] \.sf-fp-svg[\s\S]*--sf-fp-district-8: #9b5821/)
+  const css = read('app/globals.css')
+  assert.match(map, /function districtPaletteIndex\(name: string\)/)
+  assert.match(map, /fillColor: selected \? accent : feature \? cssVar\(`--sf-fp-district-\$\{districtPaletteIndex\(featureDistrictName\(feature\)\) \+ 1\}`\)/)
+  assert.match(css, /--sf-fp-district-1:\\s*#72c7c4/)
+  assert.match(css, /--sf-fp-district-8:\s*#9b5821/)
 })
 
 test('global response security headers are configured without disabling external map tiles', () => {
@@ -301,7 +308,8 @@ test('scheduled backups include PostgreSQL and both private/public media buckets
   assert.match(script, /BACKUP_S3_BUCKET.*must be separate/)
   assert.match(workflow, /schedule:[\s\S]*cron: '35 20 \* \* \*'/)
   assert.match(workflow, /BACKUP_DATABASE_URL/)
-  assert.match(runbook, /Restore drill/)
-  assert.match(runbook, /not active until repository secrets\/variables and a destination bucket are configured/)
+  assert.match(runbook, /restore drill/i)
+  assert.match(runbook, /BACKUP_S3_BUCKET/)
+  assert.match(runbook, /AWS_ENDPOINT_URL_S3/)
 })
 

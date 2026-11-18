@@ -1,3 +1,4 @@
+import type { ExternalValue } from '@/types/json'
 import type { Branch } from '@/types/branch'
 
 export type OfficialSocials = {
@@ -53,7 +54,7 @@ export const DEFAULT_WEBSITE_ESSENTIALS: WebsiteEssentials = {
   locations: [],
 }
 
-export function normalizeWebsiteEssentials(value: unknown): WebsiteEssentials {
+export function normalizeWebsiteEssentials(value: ExternalValue): WebsiteEssentials {
   if (!value || typeof value !== 'object') return DEFAULT_WEBSITE_ESSENTIALS
   const data = value as Partial<WebsiteEssentials>
   const socials: Partial<OfficialSocials> = data.socials ?? {}

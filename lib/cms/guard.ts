@@ -12,8 +12,21 @@ export async function requireAdmin(...roles: AdminRole[]): Promise<{ admin: Sess
 }
 
 export function failure(error: unknown, fallback = 'Request failed.') {
-  const status = typeof (error as { status?: unknown })?.status === 'number' ? (error as { status: number }).status : 500
-  const message = error instanceof Error && status < 500 ? error.message : error instanceof Error && status === 503 ? error.message : fallback
+  // Values thrown by JavaScript APIs and drivers are not guaranteed to be Error
+  // instances. Read optional HTTP metadata only after narrowing the value.
+  const detail = error !== null && typeof error === 'object'
+    ? error as { status?: unknown; field?: unknown }
+    : null
+  const candidateStatus = detail?.status
+  const status = typeof candidateStatus === 'number'
+    && Number.isInteger(candidateStatus)
+    && candidateStatus >= 400
+    && candidateStatus <= 599
+    ? candidateStatus
+    : 500
+  const message = error instanceof Error && (status < 500 || status === 503)
+    ? error.message
+    : fallback
   if (status >= 500) console.error(fallback, error)
-  return NextResponse.json({ error: message, field: (error as { field?: string })?.field }, { status })
+  return NextResponse.json({ error: message, ...(typeof detail?.field === 'string' ? { field: detail.field } : {}) }, { status })
 }

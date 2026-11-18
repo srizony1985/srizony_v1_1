@@ -1,3 +1,4 @@
+import type { ExternalValue } from '@/types/json'
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { completeEnquiry, requestEmailVerification, upsertFormUser, verifyEmailCode } from '@/lib/formFlow'
@@ -25,7 +26,7 @@ export async function POST(req: Request) {
   try {
     const raw = await readBoundedRequestText(req, 16_384)
     if (raw === null) return NextResponse.json({ ok: false, error: { code: 'REQUEST_TOO_LARGE', message: 'Request body is too large.' } }, { status: 413 })
-    let body: unknown = null
+    let body: ExternalValue = null
     try { body = JSON.parse(raw) } catch { /* schema validation returns a generic input error */ }
     const request = requestSchema.safeParse(body)
     if (request.success) {

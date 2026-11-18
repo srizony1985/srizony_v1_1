@@ -1,3 +1,10 @@
+-- Visibility is used by this and later navigation migrations. It was added
+-- to the final schema repair in 0026, but must exist before migration 0013.
+-- Keep this additive so databases with an older nav_items table are upgraded safely.
+ALTER TABLE nav_items
+  ADD COLUMN IF NOT EXISTS is_visible BOOLEAN NOT NULL DEFAULT true;
+--> statement-breakpoint
+
 -- Landing is the only top-level navigation item. Existing menu rows are moved
 -- beneath the shared Landing row without rewriting their public hrefs; since
 -- Landing resolves to `/`, current canonical routes remain unchanged.

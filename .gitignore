@@ -18,3 +18,6 @@ __MACOSX/
 .vercel/
 coverage/
 npm-debug.log*
+
+# Neon snapshots contain production records; keep generated exports out of Git.
+/drive-data/*.json

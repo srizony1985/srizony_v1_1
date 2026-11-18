@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs'
 const read = (path) => readFileSync(new URL(path, import.meta.url), 'utf8')
 const page = read('../app/admin/dashboard/overview/page.tsx')
 const route = read('../app/api/admin/dashboard/route.ts')
-const ddl = read('../lib/cms/ddl.ts')
+const migration = read('../drizzle/0027_job_applications_created_at_index.sql')
 
 test('dashboard removes enquiry, form-user and completed-donation metrics', () => {
   assert.doesNotMatch(page, /label: ['\"]Enquiries['\"]/i)
@@ -33,7 +33,7 @@ test('job application frequency is grouped by Dhaka calendar date', () => {
 })
 
 test('application trend query has a created-at index for range scans', () => {
-  assert.match(ddl, /job_applications_created_idx ON job_applications\(created_at DESC\)/)
+  assert.match(migration, /job_applications_created_idx[\s\S]*ON job_applications \(created_at DESC\)/)
   assert.match(route, /WITH bounds AS \(/)
   assert.match(route, /AS start_at/)
   assert.match(route, /AS end_at/)

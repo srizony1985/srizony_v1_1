@@ -1,3 +1,4 @@
+import type { ExternalValue } from '@/types/json'
 import { NextResponse } from 'next/server'
 import { createHash } from 'node:crypto'
 import { z } from 'zod'
@@ -21,7 +22,7 @@ function configuredUsers(): AdminUser[] {
 export async function POST(req: Request) {
   const raw = await readBoundedRequestText(req, 16_384)
   if (raw === null) return NextResponse.json({ error: 'Request body is too large or invalid.' }, { status: 413 })
-  let input: unknown = null
+  let input: ExternalValue = null
   try { input = JSON.parse(raw) } catch { /* schema validation returns a generic input error */ }
   const result = schema.safeParse(input)
   if (!result.success) return NextResponse.json({ error: 'Enter a valid email and password.' }, { status: 400 })

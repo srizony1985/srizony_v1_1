@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
-import { createReadStream } from 'node:fs';
+import { createReadStream, createWriteStream } from 'node:fs';
 import { open, stat } from 'node:fs/promises';
+import { pipeline } from 'node:stream/promises';
 import { createGoogleJwtAssertion, assertGoogleCredentialsConfigured } from './google-auth.mjs';
 
 const DRIVE_API = 'https://www.googleapis.com/drive/v3';
@@ -56,14 +57,17 @@ export async function checkDriveFolder() {
   const id = getFolderId();
   const params = new URLSearchParams({
     supportsAllDrives: 'true',
-    fields: 'id,name,mimeType,driveId,capabilities(canAddChildren,canEdit)',
+    fields: 'id,name,mimeType,driveId,trashed,capabilities/canAddChildren,capabilities/canEdit,capabilities/canListChildren',
   });
   const folder = await driveApi(`/files/${encodeURIComponent(id)}?${params}`);
-  if (folder.mimeType !== 'application/vnd.google-apps.folder') {
-    throw new Error('GOOGLE_DRIVE_FOLDER_ID must point to a Google Drive folder, not a file.');
+  if (folder.mimeType !== 'application/vnd.google-apps.folder' || folder.trashed) {
+    throw new Error('GOOGLE_DRIVE_FOLDER_ID must point to an active Google Drive folder, not a file or trashed folder.');
   }
-  if (folder.capabilities?.canAddChildren === false) {
-    throw new Error('The service account cannot add files to this folder. Grant Editor access or use a Shared Drive folder.');
+  if (folder.capabilities?.canListChildren === false) {
+    throw new Error('The service account cannot list the configured backup folder. Grant at least Viewer access.');
+  }
+  if (!folder.driveId || folder.capabilities?.canAddChildren !== true) {
+    throw new Error('Full archive uploads require a Shared Drive folder where the service account can add children. Add the service account as a Contributor or Content manager.');
   }
   return folder;
 }
@@ -155,7 +159,7 @@ async function uploadChunk(uploadUrl, buffer, start, total, token) {
   throw lastError instanceof Error ? lastError : new Error('Drive upload failed.');
 }
 
-export async function uploadDriveBackup(filePath, { name, prefix, timestamp } = {}) {
+export async function uploadDriveBackup(filePath, { name, prefix, timestamp, backupUtc } = {}) {
   assertDriveConfigured();
   const folder = await checkDriveFolder();
   const fileInfo = await stat(filePath);
@@ -171,7 +175,7 @@ export async function uploadDriveBackup(filePath, { name, prefix, timestamp } = 
     mimeType: 'application/gzip',
     parents: [folder.id],
     description: `Srizony Foundation full backup. SHA-256: ${integrity.sha256}`,
-    appProperties: { application: 'srizony-foundation', backupType: 'full', sha256: integrity.sha256 },
+    appProperties: { application: 'srizony-foundation', backupType: 'full', sha256: integrity.sha256, backupUtc: backupUtc || new Date().toISOString(), backupTimezone: 'Asia/Dhaka' },
   };
   const start = await fetch(`${UPLOAD_API}/files?uploadType=resumable&supportsAllDrives=true&fields=id,name,mimeType,size,md5Checksum,createdTime,webViewLink,driveId`, {
     method: 'POST',
@@ -229,7 +233,7 @@ export async function listDriveBackups({ prefix = 'srizony-foundation-full-backu
   do {
     const params = new URLSearchParams({
       q: `'${folderId.replace(/'/g, "\\'")}' in parents and trashed=false`,
-      fields: 'nextPageToken,files(id,name,mimeType,createdTime,modifiedTime,size,webViewLink,appProperties)',
+      fields: 'nextPageToken,files(id,name,mimeType,createdTime,modifiedTime,size,webViewLink,appProperties,capabilities/canDownload)',
       pageSize: String(Math.min(1000, Math.max(1, pageSize))),
       spaces: 'drive',
       supportsAllDrives: 'true',
@@ -244,6 +248,41 @@ export async function listDriveBackups({ prefix = 'srizony-foundation-full-backu
   return files
     .filter((file) => file.name?.startsWith(`${prefix}-`) && file.name.endsWith('.tar.gz'))
     .sort((a, b) => String(b.createdTime || '').localeCompare(String(a.createdTime || '')));
+}
+
+/** Download only a backup archive owned by this application from the configured folder. */
+export async function downloadDriveBackup(fileId, destinationPath) {
+  if (!/^[A-Za-z0-9_-]{10,200}$/.test(String(fileId || ''))) throw new Error('A valid Google Drive backup file ID is required.');
+  const folder = await checkDriveFolder();
+  const params = new URLSearchParams({
+    supportsAllDrives: 'true',
+    fields: 'id,name,mimeType,size,parents,appProperties,trashed',
+  });
+  const metadata = await driveApi(`/files/${encodeURIComponent(fileId)}?${params}`);
+  if (metadata.trashed || !Array.isArray(metadata.parents) || !metadata.parents.includes(folder.id)) {
+    throw new Error('The selected backup is not available in the configured backup folder.');
+  }
+  if (metadata.mimeType !== 'application/gzip' || !String(metadata.name || '').endsWith('.tar.gz')
+    || metadata.appProperties?.application !== 'srizony-foundation' || metadata.appProperties?.backupType !== 'full') {
+    throw new Error('The selected Drive file is not a verified Srizony full point-in-time backup.');
+  }
+  const token = await getAccessToken();
+  const response = await fetch(`${DRIVE_API}/files/${encodeURIComponent(fileId)}?alt=media&supportsAllDrives=true`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok || !response.body) {
+    const detail = await response.text().catch(() => '');
+    throw new Error(`Could not download the selected backup (${response.status}): ${detail.slice(0, 300)}`);
+  }
+  await pipeline(response.body, createWriteStream(destinationPath, { mode: 0o600 }));
+  const integrity = await sha256AndMd5(destinationPath);
+  const bytes = (await stat(destinationPath)).size;
+  if (bytes <= 0 || Number(metadata.size) !== bytes) throw new Error('Downloaded backup size does not match Google Drive metadata.');
+  const expectedHash = String(metadata.appProperties?.sha256 || '').toLowerCase();
+  if (!/^[a-f0-9]{64}$/.test(expectedHash) || integrity.sha256 !== expectedHash) {
+    throw new Error('Downloaded backup SHA-256 verification failed.');
+  }
+  return { id: metadata.id, name: metadata.name, size: bytes, sha256: integrity.sha256 };
 }
 
 export async function pruneDriveBackups({ prefix = 'srizony-foundation-full-backup', retentionDays = 35 } = {}) {

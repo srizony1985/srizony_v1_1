@@ -27,5 +27,5 @@ export default function Reveal({ children, delay = 0, from = 'up', className = '
     return () => observer.disconnect()
   }, [])
 
-  return <div ref={ref} className={`sf-reveal sf-reveal--${from} ${className}`.trim()} style={{ '--d': `${delay}ms` } as CSSProperties}>{children}</div>
+  return <div ref={ref} className={`sf-reveal sf-reveal--${from} ${className}`.trim()} style={{ '--sf-reveal-delay': `${delay}ms` } as CSSProperties}>{children}</div>
 }

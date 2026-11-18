@@ -1,3 +1,4 @@
+import type { JsonValue } from '@/types/json'
 import { NextResponse } from 'next/server'
 import { sql } from 'drizzle-orm'
 import { db, withDbRetry } from '@/lib/db'
@@ -18,7 +19,7 @@ export async function GET(req: Request) {
     await ensureCmsSchema()
     const existing = await withDbRetry(() => database.execute(sql`SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'`))
     const existingNames = new Set((existing.rows as Array<{ table_name: string }>).map((row) => row.table_name))
-    const data: Record<string, unknown[]> = {}
+    const data: Record<string, JsonValue[]> = {}
     const counts: Record<string, number> = {}
     for (const table of CMS_TRANSFER_TABLES) {
       if (!existingNames.has(table)) continue
@@ -31,7 +32,7 @@ export async function GET(req: Request) {
       if (result.rows.length > CMS_TRANSFER_MAX_ROWS_PER_TABLE) {
         return NextResponse.json({ error: `The table ${table} exceeds the export row limit. Export it through a dedicated backup process.` }, { status: 413 })
       }
-      data[table] = result.rows as unknown[]
+      data[table] = result.rows as JsonValue[]
       counts[table] = result.rows.length
     }
     const payload = {

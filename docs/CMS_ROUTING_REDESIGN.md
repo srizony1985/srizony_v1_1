@@ -28,7 +28,7 @@
 - A content-feed section is normalized on save to a one-item `components` array. The CMS must not use multiple content types in a single feed section because that would make item slugs ambiguous.
 - Content slugs are unique per destination route (route parent + slug). The same short slug may exist under two different parents, but not twice under the same parent.
 - A content detail URL cannot be created if it collides with a page or internal navigation route. Creating a menu is rejected if existing content already occupies that URL.
-- The database index is `cms_content_items_route_slug_uq`. `lib/cms/ddl.ts` mirrors this design; it intentionally drops the legacy `cms_content_items_component_slug_uq` index before creating the route-scoped index. If a legacy database already contains same-parent/same-slug collisions across different content types, the migration preserves the content and slug but returns the colliding records to their own type collection routes before adding the unique index.
+- The database index is `cms_content_items_route_slug_uq`. The versioned SQL migration intentionally drops the legacy `cms_content_items_component_slug_uq` index before creating the route-scoped index. If a legacy database already contains same-parent/same-slug collisions across different content types, the migration preserves the content and slug but returns the colliding records to their own type collection routes before adding the unique index.
 
 ## Career / Jobs behavior
 

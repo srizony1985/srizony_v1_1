@@ -4,12 +4,22 @@ import { useEffect, useRef } from 'react'
 import Button from '@/components/ui/ActionButton'
 import { ArrowRight } from 'lucide-react'
 import type { Lang, PageData } from '@/types/entityType'
-import Illustration from '@/components/home/Illustration'
 import Container from '@/components/containers/Container'
 import Stats from '@/components/ui/Stats'
+import { plainSectionTitle } from '@/lib/sectionTitle'
+import GrowthTree from '@/components/home/GrowthTree'
 
 type GrowthSectionData = Extract<PageData['sections'][number], { type: 'stats' }>
 const normalizeHeading = (value?: string) => (value ?? '').trim().toLocaleLowerCase().replace(/[\s_-]+/g, ' ')
+
+const HEADING: Partial<Record<Lang, string>> & { en: string } = {
+  en: 'Our Journey of Growth: 42 Years of Impact (1985–2026)',
+  bn: 'আমাদের প্রবৃদ্ধির যাত্রা: ৪২ বছরের প্রভাব (১৯৮৫–২০২৬)',
+}
+const TAGLINE: Partial<Record<Lang, string>> & { en: string } = {
+  en: 'Growing Together, Transforming Lives, Building a Better Future.',
+  bn: 'একসাথে বেড়ে ওঠা, জীবন বদলে দেওয়া, একটি উন্নততর ভবিষ্যৎ গড়া।',
+}
 
 export default function GrowthSection({ lang, page }: { lang: Lang; page: PageData }) {
   const section = page.sections.find((item): item is GrowthSectionData => item.type === 'stats' && (item.homeComponent === 'growth' || normalizeHeading(item.heading?.en) === 'growing together'))
@@ -19,7 +29,6 @@ export default function GrowthSection({ lang, page }: { lang: Lang; page: PageDa
     return { id: `home-stat-${index}`, value: /^\d+$/.test(numeric) ? Number(numeric) : raw, label: item.label, note: item.note, icon: item.icon ?? 'users', illustration: item.illustration, image: item.image }
   })
   const eyebrow = section?.eyebrow
-  const heading = section?.heading
   const button = section?.buttonConfig
   const ref = useRef<HTMLElement | null>(null)
   useEffect(() => {
@@ -36,7 +45,7 @@ export default function GrowthSection({ lang, page }: { lang: Lang; page: PageDa
     observer.observe(node)
     return () => observer.disconnect()
   }, [])
-  if (!section || section.visible === false || !heading || !eyebrow) return null
+  if (!section || section.visible === false) return null
   const isSecondaryOnly = button?.mode === 'secondary'
   const aboutLabel = button?.visible ? (isSecondaryOnly ? (button.secondaryLabel ?? button.label) : button.label) : undefined
   const aboutHref = button?.visible ? (isSecondaryOnly ? (button.secondaryHref ?? button.href) : button.href) : undefined
@@ -45,12 +54,17 @@ export default function GrowthSection({ lang, page }: { lang: Lang; page: PageDa
   const showSecondary = Boolean(button?.visible && button.mode === 'both' && button.secondaryLabel && button.secondaryHref)
   return (
     <section ref={ref} className="sf-section sf-growth sf-anim" aria-labelledby="sf-growth-title">
-      <Container className="sf-growth-grid">
-        <div className="sf-growth-art"><Illustration kind="growth" label={heading[lang]} year={section?.illustrationYear || '1985'} /></div>
-        <div className="sf-growth-copy">
-          <span className="sf-eyebrow">{eyebrow[lang]}</span>
-          <h2 id="sf-growth-title" className="sf-h2">{heading[lang]}</h2>
-          {section?.introBody?.[lang] && <p className="sf-growth-lead">{section.introBody[lang]}</p>}
+      <Container>
+        <div className="sf-growth-head">
+          {eyebrow?.[lang] && <span className="sf-eyebrow">{plainSectionTitle(eyebrow[lang])}</span>}
+          <h2 id="sf-growth-title" className="sf-h2">{HEADING[lang] ?? HEADING.en}</h2>
+          <p className="sf-growth-tagline">{TAGLINE[lang] ?? TAGLINE.en}</p>
+          {section.introBody?.[lang] && <p className="sf-growth-lead">{section.introBody[lang]}</p>}
+        </div>
+
+        <GrowthTree lang={lang} />
+
+        <div className="sf-growth-foot">
           <Stats items={counters} lang={lang} animated showIcons className="sf-growth-stats" />
           {button?.visible && <div className="sf-cta-actions">
             {aboutLabel && aboutHref && (showPrimary || isSecondaryOnly) && <Button href={aboutHref} action={aboutAction} variant={button.mode === 'both' ? 'primary' : button.mode === 'secondary' ? 'outline' : 'ghost'}>

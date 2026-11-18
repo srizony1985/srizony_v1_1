@@ -1,18 +1,22 @@
+import type { ExternalValue, JsonObject } from '@/types/json'
 import { sql } from 'drizzle-orm'
 import { revalidatePath, revalidateTag } from 'next/cache'
-import { db, withDbRetry } from '@/lib/db'
+import { db, isTransientDatabaseError, withDbRetry } from '@/lib/db'
+import { readDriveTableSnapshot } from '@/lib/google/drive-snapshot'
 import { saveDocument } from '@/lib/site'
-import type { PageData, PageSection, Section } from '@/types/entityType'
+import type { CmsTypography, PageData, PageSection, Section } from '@/types/entityType'
+import type { NavigationMenuWriteInput, NavigationMenuUpdateInput, NavigationMoveNode as MoveNode } from '@/types/navigation'
+export type { MoveNode }
+export type { MenuType, SectionButtonType } from '@/types/navigation'
 import { CONTENT_COLLECTION_ROUTES } from './components'
 import { ensureCmsSchema } from './ensureSchema'
-import { canonicalizeCmsRoute, getContentRouteParent } from '@/lib/cms/routes'
+import { canonicalizeCmsRoute, getContentRouteParent, LEGACY_ROUTE_ALIASES } from '@/lib/cms/routes'
 import { parseRenderedComponents, RENDERED_COMPONENT_TYPES } from './rendered-components'
 export { RENDERED_COMPONENT_TYPES } from './rendered-components'
 
-type Row = Record<string, any>
-export type MenuType = 'page' | 'external' | 'folder'
-export type SectionButtonType = 'none' | 'primary' | 'secondary' | 'both'
-export type NavNode = { id: number; parentId?: number | null; labelEn: string; labelBn: string; slug: string; visible: boolean; isLandingPage?: boolean; renderedComponents: Section['type'][]; menuType: MenuType; sectionCount: number; sectionContentType: Section['type']; sectionButtonType: SectionButtonType; children: NavNode[] }
+type Row = Record<string, unknown>
+import type { MenuType, SectionButtonType } from '@/types/navigation'
+export type NavNode = { id: number; parentId?: number | null; labelEn: string; labelBn: string; slug: string; visible: boolean; isLandingPage?: boolean; renderedComponents: Section['type'][]; menuType: MenuType; sectionCount: number; sectionContentType: Section['type']; sectionButtonType: SectionButtonType; typography?: CmsTypography; children: NavNode[] }
 export type NavGroupTree = { id: number; key: string; labelEn: string; labelBn: string; landingId: number; items: NavNode[] }
 export class NavError extends Error { constructor(message: string, public status = 400) { super(message) } }
 
@@ -64,6 +68,7 @@ const refresh = () => {
   revalidatePath('/api/navigation')
   revalidatePath('/api/site')
   revalidateTag('site-content', 'max')
+  revalidateTag('site-navigation', 'max')
 }
 
 export function normalizeSlug(input: string) {
@@ -86,18 +91,29 @@ function normalizeMenuHref(input: string, menuType: MenuType) {
 
 /** Menu routes are explicit page paths, not values inferred from their menu parent. */
 function normalizeStoredMenuHref(input: string, menuType: MenuType) {
-  return normalizeMenuHref(input, menuType)
+  const normalized = normalizeMenuHref(input, menuType)
+  // Navigation stores the canonical public route. Legacy aliases remain valid
+  // router redirects but must never become duplicate CMS page records.
+  return menuType === 'page' ? canonicalizeCmsRoute(normalized) : normalized
 }
-function cleanSectionCount(value: unknown) {
+
+async function pruneLegacyPageAliases(canonicalSlug: string) {
+  if (!canonicalSlug || canonicalSlug === '/') return
+  const aliases = Object.keys(LEGACY_ROUTE_ALIASES).filter((alias) => canonicalizeCmsRoute(alias) === canonicalSlug && alias !== canonicalSlug)
+  if (!aliases.length) return
+  const list = sql.join(aliases.map((alias) => sql`${alias}`), sql`, `)
+  await run(sql`DELETE FROM pages WHERE slug IN (${list})`)
+}
+function cleanSectionCount(value: ExternalValue) {
   const count = Number(value)
   if (!Number.isInteger(count) || count < 1 || count > 12) throw new NavError('Choose between 1 and 12 page sections.')
   return count
 }
-function cleanSectionType(value: unknown): Section['type'] {
+function cleanSectionType(value: ExternalValue): Section['type'] {
   if (typeof value === 'string' && SECTION_TYPES.includes(value as Section['type'])) return value as Section['type']
   throw new NavError('Select a valid section content type.')
 }
-function cleanButtonType(value: unknown): SectionButtonType {
+function cleanButtonType(value: ExternalValue): SectionButtonType {
   if (typeof value === 'string' && BUTTON_TYPES.includes(value as SectionButtonType)) return value as SectionButtonType
   return 'none'
 }
@@ -105,7 +121,7 @@ function cleanButtonType(value: unknown): SectionButtonType {
 function defaultSection(type: Section['type'], titleEn: string, titleBn: string, slug: string, buttonType: SectionButtonType, index = 0): PageSection {
   const heading = { en: index ? `${titleEn} — section ${index + 1}` : titleEn, bn: index ? `${titleBn} — অংশ ${index + 1}` : titleBn }
   const blank = { en: '', bn: '' }
-  const section: any = (() => {
+  const section: Record<string, unknown> = (() => {
     switch (type) {
       case 'richText': return { type, heading, body: [{ ...blank }] }
       case 'stats': return { type, items: [] }
@@ -141,19 +157,92 @@ function defaultSection(type: Section['type'], titleEn: string, titleBn: string,
   return section as PageSection
 }
 
-function checkRenderedComponents(value: unknown): Section['type'][] {
+function checkRenderedComponents(value: ExternalValue): Section['type'][] {
   const list = Array.isArray(value) ? value : []
   const parsed = Array.from(new Set(list.filter((v): v is Section['type'] => typeof v === 'string' && RENDERED_COMPONENT_TYPES.includes(v as Section['type']))))
   if (!parsed.length) throw new NavError('Select at least one rendered component for this page.')
   return parsed
 }
 
-export async function getNavigationTree(): Promise<NavGroupTree[]> {
+function snapshotObject(value: ExternalValue): JsonObject | null {
+  if (value && typeof value === 'object' && !Array.isArray(value)) return value as JsonObject
+  if (typeof value === 'string') {
+    try {
+      const parsed: ExternalValue = JSON.parse(value)
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as JsonObject : null
+    } catch { return null }
+  }
+  return null
+}
+
+async function getNavigationTreeFromDrive(): Promise<NavGroupTree[]> {
+  const [groups, items, pages] = await Promise.all([
+    readDriveTableSnapshot('nav_groups'),
+    readDriveTableSnapshot('nav_items'),
+    readDriveTableSnapshot('pages'),
+  ])
+  if (!groups || !items || !pages) throw new NavError('Google Drive does not contain a complete recent navigation snapshot. Navigation is temporarily unavailable.', 503)
+
+  const group = groups.find((row) => String(row.key) === 'primary')
+  if (!group) throw new NavError('The Drive navigation snapshot does not contain the primary navigation group.', 503)
+  const groupId = Number(group.id)
+  const groupItems = items.filter((row) => Number(row.group_id) === groupId)
+  const landing = groupItems.find((row) => String(row.href) === '/' && String(row.menu_type || 'page') === 'page')
+  if (!landing) throw new NavError('The Drive navigation snapshot does not contain the fixed Home item.', 503)
+  const landingId = Number(landing.id)
+  const pagesBySlug = new Map(pages.map((page) => [String(page.slug), page]))
+
+  const build = (parentId: number | null): NavNode[] => groupItems
+    .filter((row) => row.parent_id == null ? parentId === null : Number(row.parent_id) === parentId)
+    .sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0) || Number(a.id) - Number(b.id))
+    .map((row) => {
+      const slug = String(row.href || '')
+      const menuType: MenuType = ['external', 'folder'].includes(String(row.menu_type)) ? row.menu_type as MenuType : 'page'
+      const page = menuType === 'page' ? pagesBySlug.get(slug) : undefined
+      const document = snapshotObject(page?.render_cache)
+      const sections = Array.isArray(document?.sections) ? document.sections : []
+      const firstSection = snapshotObject(sections[0] as ExternalValue)
+      const actualSectionType = String(firstSection?.type || row.section_content_type || 'richText')
+      const buttonConfig = snapshotObject(firstSection?.buttonConfig)
+      const actualButtonType = buttonConfig
+        ? buttonConfig.visible === true ? String(buttonConfig.mode || 'primary') : 'none'
+        : actualSectionType === 'cta' && firstSection?.secondary ? 'both'
+          : actualSectionType === 'cta' && firstSection?.primary ? 'primary'
+            : String(row.section_button_type || 'none')
+      return {
+        id: Number(row.id),
+        parentId: row.parent_id == null ? null : Number(row.parent_id),
+        labelEn: String(row.label_en || ''),
+        labelBn: String(row.label_bn || ''),
+        slug,
+        visible: row.is_visible !== false,
+        isLandingPage: slug === '/' && menuType !== 'folder',
+        renderedComponents: parseRenderedComponents(row.content_types),
+        menuType,
+        sectionCount: Math.max(1, Math.min(12, sections.length || Number(row.section_count) || 1)),
+        sectionContentType: SECTION_TYPES.includes(actualSectionType as Section['type']) ? actualSectionType as Section['type'] : 'richText',
+        sectionButtonType: BUTTON_TYPES.includes(actualButtonType as SectionButtonType) ? actualButtonType as SectionButtonType : 'none',
+        typography: row.typography && typeof row.typography === 'object' && !Array.isArray(row.typography) ? row.typography as CmsTypography : undefined,
+        children: build(Number(row.id)),
+      }
+    })
+
+  return [{
+    id: groupId,
+    key: 'primary',
+    labelEn: String(group.label_en || 'Site Navigation'),
+    labelBn: String(group.label_bn || 'সাইট নেভিগেশন'),
+    landingId,
+    items: build(null),
+  }]
+}
+
+async function getNavigationTreeFromDatabase(): Promise<NavGroupTree[]> {
   await ensureCmsSchema()
   const landingId = await ensureLandingRootHierarchy()
   const rows = (await run(sql`
     SELECT g.id AS gid, g.key, g.label_en AS g_en, g.label_bn AS g_bn,
-           i.id, i.parent_id, i.label_en, i.label_bn, i.href, i.sort_order, i.content_types, i.menu_type, i.is_visible,
+           i.id, i.parent_id, i.label_en, i.label_bn, i.href, i.sort_order, i.content_types, i.menu_type, i.is_visible, i.typography,
            COALESCE(CASE WHEN jsonb_typeof(p.render_cache->'sections') = 'array' THEN jsonb_array_length(p.render_cache->'sections') END, i.section_count, 1) AS actual_section_count,
            COALESCE(p.render_cache->'sections'->0->>'type', i.section_content_type, 'richText') AS actual_section_content_type,
            CASE WHEN p.render_cache->'sections'->0->'buttonConfig' IS NOT NULL
@@ -185,11 +274,22 @@ export async function getNavigationTree(): Promise<NavGroupTree[]> {
       sectionCount: Math.max(1, Math.min(12, Number(row.actual_section_count || row.section_count || 1))),
       sectionContentType: (SECTION_TYPES.includes(row.actual_section_content_type as Section['type']) ? row.actual_section_content_type : 'richText') as Section['type'],
       sectionButtonType: (BUTTON_TYPES.includes(row.actual_section_button_type as SectionButtonType) ? row.actual_section_button_type : 'none') as SectionButtonType,
+      typography: row.typography && typeof row.typography === 'object' ? row.typography as CmsTypography : undefined,
       children: build(Number(row.id)),
     }))
   return [{ id: Number(primary.gid), key: 'primary', labelEn: 'Site Navigation', labelBn: 'সাইট নেভিগেশন', landingId, items: build(null) }]
 }
 
+
+export async function getNavigationTree(): Promise<NavGroupTree[]> {
+  if (!db) return getNavigationTreeFromDrive()
+  try {
+    return await getNavigationTreeFromDatabase()
+  } catch (error) {
+    if (isTransientDatabaseError(error)) return getNavigationTreeFromDrive()
+    throw error
+  }
+}
 export async function setMenuVisibility(id: number, visible: boolean) {
   await ensureCmsSchema()
   await ensureLandingRootHierarchy()
@@ -202,6 +302,23 @@ export async function setMenuVisibility(id: number, visible: boolean) {
   return { id, visible: Boolean((result.rows[0] as Row).is_visible) }
 }
 
+
+export async function setMenuVisibilityBySlug(slug: string, visible: boolean) {
+  await ensureCmsSchema()
+  await ensureLandingRootHierarchy()
+  const canonicalSlug = canonicalizeCmsRoute(slug)
+  if (canonicalSlug === '/') throw new NavError('Landing page navigation is fixed.', 409)
+  const aliases = Object.keys(LEGACY_ROUTE_ALIASES).filter((alias) => canonicalizeCmsRoute(alias) === canonicalSlug)
+  const candidates = Array.from(new Set([slug, canonicalSlug, ...aliases])).filter(Boolean)
+  const hrefs = sql.join(candidates.map((candidate) => sql`${candidate}`), sql`, `)
+  const result = await run(sql`UPDATE nav_items SET is_visible = ${visible}
+    WHERE COALESCE(menu_type, 'page') = 'page' AND href IN (${hrefs})
+    RETURNING id, is_visible`)
+  if (!result.rows.length) throw new NavError('This page is not connected to a navigation item. Add it to Site Navigation before changing its navigation visibility.', 404)
+  const first = result.rows[0] as Row
+  refresh()
+  return { id: Number(first.id), visible: Boolean(first.is_visible), updated: result.rows.length }
+}
 
 async function assertSlugFree(slug: string, excludeItemId?: number, allowedExistingPageSlug?: string) {
   const nav = await run(sql`SELECT id FROM nav_items WHERE href = ${slug} ${excludeItemId ? sql`AND id <> ${excludeItemId}` : sql``} LIMIT 1`)
@@ -232,7 +349,10 @@ function menuPage(slug: string, labelEn: string, labelBn: string, base?: Partial
   const sections = existing.slice(0, count)
   while (sections.length < count) sections.push(defaultSection(contentType, labelEn, labelBn, slug, buttonType, sections.length))
   if (sections.length && (!existing.length || settings?.retypeFirst)) {
-    const firstTitle = (sections[0] as any).heading && typeof (sections[0] as any).heading === 'object' ? (sections[0] as any).heading : { en: labelEn, bn: labelBn }
+    const firstTitleValue = (sections[0] as JsonObject).heading
+    const firstTitle = firstTitleValue && typeof firstTitleValue === 'object' && !Array.isArray(firstTitleValue)
+      ? firstTitleValue as JsonObject
+      : { en: labelEn, bn: labelBn }
     const rebuilt = defaultSection(contentType, String(firstTitle.en || labelEn), String(firstTitle.bn || labelBn), slug, buttonType, 0)
     rebuilt.visible = sections[0].visible !== false
     sections[0] = rebuilt
@@ -246,12 +366,17 @@ function menuPage(slug: string, labelEn: string, labelBn: string, base?: Partial
 }
 
 async function loadPage(slug: string) {
-  const r = await run(sql`SELECT render_cache FROM pages WHERE slug = ${slug} LIMIT 1`)
+  const canonicalSlug = canonicalizeCmsRoute(slug)
+  const legacySlugs = Object.keys(LEGACY_ROUTE_ALIASES).filter((alias) => canonicalizeCmsRoute(alias) === canonicalSlug)
+  const candidates = Array.from(new Set([canonicalSlug, slug, ...legacySlugs]))
+  const candidateSql = sql.join(candidates.map((candidate) => sql`${candidate}`), sql`, `)
+  const r = await run(sql`SELECT render_cache FROM pages WHERE slug IN (${candidateSql})
+    ORDER BY CASE WHEN slug = ${canonicalSlug} THEN 0 ELSE 1 END, updated_at DESC LIMIT 1`)
   const cache = (r.rows[0] as Row | undefined)?.render_cache
   return cache && typeof cache === 'object' ? (cache as Partial<PageData>) : undefined
 }
 
-export async function createMenu(input: { groupKey: string; parentId: number | null; labelEn: string; labelBn: string; slug: string; renderedComponents: unknown; menuType?: unknown; sectionCount?: unknown; sectionContentType?: unknown; sectionButtonType?: unknown }, actor: string) {
+export async function createMenu(input: NavigationMenuWriteInput, actor: string) {
   await ensureCmsSchema()
   await ensureLandingRootHierarchy()
   const labelEn = input.labelEn.trim(); const labelBn = (input.labelBn || '').trim() || labelEn
@@ -274,14 +399,15 @@ export async function createMenu(input: { groupKey: string; parentId: number | n
   const existingPage = menuType === 'page' ? await loadPage(slug) : undefined
   const preserveExistingSections = Boolean(existingPage?.sections?.length)
   const inserted = (await run(sql`
-    INSERT INTO nav_items (group_id, parent_id, label_en, label_bn, href, content_types, menu_type, section_count, section_content_type, section_button_type, sort_order)
-    VALUES (${Number(group.id)}, ${input.parentId}, ${labelEn}, ${labelBn}, ${slug}, ${JSON.stringify(renderedComponents)}::jsonb, ${menuType}, ${sectionCount}, ${sectionContentType}, ${sectionButtonType},
+    INSERT INTO nav_items (group_id, parent_id, label_en, label_bn, href, content_types, menu_type, section_count, section_content_type, section_button_type, typography, sort_order)
+    VALUES (${Number(group.id)}, ${input.parentId}, ${labelEn}, ${labelBn}, ${slug}, ${JSON.stringify(renderedComponents)}::jsonb, ${menuType}, ${sectionCount}, ${sectionContentType}, ${sectionButtonType}, ${input.typography ? JSON.stringify(input.typography) : null}::jsonb,
       COALESCE((SELECT MAX(sort_order) + 1 FROM nav_items WHERE group_id = ${Number(group.id)} AND parent_id = ${input.parentId}), 0))
     RETURNING id`)).rows[0] as Row
   try {
     if (menuType === 'page') {
       const preservedCount = Math.max(sectionCount, existingPage?.sections?.length || 0)
       await saveDocument(`page:${slug}`, menuPage(slug, labelEn, labelBn, existingPage, { sectionCount: preservedCount, sectionContentType, sectionButtonType, retypeFirst: !preserveExistingSections, applyButtonSetting: !preserveExistingSections }), 'page', actor)
+      await pruneLegacyPageAliases(canonicalizeCmsRoute(slug))
     }
   } catch (error) {
     await run(sql`DELETE FROM nav_items WHERE id = ${Number(inserted.id)}`)
@@ -291,7 +417,7 @@ export async function createMenu(input: { groupKey: string; parentId: number | n
   return { id: Number(inserted.id), slug, menuType }
 }
 
-export async function updateMenu(id: number, input: { labelEn: string; labelBn: string; slug: string; renderedComponents: unknown; menuType?: unknown; sectionCount?: unknown; sectionContentType?: unknown; sectionButtonType?: unknown }, actor: string) {
+export async function updateMenu(id: number, input: NavigationMenuUpdateInput, actor: string) {
   await ensureCmsSchema()
   await ensureLandingRootHierarchy()
   const item = (await run(sql`SELECT * FROM nav_items WHERE id = ${id} LIMIT 1`)).rows[0] as Row | undefined
@@ -307,17 +433,37 @@ export async function updateMenu(id: number, input: { labelEn: string; labelBn: 
   const sectionButtonType = cleanButtonType(input.sectionButtonType ?? item.section_button_type ?? 'none')
   const renderedComponents = menuType === 'page' ? checkRenderedComponents(input.renderedComponents) : []
   const oldMenuType: MenuType = item.menu_type === 'folder' ? 'folder' : item.menu_type === 'external' ? 'external' : 'page'
-  if (menuType === 'page' && (slug !== oldSlug || oldMenuType !== 'page')) await assertSlugFree(slug, id, oldSlug)
+  const oldCanonicalSlug = oldMenuType === 'page' ? canonicalizeCmsRoute(oldSlug) : ''
+  if (menuType === 'page' && (slug !== oldSlug || oldMenuType !== 'page')) await assertSlugFree(slug, id, oldCanonicalSlug || oldSlug)
   const base = oldMenuType === 'page' ? await loadPage(oldSlug) : undefined
-  await run(sql`UPDATE nav_items SET label_en = ${labelEn}, label_bn = ${labelBn}, href = ${slug}, content_types = ${JSON.stringify(renderedComponents)}::jsonb, menu_type = ${menuType}, section_count = ${sectionCount}, section_content_type = ${sectionContentType}, section_button_type = ${sectionButtonType} WHERE id = ${id}`)
+  await run(sql`UPDATE nav_items SET label_en = ${labelEn}, label_bn = ${labelBn}, href = ${slug}, content_types = ${JSON.stringify(renderedComponents)}::jsonb, menu_type = ${menuType}, section_count = ${sectionCount}, section_content_type = ${sectionContentType}, section_button_type = ${sectionButtonType}, typography = ${input.typography ? JSON.stringify(input.typography) : null}::jsonb WHERE id = ${id}`)
   try {
     if (menuType === 'page') {
-      if (oldMenuType === 'page' && slug !== oldSlug) await run(sql`UPDATE pages SET slug = ${slug}, updated_at = now() WHERE slug = ${oldSlug}`)
+      // Save the new canonical document first, then remove stale route aliases.
+      // This avoids UPDATE slug collisions and also collapses duplicate rows when
+      // the editor changes a legacy slug to its canonical equivalent.
+      const newCanonicalSlug = canonicalizeCmsRoute(slug)
       await saveDocument(`page:${slug}`, menuPage(slug, labelEn, labelBn, base, { sectionCount, sectionContentType, sectionButtonType, retypeFirst: sectionContentType !== item.section_content_type, applyButtonSetting: sectionButtonType !== item.section_button_type }), 'page', actor)
+      await pruneLegacyPageAliases(newCanonicalSlug)
+      if (oldMenuType === 'page' && oldCanonicalSlug && oldCanonicalSlug !== '/' && oldCanonicalSlug !== newCanonicalSlug) {
+        const references = (await run(sql`SELECT href FROM nav_items WHERE COALESCE(menu_type, 'page') = 'page'`)).rows as Row[]
+        const oldRouteStillReferenced = references.some((reference) => canonicalizeCmsRoute(String(reference.href || '')) === oldCanonicalSlug)
+        const isProtectedCollection = CONTENT_COLLECTION_ROUTES.some((route) => route.slug === oldCanonicalSlug)
+        if (!oldRouteStillReferenced && !isProtectedCollection) {
+          const staleSlugs = Array.from(new Set([
+            oldSlug,
+            oldCanonicalSlug,
+            ...Object.keys(LEGACY_ROUTE_ALIASES).filter((alias) => canonicalizeCmsRoute(alias) === oldCanonicalSlug),
+          ])).filter((candidate) => candidate && candidate !== '/' && canonicalizeCmsRoute(candidate) !== newCanonicalSlug)
+          if (staleSlugs.length) {
+            const staleList = sql.join(staleSlugs.map((candidate) => sql`${candidate}`), sql`, `)
+            await run(sql`DELETE FROM pages WHERE slug IN (${staleList})`)
+          }
+        }
+      }
     }
   } catch (error) {
-    await run(sql`UPDATE nav_items SET label_en = ${item.label_en}, label_bn = ${item.label_bn}, href = ${oldSlug}, content_types = ${JSON.stringify(parseRenderedComponents(item.content_types))}::jsonb, menu_type = ${oldMenuType}, section_count = ${Number(item.section_count || 1)}, section_content_type = ${String(item.section_content_type || 'richText')}, section_button_type = ${String(item.section_button_type || 'none')} WHERE id = ${id}`)
-    if (oldMenuType === 'page' && slug !== oldSlug) await run(sql`UPDATE pages SET slug = ${oldSlug} WHERE slug = ${slug}`)
+    await run(sql`UPDATE nav_items SET label_en = ${item.label_en}, label_bn = ${item.label_bn}, href = ${oldSlug}, content_types = ${JSON.stringify(parseRenderedComponents(item.content_types))}::jsonb, menu_type = ${oldMenuType}, section_count = ${Number(item.section_count || 1)}, section_content_type = ${String(item.section_content_type || 'richText')}, section_button_type = ${String(item.section_button_type || 'none')}, typography = ${item.typography ? JSON.stringify(item.typography) : null}::jsonb WHERE id = ${id}`)
     throw error
   }
   refresh()
@@ -335,17 +481,29 @@ export async function deleteMenu(id: number) {
   const ids = sql.join(removed.map((r) => sql`${Number(r.id)}`), sql`, `)
   await run(sql`DELETE FROM nav_items WHERE id IN (${ids})`)
   const protectedCollectionPaths = new Set(CONTENT_COLLECTION_ROUTES.map((route) => route.slug))
-  const slugs = removed.map((r) => String(r.href || '')).filter((s) => s.startsWith('/') && s !== '/' && !protectedCollectionPaths.has(canonicalizeCmsRoute(s)))
+  const removedRoutes = new Set(removed
+    .map((row) => String(row.href || ''))
+    .filter((href) => href.startsWith('/') && href !== '/')
+    .map((href) => canonicalizeCmsRoute(href)))
+  const remainingNavigation = (await run(sql`SELECT href FROM nav_items WHERE COALESCE(menu_type, 'page') = 'page' AND href LIKE '/%'`)).rows as Row[]
+  const stillReferencedRoutes = new Set(remainingNavigation.map((row) => canonicalizeCmsRoute(String(row.href || ''))))
+  const deletableRoutes = new Set(Array.from(removedRoutes).filter((route) => !protectedCollectionPaths.has(route) && !stillReferencedRoutes.has(route)))
+  const pageCandidates = new Set<string>()
+  for (const route of deletableRoutes) {
+    pageCandidates.add(route)
+    for (const alias of Object.keys(LEGACY_ROUTE_ALIASES)) {
+      if (canonicalizeCmsRoute(alias) === route) pageCandidates.add(alias)
+    }
+  }
   let pages = 0
-  if (slugs.length) {
-    const list = sql.join(slugs.map((s) => sql`${s}`), sql`, `)
-    pages = (await run(sql`DELETE FROM pages WHERE slug IN (${list}) AND slug NOT IN (SELECT href FROM nav_items) RETURNING id`)).rows.length
+  if (pageCandidates.size) {
+    const list = sql.join(Array.from(pageCandidates).map((candidate) => sql`${candidate}`), sql`, `)
+    pages = (await run(sql`DELETE FROM pages WHERE slug IN (${list}) RETURNING id`)).rows.length
   }
   refresh()
   return { menus: removed.length, pages }
 }
 
-export type MoveNode = { id: number; children?: MoveNode[] }
 
 /** Persists the single Site Navigation tree (parent/child + order). */
 export async function saveNavigationOrder(groupKey: string, tree: MoveNode[]) {

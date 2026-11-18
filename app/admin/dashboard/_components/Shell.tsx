@@ -1,40 +1,64 @@
 'use client'
 
-import Image from 'next/image'
 import Link from 'next/link'
+import Image from 'next/image'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useEffect, useMemo, useState, type MouseEvent, type ReactNode } from 'react'
-import { Briefcase, Building2, ChevronDown, ChevronRight, Database, Workflow, FileSpreadsheet, FileText, LayoutDashboard, LogOut, Menu, Network, Settings, ShieldCheck, Users, X, PanelsTopLeft, Globe, RefreshCw, Save, Sun, Moon } from 'lucide-react'
+import {
+  Briefcase, Building2, Database, Workflow, FileSpreadsheet, FileText, Type,
+  LayoutDashboard, LogOut, Network, Settings, Users, X, PanelsTopLeft, Globe,
+  LayoutGrid, Search, ExternalLink, TreePine,
+  CoinsIcon,
+} from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { adminLogout } from '@/lib/api/auth'
+import { getAdminProviderHealth, type ProviderHealth } from '@/lib/api/adminWorkspace'
 import { AdminActionProvider, useAdminActions } from './AdminActionContext'
-import { useAdminTheme } from '../../AdminThemeShell'
-import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Button, buttonVariants } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
+import {
+  AdminAppShell,
+  AdminNavigationSidebar,
+  AdminProviderFooter,
+  AdminViewportGrid,
+  AdminWorkspaceHeader,
+  AdminNavigationLink,
+  AdminNavigationGroupToggle,
+  AdminNavigationChildLink,
+  AdminNavigationSectionLabel,
+} from '@/components/admin/cms'
 
 export type AdminNavItem = { label: string; href: string; icon?: LucideIcon }
 export type AdminNavGroup =
-  | { kind: 'link'; key: string; label: string; icon: LucideIcon; href: string }
-  | { kind: 'group'; key: string; label: string; icon: LucideIcon; children: readonly AdminNavItem[] }
+  | { kind: 'link'; key: string; section: string; label: string; icon: LucideIcon; href: string }
+  | { kind: 'group'; key: string; section: string; label: string; icon: LucideIcon; children: readonly AdminNavItem[] }
 
 const GROUPS: readonly AdminNavGroup[] = [
-  { kind: 'link', key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, href: '/admin/dashboard/overview' },
-  { kind: 'link', key: 'navigation', label: 'Site Navigation', icon: Network, href: '/admin/dashboard/navigation' },
-  { kind: 'link', key: 'content', label: 'Site Content', icon: FileText, href: '/admin/dashboard/site-content' },
-  { kind: 'link', key: 'page-builder', label: 'Page Builder', icon: PanelsTopLeft, href: '/admin/dashboard/page-builder' },
-  { kind: 'link', key: 'portfolio', label: 'Portfolio', icon: Building2, href: '/admin/dashboard/portfolio' },
-  { kind: 'link', key: 'visitors', label: 'Visitors', icon: Users, href: '/admin/dashboard/reports/visitors' },
-  { kind: 'link', key: 'jobs', label: 'Jobs', icon: Briefcase, href: '/admin/dashboard/jobs' },
-  { kind: 'link', key: 'website-essentials', label: 'Website Essentials', icon: Globe, href: '/admin/dashboard/website-essentials' },
-  { kind: 'link', key: 'cms-pipeline', label: 'CMS Data Pipeline', icon: Workflow, href: '/admin/dashboard/cms-pipeline' },
+  { kind: 'link', key: 'dashboard', section: 'Overview', label: 'Dashboard', icon: LayoutDashboard, href: '/admin/dashboard/overview' },
+  { kind: 'link', key: 'navigation', section: 'Content management', label: 'Site Navigation', icon: Network, href: '/admin/dashboard/navigation' },
+  { kind: 'link', key: 'content', section: 'Content management', label: 'Site Content', icon: FileText, href: '/admin/dashboard/site-content' },
+  { kind: 'link', key: 'page-builder', section: 'Content management', label: 'Page Builder', icon: PanelsTopLeft, href: '/admin/dashboard/page-builder' },
+  { kind: 'link', key: 'portfolio', section: 'Content management', label: 'Portfolio', icon: Building2, href: '/admin/dashboard/portfolio' },
+  { kind: 'link', key: 'jobs', section: 'Content management', label: 'Jobs & Applications', icon: Briefcase, href: '/admin/dashboard/jobs' },
+  { kind: 'link', key: 'website-essentials', section: 'Content management', label: 'Website Essentials', icon: Globe, href: '/admin/dashboard/website-essentials' },
+  { kind: 'link', key: 'footer', section: 'Content management', label: 'Footer Navigation', icon: LayoutGrid, href: '/admin/dashboard/footer' },
+  { kind: 'link', key: 'visitors', section: 'Insights', label: 'Visitors & Reports', icon: Users, href: '/admin/dashboard/reports/visitors' },
+  { kind: 'link', key: 'donations', section: 'Insights', label: 'Donations & Reports', icon: CoinsIcon, href: '/admin/dashboard/reports/donations' },
+  { kind: 'link', key: 'cms-pipeline', section: 'System', label: 'CMS Data Pipeline', icon: Workflow, href: '/admin/dashboard/cms-pipeline' },
+  { kind: 'link', key: 'site-configuration', section: 'System', label: 'Website Configuration', icon: Globe, href: '/admin/dashboard/site-configuration' },
   {
     kind: 'group',
     key: 'settings',
+    section: 'System',
     label: 'Settings',
     icon: Settings,
     children: [
       { label: 'CMS Users', href: '/admin/dashboard/settings?view=users', icon: Users },
       { label: 'Database & APIs', href: '/admin/dashboard/settings?view=database', icon: Database },
       { label: 'Reporting', href: '/admin/dashboard/settings?view=reporting', icon: FileSpreadsheet },
+      { label: 'Theme Typography', href: '/admin/dashboard/settings?view=theme', icon: Type },
+      { label: 'Homepage Growth Tree', href: '/admin/dashboard/settings?view=growth', icon: TreePine },
     ],
   },
 ]
@@ -71,40 +95,9 @@ function titleFromRoute(pathname: string, searchParams: URLSearchParams) {
   }
   if (pathname === '/admin/dashboard/settings') return 'Settings'
   if (pathname.startsWith('/admin/dashboard/reports/donations')) return 'Donations'
+  if (pathname.startsWith('/admin/dashboard/reports')) return 'Reports'
+  if (pathname.startsWith('/admin/dashboard/ui-content')) return 'UI Text & Labels'
   return pathname.startsWith('/admin/dashboard') ? 'Dashboard' : 'CMS'
-}
-
-function AdminHeaderActions() {
-  const { hasSave, hasReload, dirty, saving, runSave, runReload } = useAdminActions()
-  const { mode, setMode } = useAdminTheme()
-  const [reloading, setReloading] = useState(false)
-
-  async function reload() {
-    if (dirty && !window.confirm('Reload CMS data and discard unsaved changes in the open editors?')) return
-    setReloading(true)
-    try {
-      if (hasReload) await runReload()
-      else window.location.reload()
-    } finally {
-      setReloading(false)
-    }
-  }
-
-  return (
-    <div className="admin-global-actions" aria-label="CMS actions">
-      <Button type="button" variant="outline" size="sm" onClick={() => void reload()} disabled={reloading} title="Reload current CMS data">
-        <RefreshCw size={15} className={reloading ? 'admin-spin' : ''} /><span>Reload</span>
-      </Button>
-      <Button type="button" size="sm" onClick={() => void runSave()} disabled={!hasSave || !dirty || saving} title={dirty ? 'Save all unsaved changes in the open editors' : 'There are no unsaved changes'}>
-        <Save size={15} /><span>{saving ? 'Saving…' : 'Save all'}</span>{dirty && <i className="admin-unsaved-dot" aria-label="Unsaved changes" />}
-      </Button>
-      <span className="admin-header-action-divider" aria-hidden="true" />
-      <button type="button" className="admin-mode-toggle" onClick={() => setMode(mode === 'dark' ? 'light' : 'dark')} aria-label={`Switch to ${mode === 'dark' ? 'light' : 'dark'} mode`} title={`Switch to ${mode === 'dark' ? 'light' : 'dark'} mode`}>
-        {mode === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
-        <span>{mode === 'dark' ? 'Light' : 'Dark'}</span>
-      </button>
-    </div>
-  )
 }
 
 export default function Shell(props: { userEmail?: string; children: ReactNode }) {
@@ -112,44 +105,74 @@ export default function Shell(props: { userEmail?: string; children: ReactNode }
 }
 
 function ShellContent({ userEmail, children }: { userEmail?: string; children: ReactNode }) {
-  const { dirty } = useAdminActions()
+  const { dirty, execution } = useAdminActions()
   const pathname = usePathname() || '/'
   const searchParams = useSearchParams()
   const router = useRouter()
-  const [collapsed, setCollapsed] = useState(false)
-  const [mobileOpen, setMobileOpen] = useState(false)
-  const [loggingOut, setLoggingOut] = useState(false)
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({ settings: true })
-
-  useEffect(() => {
+  const routeKey = `${pathname}?${searchParams.toString()}`
+  const [collapsed, setCollapsed] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false
     try {
-      setCollapsed(localStorage.getItem('sf-admin-sidebar') === 'collapsed')
-      const saved = localStorage.getItem('sf-admin-groups')
-      if (saved) setExpanded((current) => ({ ...current, ...JSON.parse(saved) }))
+      return localStorage.getItem('sf-admin-sidebar') === 'collapsed'
     } catch {
-      // Optional preference storage.
+      return false
     }
-  }, [])
+  })
+  const [mobileOpenRoute, setMobileOpenRoute] = useState<string | null>(null)
+  const mobileOpen = mobileOpenRoute === routeKey
+  const [navigationQuery, setNavigationQuery] = useState('')
+  const [loggingOut, setLoggingOut] = useState(false)
+  const [expanded, setExpanded] = useState<Record<string, boolean>>(() => {
+    const defaults = { settings: true }
+    if (typeof window === 'undefined') return defaults
+    try {
+      const saved = localStorage.getItem('sf-admin-groups')
+      if (!saved) return defaults
+      const parsed = JSON.parse(saved)
+      return typeof parsed === 'object' && parsed !== null ? { ...defaults, ...parsed } : defaults
+    } catch {
+      return defaults
+    }
+  })
+  const [providerHealth, setProviderHealth] = useState<ProviderHealth>({ mode: 'neon-primary', note: 'Checking data provider health…' })
+
+  const activeGroupKey = GROUPS.find((group) => group.kind === 'group' && parentIsActive(pathname, searchParams, group.children))?.key
+  const expandedWithActive = useMemo(() => {
+    if (!activeGroupKey) return expanded
+    return expanded[activeGroupKey] ? expanded : { ...expanded, [activeGroupKey]: true }
+  }, [activeGroupKey, expanded])
 
   useEffect(() => {
     try {
       localStorage.setItem('sf-admin-sidebar', collapsed ? 'collapsed' : 'expanded')
       localStorage.setItem('sf-admin-groups', JSON.stringify(expanded))
     } catch {
-      // Optional preference storage.
+      // Sidebar preferences are optional.
     }
   }, [collapsed, expanded])
 
   useEffect(() => {
-    setMobileOpen(false)
-  }, [pathname, searchParams])
+    let active = true
+    const refreshProviderHealth = () => {
+      void getAdminProviderHealth()
+        .then((payload) => {
+          if (active && ['neon-primary', 'google-drive-read-only', 'unavailable'].includes(payload.mode)) setProviderHealth(payload)
+        })
+        .catch(() => {
+          if (active) setProviderHealth({ mode: 'unavailable', note: 'Provider health check failed.' })
+        })
+    }
+    refreshProviderHealth()
+    const timer = window.setInterval(refreshProviderHealth, 60_000)
+    return () => { active = false; window.clearInterval(timer) }
+  }, [])
 
   useEffect(() => {
     if (!mobileOpen) return
     const previous = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setMobileOpen(false)
+      if (event.key === 'Escape') setMobileOpenRoute(null)
     }
     window.addEventListener('keydown', onKeyDown)
     return () => {
@@ -159,6 +182,17 @@ function ShellContent({ userEmail, children }: { userEmail?: string; children: R
   }, [mobileOpen])
 
   const current = useMemo(() => titleFromRoute(pathname, searchParams), [pathname, searchParams])
+  const compactSidebar = collapsed && !mobileOpen
+  const visibleGroups = useMemo<AdminNavGroup[]>(() => {
+    const query = navigationQuery.trim().toLocaleLowerCase()
+    if (!query) return [...GROUPS]
+    return GROUPS.flatMap<AdminNavGroup>((group): AdminNavGroup[] => {
+      if (group.kind === 'link') return `${group.label} ${group.section}`.toLocaleLowerCase().includes(query) ? [group] : []
+      const matchingChildren = group.children.filter((item) => `${item.label} ${item.href}`.toLocaleLowerCase().includes(query))
+      if (`${group.label} ${group.section}`.toLocaleLowerCase().includes(query)) return [group]
+      return matchingChildren.length ? [{ ...group, children: matchingChildren }] : []
+    })
+  }, [navigationQuery])
 
   function handleNavLinkClick(event: MouseEvent<HTMLAnchorElement>) {
     if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.currentTarget.target === '_blank') return
@@ -169,185 +203,174 @@ function ShellContent({ userEmail, children }: { userEmail?: string; children: R
       event.preventDefault()
       return
     }
-    setMobileOpen(false)
+    setMobileOpenRoute(null)
   }
 
-  async function logout() {
+  function logout() {
     if (dirty && !window.confirm('You have unsaved CMS changes. Sign out and discard them?')) return
     setLoggingOut(true)
-    try {
-      await adminLogout()
-    } finally {
-      router.replace('/admin/login')
-      router.refresh()
-    }
+    try { sessionStorage.removeItem('srizony-cms-welcome-shown-session-v1') } catch { /* Optional per-login guide preference. */ }
+    void adminLogout()
+      .catch(() => undefined)
+      .finally(() => {
+        router.replace('/admin/login')
+        router.refresh()
+      })
   }
 
   function toggleGroup(key: string) {
     setExpanded((currentState) => ({ ...currentState, [key]: !currentState[key] }))
   }
 
-  function renderBrand(expandedBrand: boolean) {
-    return (
-      <div className="admin-sidebar-brand">
-        <div className="admin-brand-logo">
-          <a href="https://scarletlabs.tech">
-            <Image src="/images/sl-logo.png" alt="SL" width={30} height={30} priority />
-          </a>
-        </div>
-        {expandedBrand && (
-          <div className="admin-brand-copy">
-            <strong>CMS by</strong>
-            <small>Scarlet Labs</small>
-          </div>
-        )}
-        <button
-          className="admin-collapse"
-          type="button"
-          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          onClick={() => setCollapsed((value) => !value)}
-        >
-          <Menu size={17} />
-        </button>
-        <button className="admin-mobile-close" type="button" aria-label="Close navigation" onClick={() => setMobileOpen(false)}>
-          <X size={18} />
-        </button>
-      </div>
-    )
-  }
-
   function renderNavigation() {
     return (
-      <nav className="admin-sidebar-nav" aria-label="CMS navigation">
-        {GROUPS.map((group) => {
+      <nav id="cms-primary-navigation" className="min-h-0 flex-1 space-y-1 overflow-y-auto px-2 pb-3" aria-label="Primary CMS navigation">
+        {visibleGroups.map((group, index) => {
           const Icon = group.icon
           const active = group.kind === 'link'
             ? isActivePath(pathname, searchParams, group.href)
             : parentIsActive(pathname, searchParams, group.children)
-          const isExpanded = group.kind === 'group' ? Boolean(expanded[group.key]) : false
-
-          if (group.kind === 'link') {
-            return (
-              <section className="admin-nav-group" key={group.key}>
-                <Link
-                  href={group.href}
-                  className={`admin-nav-parent ${active ? 'active' : ''}`}
-                  data-nav-label={group.label}
-                  title={collapsed ? group.label : undefined}
-                  onClick={handleNavLinkClick}
-                >
-                  <Icon size={17} />
-                  {!collapsed && <span>{group.label}</span>}
-                </Link>
-              </section>
-            )
-          }
+          const isExpanded = group.kind === 'group' ? Boolean(navigationQuery.trim()) || Boolean(expandedWithActive[group.key]) : false
+          const startsSection = index === 0 || visibleGroups[index - 1].section !== group.section
+          const childPanelId = `cms-nav-${group.key}`
 
           return (
-            <section className="admin-nav-group" key={group.key}
-              onMouseEnter={() => { if (!collapsed && typeof window !== 'undefined' && window.matchMedia('(hover: hover)').matches) setExpanded((state) => ({ ...state, [group.key]: true })) }}
-              onMouseLeave={() => { if (!collapsed && typeof window !== 'undefined' && window.matchMedia('(hover: hover)').matches && !active) setExpanded((state) => ({ ...state, [group.key]: false })) }}
-            >
-              <button
-                type="button"
-                title={collapsed ? group.label : undefined}
-                className={`admin-nav-parent ${active ? 'active' : ''}`}
-                data-nav-label={group.label}
-                onClick={() => {
-                  if (collapsed) { setCollapsed(false); setExpanded((currentState) => ({ ...currentState, [group.key]: true })) }
-                  else toggleGroup(group.key)
-                }}
-                aria-expanded={!collapsed ? isExpanded : undefined}
-                onFocus={(event) => { if (event.currentTarget.matches(':focus-visible')) { if (collapsed) setCollapsed(false); setExpanded((state) => ({ ...state, [group.key]: true })) } }}
-              >
-                <Icon size={17} />
-                {!collapsed && (
-                  <>
-                    <span>{group.label}</span>
-                    {isExpanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
-                  </>
-                )}
-              </button>
-              {!collapsed && isExpanded && (
-                <div className="admin-nav-children">
-                  {group.children.map((item) => {
-                    const ItemIcon = item.icon
-                    const itemActive = isActivePath(pathname, searchParams, item.href)
-                    return (
-                      <Link
-                        href={item.href}
-                        key={item.href}
-                        className={itemActive ? 'active' : ''}
-                        onClick={handleNavLinkClick}
-                      >
-                        {ItemIcon && <ItemIcon size={13} aria-hidden="true" />}
-                        <span>{item.label}</span>
-                      </Link>
-                    )
-                  })}
-                </div>
+            <div key={group.key}>
+              {startsSection && !compactSidebar && <AdminNavigationSectionLabel>{group.section}</AdminNavigationSectionLabel>}
+              {group.kind === 'link' ? (
+                <AdminNavigationLink href={group.href} label={group.label} icon={Icon} active={active} compact={compactSidebar} onClick={handleNavLinkClick} />
+              ) : (
+                <>
+                  <AdminNavigationGroupToggle
+                    label={group.label}
+                    icon={Icon}
+                    active={active}
+                    expanded={isExpanded}
+                    compact={compactSidebar}
+                    controls={childPanelId}
+                    onClick={() => {
+                      if (compactSidebar) {
+                        setCollapsed(false)
+                        setExpanded((state) => ({ ...state, [group.key]: true }))
+                      } else toggleGroup(group.key)
+                    }}
+                  />
+                  {!compactSidebar && isExpanded && (
+                    <div id={childPanelId} className="ml-4 mt-1 space-y-1 border-border border-l pl-2">
+                      {group.children.map((item) => {
+                        const ItemIcon = item.icon
+                        const itemActive = isActivePath(pathname, searchParams, item.href)
+                        return <AdminNavigationChildLink key={item.href} href={item.href} label={item.label} icon={ItemIcon} active={itemActive} onClick={handleNavLinkClick} />
+                      })}
+                    </div>
+                  )}
+                </>
               )}
-            </section>
+            </div>
           )
         })}
+        {visibleGroups.length === 0 && <p className="px-3 py-4 text-sm text-muted-foreground" role="status">No matching sections found.</p>}
       </nav>
     )
   }
 
+  const showProviderBanner = providerHealth.mode === 'google-drive-read-only' || providerHealth.mode === 'unavailable'
+
   return (
-    <div className={`admin-shell ${collapsed ? 'admin-collapsed' : ''} ${mobileOpen ? 'admin-mobile-open' : ''}`}>
-      <button className="admin-mobile-scrim" type="button" aria-label="Close navigation" onClick={() => setMobileOpen(false)} />
-      <aside className="admin-sidebar">
-        {renderBrand(!collapsed)}
-        {renderNavigation()}
-        <div className="admin-sidebar-footer">
-          <div className="admin-powered">
-            <small>CMS powered by</small>
-            <a href="https://scarletlabs.tech" target="_blank" rel="noreferrer noopener">Scarlet Labs</a>
+    <AdminAppShell collapsed={collapsed} mobileOpen={mobileOpen}>
+      {mobileOpen && <Button className="fixed inset-0 z-40 bg-black/40 backdrop-blur-[1px] md:hidden" type="button" aria-label="Close navigation" onClick={() => setMobileOpenRoute(null)} />}
+      <AdminNavigationSidebar>
+        <div className={cn('flex min-h-16 items-center gap-3 border-border border-b px-3 py-3', compactSidebar && 'justify-center px-2')}>
+          <div className="grid size-10 shrink-0 place-items-center overflow-hidden rounded-lg border-border bg-background p-1">
+            <Image src="/images/Logo-SF.png" alt="Srizony Foundation" width={36} height={36} className="size-full object-contain" priority />
           </div>
-          <button type="button" className="admin-logout-button ui-button ui-button-outline ui-button-sm" disabled={loggingOut} onClick={() => void logout()}>
-            <LogOut size={15} />
-            {!collapsed && (loggingOut ? 'Signing out…' : 'Sign out')}
-          </button>
+          {!compactSidebar && (
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-semibold leading-5">Srizony Foundation</p>
+              <p className="truncate text-xs text-muted-foreground">Content management</p>
+            </div>
+          )}
+          <Button className="ml-auto md:hidden" variant="ghost" size="icon" aria-label="Close navigation" onClick={() => setMobileOpenRoute(null)}>
+            <X aria-hidden="true" />
+          </Button>
         </div>
-      </aside>
 
-      <div className="admin-workspace">
-        <header className="admin-header">
-          <div className="admin-header-left">
-            <button className="admin-mobile-menu" type="button" aria-label="Open navigation" onClick={() => setMobileOpen(true)}>
-              <Menu size={19} />
-            </button>
-            <div className="admin-brand-logo">
-              <Image src="/images/Logo-SF.png" alt="Srizony Foundation" width={30} height={30} priority />
-            </div>
-              <div className="admin-brand-copy">
-                <strong>Srizony Foundation</strong>
-                <small>CMS management</small>
-              </div>
-          </div>
-          <div className="admin-header-tools">
-            <AdminHeaderActions />
-            <div className="admin-provider-select" aria-label="CMS data source">
-              <Database size={15} aria-hidden="true" />
-              <span className="admin-provider-label">Data source</span>
-              <strong>Neon PostgreSQL</strong>
-            </div>
-            <div className="admin-header-user">
-              <span className="admin-header-user-icon"><ShieldCheck size={15} /></span>
-              <span>{userEmail || 'CMS administrator'}</span>
+        {!compactSidebar && (
+          <div className="border-border border-b p-3">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+              <Input
+                id="cms-navigation-search"
+                type="search"
+                className="admin-theme-search-input h-9 border-input bg-card pl-9 pr-8 text-primary placeholder:text-muted-foreground"
+                value={navigationQuery}
+                onChange={(event) => setNavigationQuery(event.target.value)}
+                placeholder="Search menu…"
+                aria-label="Search CMS navigation"
+                onKeyDown={(event) => { if (event.key === 'Escape') setNavigationQuery('') }}
+              />
+              {navigationQuery && (
+                <Button className="absolute right-1 top-1/2 size-7 -translate-y-1/2" variant="ghost" size="icon" aria-label="Clear navigation search" onClick={() => setNavigationQuery('')}>
+                  <X className="size-3.5" />
+                </Button>
+              )}
             </div>
           </div>
-        </header>
+        )}
 
-        <main className="admin-main">{children}</main>
+        {renderNavigation()}
 
-        <footer className="admin-footer">
-          <span>CMS powered by</span>
-          <a href="https://scarletlabs.tech" target="_blank" rel="noreferrer noopener"><strong>Scarlet Labs</strong></a>
-        </footer>
+        <div className={cn('grid gap-2 border-border border-t p-3', compactSidebar && 'px-2')}>
+          <Link href="/" target="_blank" rel="noreferrer" title="Open public website" className={cn(buttonVariants({ variant: 'outline' }), 'w-full justify-start', compactSidebar && 'justify-center px-0')}>
+            <Globe aria-hidden="true" />
+            {!compactSidebar && <><span>View website</span><ExternalLink className="ml-auto size-3.5" aria-hidden="true" /></>}
+          </Link>
+          <Button type="button" variant="ghost" className={cn('w-full justify-start text-muted-foreground hover:text-primary', compactSidebar && 'justify-center px-0')} disabled={loggingOut} onClick={() => void logout()} title={compactSidebar ? 'Sign out' : undefined}>
+            <LogOut aria-hidden="true" />
+            {!compactSidebar && <span>{loggingOut ? 'Signing out…' : 'Sign out'}</span>}
+          </Button>
+        </div>
+      </AdminNavigationSidebar>
+
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        <AdminWorkspaceHeader
+          current={current}
+          userEmail={userEmail}
+          providerHealth={providerHealth}
+          collapsed={collapsed}
+          mobileOpen={mobileOpen}
+          onToggleCollapsed={() => { setCollapsed((value) => !value); setNavigationQuery('') }}
+          onOpenMobileNavigation={() => setMobileOpenRoute(routeKey)}
+        />
+
+        {showProviderBanner && (
+          <div className={cn(
+            'flex items-start gap-2 border-border border-b px-4 py-3 text-sm',
+            providerHealth.mode === 'google-drive-read-only' ? 'border border-warning/30 bg-warning/10 text-warning' : 'border border-destructive/30 bg-destructive/10 text-destructive',
+          )} role={providerHealth.mode === 'unavailable' ? 'alert' : 'status'} aria-live="polite">
+            <Database className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+            {providerHealth.mode === 'google-drive-read-only' ? (
+              <p className="m-0"><strong>Read-only recovery mode.</strong> Google Drive snapshots are serving CMS reads. Editing, uploads, account changes and transactional submissions require Neon to recover.</p>
+            ) : (
+              <p className="m-0"><strong>Data provider unavailable.</strong> The primary database and a usable Google Drive snapshot could not be verified. Avoid submitting changes.</p>
+            )}
+          </div>
+        )}
+
+        <AdminViewportGrid
+          title={current}
+          dirty={dirty}
+          execution={execution}
+          layout="single"
+        >
+          {children}
+        </AdminViewportGrid>
+
+        <AdminProviderFooter providerHealth={providerHealth}>
+          <span>Website CMS</span>
+          <span>Srizony Foundation · Content management</span>
+        </AdminProviderFooter>
       </div>
-    </div>
+    </AdminAppShell>
   )
 }

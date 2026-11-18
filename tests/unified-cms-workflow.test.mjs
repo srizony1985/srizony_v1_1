@@ -85,7 +85,7 @@ test('theme and colour administration is removed and legacy stored overrides are
   const settings = read('app/admin/dashboard/settings/SettingsClient.tsx')
   assert.match(themeApi, /status: 410/)
   assert.match(site, /themes: systemData\.themes/)
-  assert.match(site, /public appearance is locked to the Scarlet\/Srizony design system/)
+  assert.match(site, /one fixed Midnight theme/)
   assert.doesNotMatch(settings, /Theme and colour selection|Choose site colour|Theme palette editor/i)
 })
 

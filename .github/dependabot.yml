@@ -4,10 +4,19 @@ updates:
     directory: /
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 10
     labels:
       - dependencies
-
+    groups:
+      nextjs:
+        patterns:
+          - 'next'
+          - 'eslint-config-next'
+          - '@next/*'
+      typescript-eslint:
+        patterns:
+          - 'typescript-eslint'
+          - '@typescript-eslint/*'
   - package-ecosystem: github-actions
     directory: /
     schedule:

@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
-import { eq } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { siteSettings } from '@/lib/db/schema'
+import { readCmsSettingValueInfo } from '@/lib/cms/settings-store'
 import { requireAdmin } from '@/lib/cms/guard'
 import { getAdminSession, hasAdminRole } from '@/lib/adminAuth'
 import { auditAdminAction } from '@/lib/security'
@@ -58,16 +58,22 @@ const payloadSchema = z.object({
 export async function GET() {
   try {
     const bootstrapDefaults = { ...DEFAULT_WEBSITE_ESSENTIALS, locations: BRANCHES }
-    if (!db) return NextResponse.json(bootstrapDefaults, { headers: { 'Cache-Control': 'no-store', 'X-Website-Essentials-Configured': 'false' } })
-    const rows = await db.select({ value: siteSettings.value }).from(siteSettings).where(eq(siteSettings.key, 'cms-document:website-essentials.json')).limit(1)
-    const configured = rows.length > 0
-    const essentials = normalizeWebsiteEssentials(rows[0]?.value ?? bootstrapDefaults)
+    const result = await readCmsSettingValueInfo('cms-document:website-essentials.json')
+    const saved = result.value
+    const configured = saved !== null
+    const normalizedEssentials = normalizeWebsiteEssentials(saved ?? bootstrapDefaults)
+    // An empty locations list is treated as an unconfigured map, not as a request to
+    // remove every office pin. Editors can hide the homepage map explicitly in Page Builder.
+    const essentials = {
+      ...normalizedEssentials,
+      locations: normalizedEssentials.locations.length ? normalizedEssentials.locations : BRANCHES,
+    }
     // Keep draft staff records private. Signed-in admins/editors use this same API to edit drafts.
     const admin = await getAdminSession()
     const canManage = hasAdminRole(admin, 'admin', 'editor')
     const responseValue = canManage ? essentials : { ...essentials, staff: essentials.staff.filter((person) => person.published) }
     return NextResponse.json(responseValue, {
-      headers: { 'Cache-Control': 'no-store', 'X-Website-Essentials-Configured': configured ? 'true' : 'false' },
+      headers: { 'Cache-Control': 'no-store', 'X-Website-Essentials-Configured': configured ? 'true' : 'false', 'X-Srizony-Data-Source': result.source, ...(result.snapshotAt ? { 'X-Snapshot-Updated-At': result.snapshotAt, Warning: '110 - \"Response is stale\"' } : {}) },
     })
   } catch (error) {
     // Public pages remain usable while a database/provider is being configured.

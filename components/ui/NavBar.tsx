@@ -10,10 +10,11 @@ import AppLink from '@/components/ui/AppLink'
 import SocialLinks, { hasSocials } from '@/components/ui/SocialLinks'
 import { useWebsiteEssentials } from '@/components/hooks/useWebsiteEssentials'
 import { FALLBACK_HOME_LABEL, FALLBACK_LOGO } from '@/lib/siteFallback'
-import LanguageFlag from '@/components/ui/LanguageFlag'
 import { useSite } from '@/components/containers/SiteProvider'
 import type { NavItem } from '@/types/entityType'
+import type { PortfolioText } from '@/types/portfolio'
 import { cn } from '@/lib/utils'
+import { toCmsTypographyStyle } from '@/lib/cms/typography'
 
 /** Shared responsive navigation for desktop, tablet, and mobile layouts. */
 
@@ -22,6 +23,9 @@ export default function NavBar() {
   const { essentials } = useWebsiteEssentials()
 
   const pathname = usePathname() ?? '/'
+  const previousPathname = useRef(pathname)
+  // Public navigation routes are canonical; `/bn/*` is a language alias.
+  const canonicalPathname = pathname === '/bn' ? '/' : pathname.startsWith('/bn/') ? pathname.slice(3) || '/' : pathname
   const [openGroup, setOpenGroup] = useState<string | null>(null)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [mobileExpandedItems, setMobileExpandedItems] = useState<Record<string, boolean>>({})
@@ -34,7 +38,11 @@ export default function NavBar() {
     setMobileExpandedItems({})
   }, [])
 
-  useEffect(() => closeAll(), [pathname, closeAll])
+  useEffect(() => {
+    if (previousPathname.current === pathname) return
+    previousPathname.current = pathname
+    closeAll()
+  }, [pathname, closeAll])
 
   useEffect(() => {
     if (!mobileOpen) return
@@ -64,11 +72,23 @@ export default function NavBar() {
   useLayoutEffect(() => {
     const header = headerRef.current
     if (!header) return
-    const updateHeight = () => header.style.setProperty('--sf-header-height', `${Math.ceil(header.getBoundingClientRect().height)}px`)
+
+    const root = document.documentElement
+    const updateHeight = () => {
+      const height = `${Math.ceil(header.getBoundingClientRect().height)}px`
+      // The token is consumed by page content as well as the header/drawer,
+      // so publish it on <html> instead of only on the header subtree.
+      root.style.setProperty('--sf-header-height', height)
+    }
+
     updateHeight()
     const observer = new ResizeObserver(updateHeight)
     observer.observe(header)
-    return () => observer.disconnect()
+
+    return () => {
+      observer.disconnect()
+      root.style.removeProperty('--sf-header-height')
+    }
   }, [mobileOpen, stuck])
 
   useEffect(() => {
@@ -114,17 +134,17 @@ export default function NavBar() {
   }
 
   const { ui } = data
-  const portfolioBrand = (data as any).portfolio?.brandIdentity || {}
-  const brandText = (value: any, fallback: string) => typeof value === 'string' ? value : (value?.[lang] || value?.en || value?.bn || fallback)
+  const portfolioBrand = data.portfolio?.brandIdentity ?? {}
+  const brandText = (value: PortfolioText | undefined, fallback: string) => typeof value === 'string' ? value : value?.[lang] || value?.en || value?.bn || fallback
   const brandName = brandText(portfolioBrand.name, tr('Srizony', 'সৃজনী'))
   const brandDescriptor = brandText(portfolioBrand.descriptor, tr('Foundation', 'ফাউন্ডেশন'))
   const brandLabel = `${brandName} ${brandDescriptor}`.trim()
   const primaryNav = data.primaryNav ?? []
   const logo = data.images?.logo?.trim() || FALLBACK_LOGO
-  const home = primaryNav[0] ?? { label: FALLBACK_HOME_LABEL, href: '/' }
+  const home = primaryNav[0] ?? { label: FALLBACK_HOME_LABEL, href: '/', typography: undefined }
   const mainNavigationLinks = (home.children?.length ? home.children : primaryNav.slice(1)).filter((item) => item.href !== '/donate')
 
-  const isActive = (href: string) => !href ? false : (href === '/' ? pathname === '/' : pathname === href || pathname.startsWith(`${href}/`))
+  const isActive = (href: string) => !href ? false : (href === '/' ? canonicalPathname === '/' : canonicalPathname === href || canonicalPathname.startsWith(`${href}/`))
   const itemActive = (item: NavItem): boolean => item.menuType === 'folder' ? Boolean(item.children?.some(itemActive)) : isActive(item.href) || Boolean(item.children?.some(itemActive))
 
   const toggleMobileItem = (item: NavItem) => {
@@ -137,8 +157,8 @@ export default function NavBar() {
     const hasChildren = Boolean(item.children?.length)
     const expanded = Boolean(mobileExpandedItems[key])
     const active = itemActive(item)
-    const indent = { paddingInlineStart: `${16 + depth * 16}px` }
-    const label = <span>{item.label[lang]}</span>
+    const indent = { paddingInlineStart: `${16 + depth * 16}px`, ...toCmsTypographyStyle(item.typography) } as CSSProperties
+    const label = <span style={toCmsTypographyStyle(item.typography) as CSSProperties}>{item.label[lang]}</span>
     const toggle = () => toggleMobileItem(item)
     const link = (extra: string, style?: CSSProperties) => (
       <AppLink href={item.href} action={item.menuType === 'external' ? 'external' : undefined} className={cn('sf-drawer-link', extra, active && 'is-active')} style={style} aria-current={isActive(item.href) ? 'page' : undefined} onClick={closeAll}>{label}</AppLink>
@@ -179,7 +199,7 @@ export default function NavBar() {
 
           <nav className="sf-nav" aria-label={tr('Primary navigation', 'প্রধান মেনু')}>
             <Link href="/" className={`sf-nav-link ${isActive('/') ? 'is-active' : ''}`} aria-current={isActive('/') ? 'page' : undefined}>
-              <span className="sf-nav-label">{home.label[lang]}</span>
+              <span className="sf-nav-label" style={toCmsTypographyStyle(home.typography) as CSSProperties}>{home.label[lang]}</span>
             </Link>
             {mainNavigationLinks.map((item) => {
               if (item.menuType === 'folder' && item.children?.length) {
@@ -200,7 +220,11 @@ export default function NavBar() {
                       }
                     }
                   }}
-                  onFocusCapture={() => setOpenGroup(key)}
+                  onFocusCapture={(event) => {
+                    // Do not reopen the top-level dropdown when focus moves to
+                    // level-2/3 controls inside its panel.
+                    if ((event.target as HTMLElement).classList.contains('sf-nav-group-trigger')) setOpenGroup(key)
+                  }}
                   onBlurCapture={(event) => {
                     const nextTarget = event.relatedTarget as Node | null
                     if (!nextTarget || !event.currentTarget.contains(nextTarget)) {
@@ -215,17 +239,17 @@ export default function NavBar() {
                     aria-expanded={expanded}
                     onClick={() => setOpenGroup((current) => current === key ? null : key)}
                   >
-                    <span className="sf-nav-label">{item.label[lang]}</span>
+                    <span className="sf-nav-label" style={toCmsTypographyStyle(item.typography) as CSSProperties}>{item.label[lang]}</span>
                     <ChevronDown size={14} className={expanded ? 'is-rot' : ''} aria-hidden="true" />
                   </button>
-                  {/* Keep the panel mounted: CSS :hover/:focus-within can open it even before React state updates. */}
+                  {/* Keep the panel mounted so hover and explicit React open state can animate it. */}
                   <div className="sf-dd-panel sf-group-panel" aria-label={`${item.label[lang]} submenu`}>
                     <NavMenuTree items={item.children} lang={lang} isActive={isActive} onNavigate={closeAll} />
                   </div>
                 </div>
               }
               return <AppLink key={item.href} href={item.href} action={item.menuType === 'external' ? 'external' : undefined} className={`sf-nav-link ${itemActive(item) ? 'is-active' : ''}`} aria-current={isActive(item.href) ? 'page' : undefined}>
-                <span className="sf-nav-label">{item.label[lang]}</span>
+                <span className="sf-nav-label" style={toCmsTypographyStyle(item.typography) as CSSProperties}>{item.label[lang]}</span>
               </AppLink>
             })}
           </nav>
@@ -239,7 +263,7 @@ export default function NavBar() {
               aria-label={lang === 'en' ? 'বাংলায় দেখুন' : 'Switch to English'}
               title={lang === 'en' ? 'বাংলা' : 'English'}
             >
-              {lang === 'en' ? <LanguageFlag country="bd" /> : <LanguageFlag country="gb" />}
+              { lang === 'en' ? "BN" : "EN" }
             </button>
 
             {/* Minimal, accessible dark-mode switch: icon only, no visible border or label. */}
@@ -276,7 +300,7 @@ export default function NavBar() {
             <div id="sf-mobile-drawer" className="sf-drawer" role="dialog" aria-modal="true" aria-label={tr('Navigation menu', 'নেভিগেশন মেনু')}>
               <nav className="sf-drawer-nav" aria-label={tr('Mobile navigation', 'মোবাইল নেভিগেশন')}>
                 <div className="sf-drawer-landing">
-                  <Link href="/" className={`sf-drawer-link ${isActive('/') ? 'is-active' : ''}`} onClick={closeAll}>{home.label[lang]}</Link>
+                  <Link href="/" className={`sf-drawer-link ${isActive('/') ? 'is-active' : ''}`} style={toCmsTypographyStyle(home.typography) as CSSProperties} onClick={closeAll}>{home.label[lang]}</Link>
                 </div>
                 <section className="sf-drawer-menu-section sf-drawer-main-links" aria-label={tr('Navigation links', 'নেভিগেশন লিংক')}>
                   {mainNavigationLinks.map((item) => renderMobileItem(item))}

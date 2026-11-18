@@ -19,6 +19,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   return {
     title: page.title.en,
     description,
+    robots: { index: page.noIndex !== true, follow: page.noFollow !== true },
     alternates: { canonical: `${siteUrl}${canonical === '/' ? '' : canonical}`, languages: { en: `${siteUrl}${canonical === '/' ? '' : canonical}`, bn: `${siteUrl}/bn${canonical === '/' ? '' : canonical}` } },
     openGraph: { title: page.title.en, description, url: `${siteUrl}${canonical === '/' ? '' : canonical}`, type: 'article', images: page.heroImage ? [{ url: page.heroImage }] : undefined },
     twitter: { card: 'summary_large_image', title: page.title.en, description, images: page.heroImage ? [page.heroImage] : undefined },

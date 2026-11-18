@@ -1,3 +1,4 @@
+import './load-env'
 import { eq, sql } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { siteSettings } from '@/lib/db/schema'

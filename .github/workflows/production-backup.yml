@@ -1,0 +1,50 @@
+name: Production S3-compatible backup
+
+on:
+  schedule:
+    # 20:35 UTC = 02:35 the following day in Asia/Dhaka.
+    - cron: '35 20 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: srizony-production-s3-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    name: PostgreSQL and media buckets
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      BACKUP_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+      AWS_ENDPOINT_URL_S3: ${{ secrets.AWS_ENDPOINT_URL_S3 }}
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      BACKUP_S3_BUCKET: ${{ vars.BACKUP_S3_BUCKET }}
+      BACKUP_S3_PREFIX: ${{ vars.BACKUP_S3_PREFIX || 'srizony-production' }}
+      NEON_OBJECT_STORAGE_BUCKET: ${{ vars.NEON_OBJECT_STORAGE_BUCKET || 'uploads' }}
+      NEON_PUBLIC_ASSETS_BUCKET: ${{ vars.NEON_PUBLIC_ASSETS_BUCKET || 'public-assets' }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up project Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - name: Install PostgreSQL client and AWS CLI
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes postgresql-client awscli
+      - name: Validate backup configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in BACKUP_DATABASE_URL AWS_ENDPOINT_URL_S3 AWS_REGION AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY BACKUP_S3_BUCKET; do
+            test -n "${!name:-}" || { echo "Missing required setting: $name" >&2; exit 1; }
+          done
+      - name: Create PostgreSQL and object-storage backup
+        run: npm run backup:production

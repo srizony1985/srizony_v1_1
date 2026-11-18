@@ -38,6 +38,32 @@ type SiteContextValue = {
 
 const SiteContext = createContext<SiteContextValue | null>(null)
 
+/**
+ * Keep browser chrome aligned with the actual public theme surface.
+ * The fallback values match the server-rendered Midnight palette; after the
+ * runtime theme variables are applied, the computed --sf-bg value wins.
+ */
+function syncPublicThemeColor(mode: ColorMode, useFallback = false) {
+  const root = document.documentElement
+  root.style.colorScheme = mode
+
+  const computedBackground = useFallback
+    ? ''
+    : window.getComputedStyle(root).getPropertyValue('--sf-bg').trim()
+  const content = computedBackground || (mode === 'light' ? '#f4f7fa' : '#0b1117')
+  const tags = document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')
+
+  if (tags.length === 0) {
+    const meta = document.createElement('meta')
+    meta.name = 'theme-color'
+    meta.content = content
+    document.head.appendChild(meta)
+    return
+  }
+
+  tags.forEach((meta) => meta.setAttribute('content', content))
+}
+
 export default function SiteProvider({
   children,
   initialPreferences,
@@ -86,18 +112,24 @@ export default function SiteProvider({
   const navigationLastSyncAt = useRef(0)
   const navigationRequestInFlight = useRef(false)
 
+  useEffect(() => {
+    if (initialSite) {
+      navigationLastSyncAt.current = Date.now()
+    }
+  }, [initialSite])
+
   /**
-   * Keep the public site's default palette consistent. The appearance
-   * customizer has been removed, so legacy per-browser palette overrides are
-   * discarded while the user's explicit light/dark preference is retained.
+   * Keep the public palette defaults consistent. The server-rendered cookie is
+   * the single source of truth for light/dark mode, so stale localStorage data
+   * must never overwrite the mode selected by the user after hydration.
    */
   useEffect(() => {
-    const storedMode = window.localStorage.getItem('sf-mode') as ColorMode | null
-
     try {
       window.localStorage.setItem('sf-theme', 'midnight')
       window.localStorage.setItem('sf-shape', 'soft')
       window.localStorage.removeItem('sf-theme-tokens')
+      // Keep the old client preference key in sync for older app integrations.
+      window.localStorage.setItem('sf-mode', mode)
     } catch {
       // Storage can be unavailable in privacy modes; the active session still works.
     }
@@ -105,28 +137,23 @@ export default function SiteProvider({
     document.cookie = 'sf-theme=midnight;path=/;max-age=31536000;samesite=lax'
     document.cookie = 'sf-shape=soft;path=/;max-age=31536000;samesite=lax'
     document.cookie = 'sf-theme-tokens=;path=/;max-age=0;samesite=lax'
+    document.cookie = `sf-mode=${mode};path=/;max-age=31536000;samesite=lax`
 
-    if ((storedMode === 'light' || storedMode === 'dark') && storedMode !== mode) {
-      setModeState(storedMode)
-      document.cookie = `sf-mode=${storedMode};path=/;max-age=31536000;samesite=lax`
-    }
-
-    // Intentionally only runs on mount.
+    // Intentionally only runs on mount. The initial mode comes from the server cookie.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   /**
    * Load current authenticated profile.
    */
-  const refreshProfile = async () => {
-    try {
-      const { data } = (await getSessionProfile()) as { data: { user?: SiteProfile | null } }
-
-      setProfile(data.user || null)
-    } catch {
-      setProfile(null)
-    }
-  }
+  const refreshProfile = useCallback(() => {
+    return getSessionProfile()
+      .then(({ data }) => {
+        const user = (data as { user?: SiteProfile | null }).user
+        setProfile(user || null)
+      })
+      .catch(() => setProfile(null))
+  }, [])
 
   /**
    * Strip /bn from the pathname so the API always receives
@@ -150,15 +177,18 @@ export default function SiteProvider({
     if (hasSite) return
 
     const controller = new AbortController()
-    setLoading(true)
-    setError(null)
+    const timeoutId = window.setTimeout(() => {
+      setLoading(true)
+      setError(null)
+    }, 0)
 
     getSiteSnapshot(canonicalPath, controller.signal)
       .then((response) => {
         if (!response.ok || !response.data?.global) {
           throw new Error('Unable to load the public site.')
         }
-        setSite(response.data as PublicSiteSnapshot)
+        setSite(response.data)
+        navigationLastSyncAt.current = Date.now()
       })
       .catch((err) => {
         if (err?.name !== 'AbortError') {
@@ -169,7 +199,10 @@ export default function SiteProvider({
         if (!controller.signal.aborted) setLoading(false)
       })
 
-    return () => controller.abort()
+    return () => {
+      window.clearTimeout(timeoutId)
+      controller.abort()
+    }
   }, [canonicalPath, hasSite])
 
   /**
@@ -225,45 +258,26 @@ export default function SiteProvider({
   /**
    * Explicit content refresh.
    */
-  const refresh = async () => {
+  const refresh = useCallback(() => {
     setLoading(true)
     setError(null)
-
-    try {
-      const response = await getPageSnapshot(canonicalPath)
-
-      if (!response.ok) {
-        throw new Error('Unable to load site content')
-      }
-
-      const data = response.data as {
-        canonicalSlug: string
-        page: PublicSiteSnapshot['page']
-        notFound: boolean
-      }
-
-      setSite((current) => {
-        if (!current) {
-          return current
-        }
-
-        return {
+    return getPageSnapshot(canonicalPath)
+      .then((response) => {
+        if (!response.ok) throw new Error('Unable to load site content')
+        const data = response.data
+        setSite((current) => current ? {
           ...current,
           canonicalSlug: data.canonicalSlug,
           page: data.page,
           notFound: data.notFound,
-        }
+          ...(data.jobApplicationProcess ? { jobApplicationProcess: data.jobApplicationProcess } : {}),
+        } : current)
       })
-    } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : 'Unable to load site content',
-      )
-    } finally {
-      setLoading(false)
-    }
-  }
+      .catch((err: unknown) => {
+        setError(err instanceof Error ? err.message : 'Unable to load site content')
+      })
+      .finally(() => setLoading(false))
+  }, [canonicalPath])
 
   /**
    * Load page content whenever the canonical route changes.
@@ -277,24 +291,24 @@ export default function SiteProvider({
    *
    * where the old page content previously remained in state.
    */
+  const currentCanonicalSlug = site?.canonicalSlug
+  const currentPage = site?.page
+
   useEffect(() => {
     // The full-snapshot hydration effect above owns initialization when the provider
     // was mounted with initialSite=null (for example, after leaving the CMS).
-    if (!site) return
-
-    const currentCanonicalSlug = site?.canonicalSlug
+    if (!hasSite) return
 
     // The current state already represents this route.
-    if (currentCanonicalSlug === canonicalPath && site?.page) {
-      setLoading(false)
-      setError(null)
+    if (currentCanonicalSlug === canonicalPath && currentPage) {
       return
     }
 
     const controller = new AbortController()
-
-    setLoading(true)
-    setError(null)
+    const timeoutId = window.setTimeout(() => {
+      setLoading(true)
+      setError(null)
+    }, 0)
 
     getPageSnapshot(canonicalPath, controller.signal)
       .then((response) => {
@@ -302,11 +316,7 @@ export default function SiteProvider({
           throw new Error('Unable to load site content')
         }
 
-        return response.data as {
-          canonicalSlug: string
-          page: PublicSiteSnapshot['page']
-          notFound: boolean
-        }
+        return response.data
       })
       .then((data) => {
         setSite((current) => {
@@ -319,6 +329,7 @@ export default function SiteProvider({
             canonicalSlug: data.canonicalSlug,
             page: data.page,
             notFound: data.notFound,
+          ...(data.jobApplicationProcess ? { jobApplicationProcess: data.jobApplicationProcess } : {}),
           }
         })
       })
@@ -332,13 +343,17 @@ export default function SiteProvider({
         }
       })
       .finally(() => {
+        window.clearTimeout(timeoutId)
         if (!controller.signal.aborted) {
           setLoading(false)
         }
       })
 
-    return () => controller.abort()
-  }, [canonicalPath, site?.canonicalSlug, site?.page])
+    return () => {
+      window.clearTimeout(timeoutId)
+      controller.abort()
+    }
+  }, [canonicalPath, hasSite, currentCanonicalSlug, currentPage])
 
   /**
    * Persist language.
@@ -361,7 +376,7 @@ export default function SiteProvider({
    * Bangla route, and changing the URL can otherwise turn a valid page into a
    * 404. Persist the preference so the selected language survives refreshes.
    */
-  const setLanguage = (value: Lang) => {
+  const setLanguage = useCallback((value: Lang) => {
     setLang(value)
 
     try {
@@ -372,12 +387,12 @@ export default function SiteProvider({
     }
 
     document.documentElement.lang = value === 'bn' ? 'bn' : 'en'
-  }
+  }, [])
 
   /**
    * Theme setters.
    */
-  const setTheme = (value: ThemeName) => {
+  const setTheme = useCallback((value: ThemeName) => {
     setThemeState(value)
 
     window.localStorage.setItem('sf-theme', value)
@@ -387,9 +402,9 @@ export default function SiteProvider({
     )};path=/;max-age=31536000;samesite=lax`
 
     document.documentElement.dataset.theme = value
-  }
+  }, [])
 
-  const setShape = (value: ShapeName) => {
+  const setShape = useCallback((value: ShapeName) => {
     setShapeState(value)
 
     window.localStorage.setItem('sf-shape', value)
@@ -399,20 +414,28 @@ export default function SiteProvider({
     )};path=/;max-age=31536000;samesite=lax`
 
     document.documentElement.dataset.shape = value
-  }
+  }, [])
 
-  const setMode = (value: ColorMode) => {
+  const setMode = useCallback((value: ColorMode) => {
     setModeState(value)
 
-    window.localStorage.setItem('sf-mode', value)
-
-    document.cookie = `sf-mode=${value};path=/;max-age=31536000;samesite=lax`
-
+    // Update the root immediately so CSS selectors and color-scheme respond in
+    // the same interaction, without waiting for the next React effect.
     document.documentElement.dataset.mode = value
-    // Keep the browser chrome colour in step with the --sf-bg token of the new mode.
-    const chrome = getComputedStyle(document.body).backgroundColor
-    document.querySelectorAll('meta[name="theme-color"]').forEach((meta) => meta.setAttribute('content', chrome))
-  }
+    syncPublicThemeColor(value, true)
+
+    try {
+      window.localStorage.setItem('sf-mode', value)
+    } catch {
+      // The cookie remains the persistence source when browser storage is blocked.
+    }
+
+    try {
+      document.cookie = `sf-mode=${value};path=/;max-age=31536000;samesite=lax`
+    } catch {
+      // The active page still switches mode even when cookies are unavailable.
+    }
+  }, [])
 
   /**
    * Persist customization tokens in localStorage for client navigation and in
@@ -463,6 +486,11 @@ export default function SiteProvider({
         document.documentElement.style.setProperty(key, value)
       },
     )
+
+    // Runtime palette variables may differ from the CSS fallback palette.
+    // Read --sf-bg only after applying them so browser chrome uses the exact
+    // background currently used by the page.
+    syncPublicThemeColor(mode)
   }, [site, theme, mode, shape, tokens])
 
   const value = useMemo<SiteContextValue>(
@@ -485,20 +513,7 @@ export default function SiteProvider({
       error,
       refresh,
     }),
-    [
-      tokens,
-      setToken,
-      resetTokens,
-      lang,
-      theme,
-      shape,
-      mode,
-      profile,
-      site,
-      loading,
-      error,
-      pathname,
-    ],
+    [tokens, setToken, resetTokens, lang, setLanguage, theme, setTheme, shape, setShape, mode, setMode, profile, refreshProfile, site, loading, error, refresh],
   )
 
   return (

@@ -10,6 +10,7 @@ import DevelopmentAreas from '@/components/home/DevelopmentAreas'
 import NewsRail from '@/components/home/NewsRail'
 import SuccessStoriesGallery from '@/components/home/SuccessStoriesGallery'
 import DonateBanner from '@/components/home/DonateBanner'
+import PageSectionRenderer from '@/components/pages/PageSection'
 export { LANDING_COMPONENT_KEYS, isLandingComponentKey } from '@/lib/cms/component-policy'
 
 
@@ -34,9 +35,10 @@ export default function LandingSectionRenderer({ section, page }: { section: Pag
     case 'missionVisionValues': return section.type === 'cards' ? <MissionVisionValues lang={lang} page={scopedPage} /> : null
     case 'locations': return section.type === 'richText' ? <LocationMaps page={scopedPage} /> : null
     case 'developmentAreas': return section.type === 'cards' ? <DevelopmentAreas lang={lang} page={scopedPage} /> : null
+    case 'impactCards': return section.type === 'cards' ? <PageSectionRenderer section={section} page={scopedPage} /> : null
     case 'news':
-    case 'stories':
-    case 'newsFeed': return section.type === 'carousel' ? <NewsRail page={scopedPage} lang={lang} /> : null
+    case 'newsFeed':
+    case 'stories': return section.type === 'carousel' ? <NewsRail page={scopedPage} lang={lang} /> : null
     case 'successStories': return section.type === 'carousel' ? <SuccessStoriesGallery page={scopedPage} lang={lang} /> : null
     case 'donate': return section.type === 'cta' ? <DonateBanner lang={lang} section={section} /> : null
     default: return null

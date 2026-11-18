@@ -1,3 +1,5 @@
+import './load-env'
+import type { ExternalValue } from '../types/json'
 import { eq, sql } from 'drizzle-orm'
 import { siteSettings } from '@/lib/db/schema'
 import { db } from '@/lib/db'
@@ -11,7 +13,7 @@ async function main() {
   const backupKey = 'cms-demo-backup:website-essentials.json'
   const backup = await db.select({ value: siteSettings.value }).from(siteSettings).where(eq(siteSettings.key, backupKey)).limit(1)
   if (backup.length) {
-    const saved = backup[0].value as { existed?: boolean; value?: unknown }
+    const saved = backup[0].value as { existed?: boolean; value?: ExternalValue }
     if (saved.existed) {
       await db.insert(siteSettings).values({ key: 'cms-document:website-essentials.json', value: saved.value ?? {}, updatedAt: new Date() })
         .onConflictDoUpdate({ target: siteSettings.key, set: { value: saved.value ?? {}, updatedAt: new Date() } })

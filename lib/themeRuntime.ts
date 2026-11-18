@@ -1,4 +1,5 @@
-export type RuntimeThemePalette = Record<string, unknown> & {
+import type { ExternalValue, JsonObject } from '@/types/json'
+export type RuntimeThemePalette = JsonObject & {
   primary?: string
   secondary?: string
   accent?: string
@@ -33,6 +34,18 @@ export type RuntimeThemePalette = Record<string, unknown> & {
     display?: string
     tracking?: string
     radius?: string
+    baseSize?: number
+    bodyWeight?: number
+    headingWeight?: number
+    headingScale?: number
+    lineHeight?: number
+    letterSpacing?: number
+    navFontSize?: number
+    navFontWeight?: number
+    bodyColor?: string
+    headingColor?: string
+    navColor?: string
+    scopes?: { header?: Record<string, string | number>; content?: Record<string, string | number>; footer?: Record<string, string | number>; cms?: Record<string, string | number> }
   }
 }
 
@@ -48,27 +61,76 @@ export const THEME_COLOR_TOKEN_KEYS = [
 ] as const
 
 const HEX = /^#[0-9a-fA-F]{6}$/
+type RGB = readonly [number, number, number]
 
-function hex(value: unknown, fallback: string) {
+function hex(value: ExternalValue, fallback: string) {
   return typeof value === 'string' && HEX.test(value) ? value : fallback
 }
 
-function contrastInk(value: string) {
+function parseHex(value: string): RGB {
   const normalized = value.slice(1)
-  const channels = [0, 2, 4].map((offset) => Number.parseInt(normalized.slice(offset, offset + 2), 16) / 255)
+  return [0, 2, 4].map((offset) => Number.parseInt(normalized.slice(offset, offset + 2), 16)) as unknown as RGB
+}
+
+function rgbHex(value: RGB) {
+  return `#${value.map((channel) => Math.max(0, Math.min(255, Math.round(channel))).toString(16).padStart(2, '0')).join('')}`
+}
+
+function luminance(value: string) {
+  const channels = parseHex(value).map((channel) => channel / 255)
   const linear = channels.map((channel) => (channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4))
-  const luminance = 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
-  const darkInkLuminance = 0.013
-  const lightInkLuminance = 0.96
-  const darkContrast = (luminance + 0.05) / (darkInkLuminance + 0.05)
-  const lightContrast = (lightInkLuminance + 0.05) / (luminance + 0.05)
+  return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
+}
+
+/** WCAG contrast ratio between two opaque sRGB colours. */
+export function getContrastRatio(foreground: string, background: string) {
+  const first = luminance(foreground)
+  const second = luminance(background)
+  return (Math.max(first, second) + 0.05) / (Math.min(first, second) + 0.05)
+}
+
+function mixHex(first: string, second: string, firstWeight: number) {
+  const a = parseHex(first)
+  const b = parseHex(second)
+  return rgbHex(a.map((channel, index) => channel * firstWeight + b[index] * (1 - firstWeight)) as unknown as RGB)
+}
+
+/**
+ * Preserve the requested hue, moving it toward black or white only as much as
+ * necessary to meet the contrast target on every supplied surface.
+ */
+export function ensureThemeContrast(foreground: string, backgrounds: string[], target = 4.5) {
+  const validBackgrounds = backgrounds.filter((value) => HEX.test(value))
+  if (!HEX.test(foreground) || validBackgrounds.length === 0) return foreground
+  const minimumContrast = (candidate: string) => Math.min(...validBackgrounds.map((background) => getContrastRatio(candidate, background)))
+  if (minimumContrast(foreground) >= target) return foreground
+
+  const endpoints = ['#000000', '#ffffff'].map((endpoint) => ({ endpoint, score: minimumContrast(endpoint) }))
+    .sort((first, second) => second.score - first.score)
+  const best = endpoints[0]
+  if (best.score < target) return best.endpoint
+
+  let low = 0
+  let high = 1
+  for (let iteration = 0; iteration < 28; iteration += 1) {
+    const progress = (low + high) / 2
+    const candidate = mixHex(foreground, best.endpoint, 1 - progress)
+    if (minimumContrast(candidate) >= target) high = progress
+    else low = progress
+  }
+  return mixHex(foreground, best.endpoint, 1 - high)
+}
+
+function contrastInk(value: string) {
+  const darkContrast = getContrastRatio('#12221a', value)
+  const lightContrast = getContrastRatio('#f5fbf7', value)
   // Choose the foreground with the stronger contrast, especially for the gold donate accent.
   return darkContrast >= lightContrast ? '#12221a' : '#f5fbf7'
 }
 
-export function parseThemeTokenOverrides(value: unknown): Record<string, string> {
+export function parseThemeTokenOverrides(value: ExternalValue): Record<string, string> {
   if (!value || typeof value !== 'object') return {}
-  const source = value as Record<string, unknown>
+  const source = value as JsonObject
   const entries = Object.entries(source).filter(([key, token]) => THEME_COLOR_TOKEN_KEYS.includes(key as (typeof THEME_COLOR_TOKEN_KEYS)[number]) && typeof token === 'string' && HEX.test(token)) as Array<[string, string]>
   return Object.fromEntries(entries) as Record<string, string>
 }
@@ -91,32 +153,63 @@ export function buildThemeCssVariables(
   const surface = hex(dark ? theme.darkSurface : theme.surface, dark ? '#111c24' : '#ffffff')
   const surfaceAlt = hex(dark ? theme.darkSurfaceAlt : theme.surfaceAlt, dark ? '#16252f' : '#edf3f7')
   const surfaceRaised = hex(dark ? theme.darkSurfaceRaised : theme.surfaceRaised, dark ? '#1d303c' : '#ffffff')
-  const border = hex(dark ? theme.darkBorder : theme.border, dark ? '#304452' : '#d8e1e8')
-  const ink = hex(dark ? theme.darkInk : theme.ink, dark ? '#eef5fa' : '#1d2b36')
-  const muted = hex(dark ? theme.darkMuted : theme.muted, dark ? '#a8bbc7' : '#65737c')
+  const rawBorder = hex(dark ? theme.darkBorder : theme.border, dark ? '#304452' : '#d8e1e8')
+  const ink = ensureThemeContrast(hex(dark ? theme.darkInk : theme.ink, dark ? '#eef5fa' : '#1d2b36'), [surface, surfaceAlt], 7)
+  const muted = ensureThemeContrast(hex(dark ? theme.darkMuted : theme.muted, dark ? '#a8bbc7' : '#65737c'), [surface, surfaceAlt], 4.5)
+  // Component boundaries and keyboard focus need a visible edge on both cards
+  // and inset/alternate surfaces, not merely a token that differs by one shade.
+  const border = ensureThemeContrast(rawBorder, [surface, surfaceAlt], 3)
   const headerBg = hex(dark ? theme.darkHeaderBg : theme.headerBg, dark ? '#0d171f' : '#ffffff')
-  const headerInk = hex(dark ? theme.darkHeaderInk : theme.headerInk, dark ? '#f0f6fa' : '#263b4b')
+  const headerInk = ensureThemeContrast(hex(dark ? theme.darkHeaderInk : theme.headerInk, dark ? '#f0f6fa' : '#263b4b'), [headerBg], 4.5)
   const footerBg = hex(dark ? theme.darkFooterBg : theme.footerBg, dark ? '#081018' : '#111f2b')
-  const footerInk = hex(dark ? theme.darkFooterInk : theme.footerInk, dark ? '#eff6fb' : '#f3f8fc')
-  const primaryStrong = dark
-    ? `color-mix(in srgb, ${primary} 55%, ${footerInk})`
-    : `color-mix(in srgb, ${primary} 82%, ${ink})`
-  const link = dark ? primaryStrong : primary
-  const navActive = dark ? footerInk : primary
+  const footerInk = ensureThemeContrast(hex(dark ? theme.darkFooterInk : theme.footerInk, dark ? '#eff6fb' : '#f3f8fc'), [footerBg], 4.5)
+  const primaryStrongBase = dark ? mixHex(primary, footerInk, 0.55) : mixHex(primary, ink, 0.82)
+  const primaryStrong = ensureThemeContrast(primaryStrongBase, [surface, surfaceAlt], 4.5)
+  const link = ensureThemeContrast(dark ? primaryStrong : primary, [surface, surfaceAlt], 4.5)
+  const focus = ensureThemeContrast(hex(theme.focus, '#4e7799'), [surface, surfaceAlt], 3)
+  const success = ensureThemeContrast(hex(theme.success, '#5d966f'), [surface, surfaceAlt], 4.5)
+  const warning = ensureThemeContrast(hex(theme.warning, '#a97622'), [surface, surfaceAlt], 4.5)
+  const danger = ensureThemeContrast(hex(theme.danger, '#c34f4f'), [surface, surfaceAlt], 4.5)
+  const secondaryInk = ensureThemeContrast(secondary, [surface, surfaceAlt], 4.5)
+  const accentInk = ensureThemeContrast(accent, [surface, surfaceAlt], 4.5)
+  const navActive = dark ? footerInk : link
   const navActiveBg = dark
-    ? `color-mix(in srgb, ${navActive} 13%, ${surface})`
-    : `color-mix(in srgb, ${primary} 9%, ${surface})`
+    ? `color-mix(in srgb, ${navActive} 16%, ${surface})`
+    : `color-mix(in srgb, ${link} 12%, ${surface})`
   const activeDarkBackground = hex(theme.darkBackground, '#0b1117')
   const onPrimary = contrastInk(primary)
+  const onLink = contrastInk(link)
   const onSecondary = contrastInk(secondary)
   const onAccent = contrastInk(accent)
   const themeRadius = theme.typography?.radius || '18px'
+  const typography = theme.typography || {}
+  const scopedTypography = typography.scopes || {}
+  const headerTypography = { ...typography, ...(scopedTypography.header || {}) }
+  const contentTypography = { ...typography, ...(scopedTypography.content || {}) }
+  const footerTypography = { ...typography, ...(scopedTypography.footer || {}) }
+  const cmsTypography = { ...typography, ...(scopedTypography.cms || {}) }
+  const scopedFont = (scope: typeof headerTypography, key: 'body' | 'display', fallback: string) => typeof scope[key] === 'string' ? scope[key] as string : fallback
+  const scopedNumber = (scope: typeof headerTypography, key: 'baseSize' | 'bodyWeight' | 'headingWeight' | 'headingScale' | 'lineHeight' | 'letterSpacing' | 'navFontSize' | 'navFontWeight', fallback: number) => typeof scope[key] === 'number' && Number.isFinite(scope[key]) ? scope[key] as number : fallback
+  const scopedColor = (scope: typeof headerTypography, key: 'bodyColor' | 'headingColor' | 'navColor', fallback: string) => typeof scope[key] === 'string' && HEX.test(scope[key] as string) ? scope[key] as string : fallback
+  const baseSize = Math.max(13, Math.min(20, Number(typography.baseSize) || 16))
+  const bodyWeight = Math.max(300, Math.min(700, Number(typography.bodyWeight) || 400))
+  const headingWeight = Math.max(500, Math.min(900, Number(typography.headingWeight) || 700))
+  const headingScale = Math.max(0.85, Math.min(1.25, Number(typography.headingScale) || 1))
+  const lineHeight = Math.max(1.2, Math.min(2, Number(typography.lineHeight) || 1.65))
+  const defaultTracking = typeof typography.tracking === 'string' && Number.isFinite(Number.parseFloat(typography.tracking))
+    ? Number.parseFloat(typography.tracking)
+    : -0.02
+  const letterSpacing = Math.max(-0.06, Math.min(0.1, typeof typography.letterSpacing === 'number' ? typography.letterSpacing : defaultTracking))
+  const navFontSize = Math.max(12, Math.min(20, Number(typography.navFontSize) || 15))
+  const navFontWeight = Math.max(400, Math.min(800, Number(typography.navFontWeight) || 600))
   const shapeRadius = shape === 'soft' ? '10px' : shape === 'square' ? '2px' : themeRadius
 
   return {
     '--sf-primary': primary,
     '--sf-secondary': secondary,
+    '--sf-secondary-ink': secondaryInk,
     '--sf-accent': accent,
+    '--sf-accent-ink': accentInk,
     '--sf-bg': background,
     '--sf-card': surface,
     '--sf-surface': surface,
@@ -131,6 +224,11 @@ export function buildThemeCssVariables(
     '--sf-border-soft': border,
     '--sf-border-strong': border,
     '--sf-divider': border,
+    '--sf-essentials-surface': surface,
+    '--sf-essentials-border': border,
+    '--sf-essentials-ink': ink,
+    '--sf-essentials-muted': muted,
+    '--sf-essentials-link': link,
     '--sf-ink': ink,
     '--sf-muted': muted,
     '--sf-header-bg': headerBg,
@@ -140,14 +238,16 @@ export function buildThemeCssVariables(
     '--sf-footer-text': footerInk,
     '--sf-footer-muted': muted,
     '--sf-footer-border': border,
-    '--sf-success': hex(theme.success, '#5d966f'),
-    '--sf-warning': hex(theme.warning, '#a97622'),
-    '--sf-danger': hex(theme.danger, '#c34f4f'),
-    '--sf-focus': hex(theme.focus, '#4e7799'),
+    '--sf-success': success,
+    '--sf-warning': warning,
+    '--sf-danger': danger,
+    '--sf-info': focus,
+    '--sf-focus': focus,
     '--sf-on-primary': onPrimary,
     '--sf-text-on-primary': onPrimary,
     '--sf-on-secondary': onSecondary,
     '--sf-on-accent': onAccent,
+    '--sf-on-link': onLink,
     '--sf-primary-strong': primaryStrong,
     '--sf-link': link,
     '--sf-nav-active': navActive,
@@ -156,10 +256,71 @@ export function buildThemeCssVariables(
     '--sf-nav-active-text': navActive,
     '--sf-hero-bg': `color-mix(in srgb, ${primary} 26%, ${activeDarkBackground})`,
     '--sf-overlay': `color-mix(in srgb, ${activeDarkBackground} 68%, transparent)`,
-    // One typeface for the whole site (the loaded Inter + Noto Sans Bengali stack); themes change colour and shape, not type.
-    '--sf-font-body': "var(--font-body),'Noto Sans Bengali','Hind Siliguri',system-ui,sans-serif",
-    '--sf-font-display': "var(--font-body),'Noto Sans Bengali','Hind Siliguri',system-ui,sans-serif",
-    '--sf-tracking': '-0.02em',
+    // Typography is resolved from the active theme, never from a global CMS override.
+    '--sf-font-body': typography.body || "var(--font-body),'Noto Sans Bengali','Hind Siliguri',system-ui,sans-serif",
+    '--sf-font-display': typography.display || "var(--font-display),'Noto Sans Bengali','Hind Siliguri',system-ui,sans-serif",
+    '--sf-fs-md': `${baseSize}px`,
+    '--sf-fs-body': `${baseSize}px`,
+    '--sf-fs-lead': `${Math.round(baseSize * 1.125)}px`,
+    '--sf-fs-h1': `calc(clamp(2.125rem, 5vw, 3.75rem) * ${headingScale})`,
+    '--sf-fs-h2': `calc(clamp(1.75rem, 3.2vw, 2.5rem) * ${headingScale})`,
+    '--sf-fs-h3': `calc(1.1875rem * ${headingScale})`,
+    '--sf-fw-body': String(bodyWeight),
+    '--sf-fw-head': String(headingWeight),
+    '--sf-heading-scale': String(headingScale),
+    '--sf-line-height-body': String(lineHeight),
+    '--sf-nav-font-size': `${navFontSize}px`,
+    '--sf-nav-font-weight': String(navFontWeight),
+    '--sf-tracking': `${letterSpacing}em`,
+    '--sf-typo-body-color': ensureThemeContrast(hex(typography.bodyColor, ink), [surface, surfaceAlt], 4.5),
+    '--sf-typo-heading-color': ensureThemeContrast(hex(typography.headingColor, ink), [surface, surfaceAlt], 7),
+    '--sf-typo-nav-color': ensureThemeContrast(hex(typography.navColor, headerInk), [headerBg], 4.5),
+    '--sf-header-font-body': scopedFont(headerTypography, 'body', typography.body || "var(--font-body),'Noto Sans Bengali','Hind Siliguri',system-ui,sans-serif"),
+    '--sf-header-font-display': scopedFont(headerTypography, 'display', typography.display || "var(--font-display),'Noto Sans Bengali','Hind Siliguri',system-ui,sans-serif"),
+    '--sf-header-font-size': `${scopedNumber(headerTypography, 'baseSize', baseSize)}px`,
+    '--sf-header-font-weight': String(scopedNumber(headerTypography, 'bodyWeight', bodyWeight)),
+    '--sf-header-heading-weight': String(scopedNumber(headerTypography, 'headingWeight', headingWeight)),
+    '--sf-header-heading-scale': String(scopedNumber(headerTypography, 'headingScale', headingScale)),
+    '--sf-header-line-height': String(scopedNumber(headerTypography, 'lineHeight', lineHeight)),
+    '--sf-header-tracking': `${scopedNumber(headerTypography, 'letterSpacing', letterSpacing)}em`,
+    '--sf-header-nav-font-size': `${scopedNumber(headerTypography, 'navFontSize', navFontSize)}px`,
+    '--sf-header-nav-font-weight': String(scopedNumber(headerTypography, 'navFontWeight', navFontWeight)),
+    '--sf-header-body-color': ensureThemeContrast(scopedColor(headerTypography, 'bodyColor', headerInk), [headerBg], 4.5),
+    '--sf-header-heading-color': ensureThemeContrast(scopedColor(headerTypography, 'headingColor', headerInk), [headerBg], 7),
+    '--sf-header-nav-color': ensureThemeContrast(scopedColor(headerTypography, 'navColor', headerInk), [headerBg], 4.5),
+    '--sf-content-font-body': scopedFont(contentTypography, 'body', typography.body || "var(--font-body),'Noto Sans Bengali','Hind Siliguri',system-ui,sans-serif"),
+    '--sf-content-font-display': scopedFont(contentTypography, 'display', typography.display || "var(--font-display),'Noto Sans Bengali','Hind Siliguri',system-ui,sans-serif"),
+    '--sf-content-font-size': `${scopedNumber(contentTypography, 'baseSize', baseSize)}px`,
+    '--sf-content-font-weight': String(scopedNumber(contentTypography, 'bodyWeight', bodyWeight)),
+    '--sf-content-heading-weight': String(scopedNumber(contentTypography, 'headingWeight', headingWeight)),
+    '--sf-content-heading-scale': String(scopedNumber(contentTypography, 'headingScale', headingScale)),
+    '--sf-content-line-height': String(scopedNumber(contentTypography, 'lineHeight', lineHeight)),
+    '--sf-content-tracking': `${scopedNumber(contentTypography, 'letterSpacing', letterSpacing)}em`,
+    '--sf-content-body-color': ensureThemeContrast(scopedColor(contentTypography, 'bodyColor', hex(typography.bodyColor, ink)), [surface, surfaceAlt], 4.5),
+    '--sf-content-heading-color': ensureThemeContrast(scopedColor(contentTypography, 'headingColor', hex(typography.headingColor, ink)), [surface, surfaceAlt], 7),
+    '--sf-footer-font-body': scopedFont(footerTypography, 'body', typography.body || "var(--font-body),'Noto Sans Bengali','Hind Siliguri',system-ui,sans-serif"),
+    '--sf-footer-font-display': scopedFont(footerTypography, 'display', typography.display || "var(--font-display),'Noto Sans Bengali','Hind Siliguri',system-ui,sans-serif"),
+    '--sf-footer-font-size': `${scopedNumber(footerTypography, 'baseSize', baseSize)}px`,
+    '--sf-footer-font-weight': String(scopedNumber(footerTypography, 'bodyWeight', bodyWeight)),
+    '--sf-footer-heading-weight': String(scopedNumber(footerTypography, 'headingWeight', headingWeight)),
+    '--sf-footer-heading-scale': String(scopedNumber(footerTypography, 'headingScale', headingScale)),
+    '--sf-footer-line-height': String(scopedNumber(footerTypography, 'lineHeight', lineHeight)),
+    '--sf-footer-tracking': `${scopedNumber(footerTypography, 'letterSpacing', letterSpacing)}em`,
+    '--sf-footer-body-color': ensureThemeContrast(scopedColor(footerTypography, 'bodyColor', footerInk), [footerBg], 4.5),
+    '--sf-footer-heading-color': ensureThemeContrast(scopedColor(footerTypography, 'headingColor', footerInk), [footerBg], 7),
+    '--sf-cms-font-body': scopedFont(cmsTypography, 'body', typography.body || "var(--font-body),'Noto Sans Bengali','Hind Siliguri',system-ui,sans-serif"),
+    '--sf-cms-font-display': scopedFont(cmsTypography, 'display', typography.display || "var(--font-display),'Noto Sans Bengali','Hind Siliguri',system-ui,sans-serif"),
+    '--sf-cms-font-size': `${scopedNumber(cmsTypography, 'baseSize', baseSize)}px`,
+    '--sf-cms-font-weight': String(scopedNumber(cmsTypography, 'bodyWeight', bodyWeight)),
+    '--sf-cms-heading-weight': String(scopedNumber(cmsTypography, 'headingWeight', headingWeight)),
+    '--sf-cms-heading-scale': String(scopedNumber(cmsTypography, 'headingScale', headingScale)),
+    '--sf-cms-line-height': String(scopedNumber(cmsTypography, 'lineHeight', lineHeight)),
+    '--sf-cms-tracking': `${scopedNumber(cmsTypography, 'letterSpacing', letterSpacing)}em`,
+    '--sf-cms-nav-size': `${scopedNumber(cmsTypography, 'navFontSize', navFontSize)}px`,
+    '--sf-cms-nav-weight': String(scopedNumber(cmsTypography, 'navFontWeight', navFontWeight)),
+    '--sf-cms-body-color': ensureThemeContrast(scopedColor(cmsTypography, 'bodyColor', ink), [surface, surfaceAlt], 4.5),
+    '--sf-cms-heading-color': ensureThemeContrast(scopedColor(cmsTypography, 'headingColor', ink), [surface, surfaceAlt], 7),
+    '--sf-cms-nav-color': ensureThemeContrast(scopedColor(cmsTypography, 'navColor', link), [surface, surfaceAlt], 4.5),
     '--sf-radius-theme': themeRadius,
     '--sf-radius-shape': shapeRadius,
   }

@@ -1,15 +1,16 @@
+import type { ExternalValue, JsonObject } from '../types/json'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { allPages, contentEntries, navGroups, primaryNav, contentDetails, homeHero, systemData, validateContentDetailsDataset } from '@/lib/cms/fallback-gateway'
 import type { PageData, Section } from '@/types/entityType'
 
 const problems: string[] = []
-const checkBilingual = (value: unknown, path: string, required = true) => {
+const checkBilingual = (value: ExternalValue, path: string, required = true) => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     if (required) problems.push(`${path}: expected English and Bengali copy`)
     return
   }
-  const item = value as { en?: unknown; bn?: unknown }
+  const item = value as { en?: ExternalValue; bn?: ExternalValue }
   if (required && (typeof item.en !== 'string' || !item.en.trim())) problems.push(`${path}.en: missing`)
   if (required && (typeof item.bn !== 'string' || !item.bn.trim())) problems.push(`${path}.bn: missing`)
 }
@@ -124,10 +125,10 @@ function auditPage(path: string, page: PageData) {
   else page.sections.forEach((section, index) => auditSection(section, `${path}.sections[${index}]`))
 }
 
-function auditLocalAssets(value: unknown, label: string, seen = new Set<object>()) {
+function auditLocalAssets(value: ExternalValue, label: string, seen = new Set<object>()) {
   if (!value || typeof value !== 'object' || seen.has(value as object)) return
   seen.add(value as object)
-  for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+  for (const [key, child] of Object.entries(value as JsonObject)) {
     const path = `${label}.${key}`
     if (typeof child === 'string' && /^\/(?:images|photos)\//.test(child)) {
       if (!existsSync(join(process.cwd(), 'public', child.slice(1)))) problems.push(`${path}: local asset does not exist (${child})`)

@@ -1,3 +1,4 @@
+import type { ExternalValue } from '@/types/json'
 import type { LandingComponentKey as LandingComponentKeyModel, PageSection, Section } from '@/types/entityType'
 
 /** Landing compositions are intentionally a strict subset of the page section model. */
@@ -8,6 +9,7 @@ export const LANDING_COMPONENT_TYPE = {
   growth: 'stats',
   missionVisionValues: 'cards',
   locations: 'richText',
+  impactCards: 'cards',
   developmentAreas: 'cards',
   news: 'carousel',
   successStories: 'carousel',
@@ -23,13 +25,14 @@ export const LANDING_COMPONENT_OPTIONS = [
   { key: 'growth', label: 'Growth / impact statistics', labelBn: 'উন্নয়ন ও প্রভাবের পরিসংখ্যান', type: 'stats' },
   { key: 'missionVisionValues', label: 'Mission, vision & values', labelBn: 'মিশন, ভিশন ও মূল্যবোধ', type: 'cards' },
   { key: 'locations', label: 'Office locations / footprint', labelBn: 'কার্যালয় ও অবস্থান', type: 'richText' },
+  { key: 'impactCards', label: 'Impact cards / What we do', labelBn: 'প্রভাবের কার্ড / আমরা যা করি', type: 'cards' },
   { key: 'developmentAreas', label: 'Development areas', labelBn: 'উন্নয়ন কার্যক্রমের ক্ষেত্র', type: 'cards' },
   { key: 'news', label: 'News rail', labelBn: 'সংবাদ রেল', type: 'carousel' },
   { key: 'successStories', label: 'Success stories gallery', labelBn: 'সাফল্যের গল্পের গ্যালারি', type: 'carousel' },
   { key: 'donate', label: 'Donation call to action', labelBn: 'অনুদানের আহ্বান', type: 'cta' },
 ] as const
 
-export function isLandingComponentKey(value: unknown): value is LandingComponentKey {
+export function isLandingComponentKey(value: ExternalValue): value is LandingComponentKey {
   return typeof value === 'string' && Object.prototype.hasOwnProperty.call(LANDING_COMPONENT_TYPE, value)
 }
 
@@ -37,10 +40,10 @@ export function isLandingComponentKey(value: unknown): value is LandingComponent
  * A normal page can use normal sections and may opt into a landing composition.
  * The home page can only contain registered landing compositions.
  */
-export function validatePageComponentLayers(slug: string, sections: unknown): string | null {
+export function validatePageComponentLayers(slug: string, sections: ExternalValue): string | null {
   if (!Array.isArray(sections)) return 'Page sections must be an array.'
   for (const [index, value] of sections.entries()) {
-    if (!value || typeof value !== 'object' || typeof (value as { type?: unknown }).type !== 'string') {
+    if (!value || typeof value !== 'object' || typeof (value as { type?: ExternalValue }).type !== 'string') {
       return `Section ${index + 1} has an invalid content type.`
     }
     const section = value as PageSection

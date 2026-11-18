@@ -6,15 +6,20 @@ const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf
 
 test('Site Content renders the requested selectable content table and per-row actions', () => {
   const page = read('app/admin/dashboard/site-content/page.tsx')
-  assert.match(page, /<table className="site-content-table">/)
-  assert.match(page, /Select all visible content records/)
-  assert.match(page, /toggleAll\(event\.target\.checked\)/)
-  assert.match(page, /toggleRow\(record\.id, event\.target\.checked\)/)
+  const table = read('components/admin/cms/AdminTable.tsx')
+  assert.match(page, /<AdminTable[\s\S]*?tableClassName="site-content-table/)
+  assert.match(page, /selectable/)
+  assert.match(page, /selectedIds=\{\[\.\.\.selectedIds\]\.map\(String\)\}/)
+  assert.match(page, /onSelectionChange=\{\(ids\) => setSelectedIds/)
+  assert.match(table, /Select all visible rows/)
+  assert.match(table, /toggleAll\(event\.target\.checked\)/)
+  assert.match(table, /toggleOne\(id, event\.target\.checked\)/)
   assert.match(page, /Content title/)
-  assert.match(page, /Slug/)
-  assert.match(page, /Hide selected/)
-  assert.match(page, /Delete selected/)
   assert.match(page, /cms-list-route/)
+  assert.match(page, /title=\{route\}/)
+  assert.match(page, /title="Hide the selected records"/)
+  assert.match(page, /title="Permanently delete the selected records"/)
+  assert.match(page, /<AdminDataContainer|<AdminTable/)
 })
 
 test('bulk content actions update the local table and protect destructive deletes with confirmation', () => {
@@ -41,12 +46,13 @@ test('bulk API endpoints are authenticated, bounded, audited and use a single da
   assert.match(service, /DELETE FROM cms_content_items[\s\S]*WHERE id IN \(\$\{idList\}\)/)
 })
 
-test('Site Content styles are route-scoped and responsive', () => {
+test('Site Content uses the shared shadcn table and responsive Tailwind layout', () => {
   const page = read('app/admin/dashboard/site-content/page.tsx')
-  const css = read('app/admin/dashboard/site-content/site-content.css')
-  assert.match(page, /import '\.\/site-content\.css'/)
-  assert.match(css, /\.site-content-table/)
-  assert.match(css, /\.site-content-bulk-actions/)
-  assert.match(css, /@media \(max-width: 680px\)/)
-  assert.match(css, /var\(--admin-surface/)
+  const table = read('components/admin/cms/AdminTable.tsx')
+  assert.doesNotMatch(page, /site-content\.css|Admin\.css/)
+  assert.match(page, /<AdminTable/)
+  assert.match(page, /<Button/)
+  assert.match(table, /overflow-auto overscroll-contain/)
+  assert.match(table, /data-slot="table"|<Table/)
+  assert.match(read('app/admin/layout.tsx'), /AdminThemeShell/)
 })

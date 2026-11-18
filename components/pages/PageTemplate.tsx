@@ -1,10 +1,14 @@
 'use client'
 
+import type { JsonValue } from '@/types/json'
+
 import Link from 'next/link'
-import type { ReactNode } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import { useMemo } from 'react'
 import { ChevronRight, Home as HomeIcon } from 'lucide-react'
 import type { Bilingual, NavItem, PageData, Section } from '@/types/entityType'
+import type { FeedItem } from '@/lib/cms/components'
+import { toCmsTypographyStyle } from '@/lib/cms/typography'
 import SafeImage from '@/components/ui/SafeImage'
 import { useSite } from '@/components/containers/SiteProvider'
 import SectionRenderer from '@/components/pages/SectionRenderer'
@@ -13,6 +17,7 @@ import JobPostingDetail from '@/components/pages/JobPostingDetail'
 import ManagementStaffContent from '@/components/pages/ManagementStaffContent'
 import ResourcesContent from '@/components/pages/ResourcesContent'
 import Container from '@/components/containers/Container'
+import { plainSectionTitle } from '@/lib/sectionTitle'
 
 type Crumb = { label: Bilingual; href?: string }
 
@@ -29,7 +34,7 @@ function tidySections(sections: Section[], title: Bilingual, subtitle?: Bilingua
   const seen = new Set<string>()
   const out: Section[] = []
   sections.forEach((section, index) => {
-    let s = section as Section & { heading?: Bilingual; body?: Bilingual | Bilingual[]; items?: unknown[] }
+    let s = section as Section & { heading?: Bilingual; body?: Bilingual | Bilingual[]; items?: JsonValue[] }
     if (index === 0 && s.heading && sameText(s.heading, title)) s = { ...s, heading: undefined } as typeof s
     if (index === 0 && subtitle && Array.isArray(s.body) && s.body[0] && norm(s.body[0].en).startsWith(norm(subtitle.en).slice(0, 60))) {
       s = { ...s, body: s.body.slice(1) } as typeof s
@@ -81,7 +86,7 @@ function findTrail(items: NavItem[], path: string): NavItem[] | null {
 
 export default function PageTemplate({ page, canonicalPath, children }: { page: PageData; canonicalPath: string; children?: ReactNode }) {
   const { lang, site } = useSite()
-  const isContactPage = `/${page.slug.replace(/^\/+|\/+$/g, '')}` === '/contact'
+  const showContactMap = page.showContactMap === true
   const primaryNav = site?.global.primaryNav ?? []
   const ui = site?.global.ui
 
@@ -96,7 +101,10 @@ export default function PageTemplate({ page, canonicalPath, children }: { page: 
       ? visible.map(withoutUnmanagedDetailImages).filter((section): section is Section => section !== null)
       : visible
     return tidySections(prepared, page.title, page.subtitle)
-  }, [page, isContentDetail, canShowContentImage, heroImage])
+  }, [page, isContentDetail, canShowContentImage])
+  const resourceReports = useMemo<FeedItem[]>(() => sections.flatMap((section) => (
+    section.type === 'contentFeed' && section.components.includes('report') ? section.items : []
+  )), [sections])
   if (!site || !ui) return null
 
   const trail = findTrail(primaryNav, canonicalPath)
@@ -106,8 +114,6 @@ export default function PageTemplate({ page, canonicalPath, children }: { page: 
   const crumbs: Crumb[] = [{ label: { en: ui.en.home, bn: ui.bn.home }, href: '/' }]
   if (trail) {
     trail.slice(0, -1).filter((item) => item.href !== '/').forEach((item) => crumbs.push({ label: item.label, href: item.menuType === 'folder' ? undefined : item.href }))
-  } else if (canonicalPath.startsWith('/enterprise-development/')) {
-    crumbs.push({ label: { en: 'Enterprise Development', bn: 'এন্টারপ্রাইজ উন্নয়ন' }, href: '/enterprise-development' })
   } else if (parts.length > 1) {
     const label = parts[0].replace(/-/g, ' ')
     crumbs.push({ label: { en: label, bn: label }, href: `/${parts[0]}` })
@@ -118,11 +124,14 @@ export default function PageTemplate({ page, canonicalPath, children }: { page: 
     'sf-page',
     `sf-page--${page.layout || 'standard'}`,
     `sf-page--padding-${page.contentPadding || 'normal'}`,
-    page.slug === '/social-development' || page.slug === '/enterprise-development' ? 'social-cards-page' : '',
-    page.slug === '/enterprise-development' ? 'enterprise-development-page' : '',
+    page.cardStyle === 'social' ? 'social-cards-page' : '',
+    page.cardStyle === 'enterprise' ? 'enterprise-development-page' : '',
+    `sf-page--card-style-${page.cardStyle || 'default'}`,
+    `sf-page--view-${page.pageView || 'default'}`,
   ].filter(Boolean).join(' ')
 
   return (
+    <div className="cms-typography-scope" style={toCmsTypographyStyle(page.typography) as CSSProperties}>
     <Container variant="page" className={wrapperClass}>
       <section className={`sf-banner ${heroImage ? '' : 'sf-banner--plain'}`}>
         {heroImage && <SafeImage src={heroImage} alt="" fill sizes="100vw" priority className="sf-cover" />}
@@ -139,30 +148,31 @@ export default function PageTemplate({ page, canonicalPath, children }: { page: 
               ))}
             </ol>
           </nav>
-          <h1 className="sf-h1 sf-h1--page">{page.title[lang]}</h1>
-          {subtitle && <p className="sf-banner-sub">{subtitle}</p>}
+          <h1 className="sf-h1 sf-h1--page">{plainSectionTitle(page.title[lang])}</h1>
         </Container>
       </section>
 
       <Container className="sf-page-grid">
         <div className="sf-page-main">
+          {subtitle && <h3 className="sf-sec-head--center">{subtitle}</h3>}
           {page.contentComponent === 'job' && page.contentSlug
-            ? <JobPostingDetail page={page} sections={sections} canonicalPath={canonicalPath} />
+            ? <JobPostingDetail page={page} sections={sections} canonicalPath={canonicalPath} processConfig={site.jobApplicationProcess} />
             : <>
                 <SectionRenderer
                   sections={sections.filter((section) => !(section.type === 'contentFeed' && (
-                    (page.slug === '/management-staff' && section.components?.includes('team')) ||
-                    (page.slug === '/resources' && section.components?.includes('report'))
+                    (page.pageView === 'staff-directory' && section.components?.includes('team')) ||
+                    (page.pageView === 'resource-library' && section.components?.includes('report'))
                   )))}
                   page={page}
                 />
-                {page.slug === '/management-staff' && <ManagementStaffContent />}
-                {page.slug === '/resources' && <ResourcesContent />}
+                {page.pageView === 'staff-directory' && <ManagementStaffContent page={page} />}
+                {page.pageView === 'resource-library' && <ResourcesContent reports={resourceReports} page={page} />}
                 {children}
               </>}
-          {isContactPage && <LocationMaps page={page} variant="contact" />}
+          {showContactMap && <LocationMaps page={page} variant="contact" />}
         </div>
       </Container>
     </Container>
+    </div>
   )
 }

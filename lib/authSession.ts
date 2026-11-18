@@ -1,3 +1,4 @@
+import type { ExternalValue, JsonObject } from '@/types/json'
 import { createCipheriv, createDecipheriv, createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
 import { requiredSecret } from '@/lib/security'
 
@@ -16,7 +17,7 @@ export type AuthUser = {
   phone?: string | null
 }
 
-export function seal(value: unknown) {
+export function seal(value: ExternalValue) {
   const iv = randomBytes(12)
   const cipher = createCipheriv('aes-256-gcm', key(), iv)
   const ciphertext = Buffer.concat([cipher.update(JSON.stringify(value), 'utf8'), cipher.final()])
@@ -37,8 +38,8 @@ export function unseal<T>(value: string | undefined): T | null {
   } catch { return null }
 }
 
-export function sign(value: unknown, expiresInSeconds = 60 * 60 * 24 * 7) {
-  const payloadValue = typeof value === 'object' && value !== null ? { ...(value as Record<string, unknown>), exp: Date.now() + expiresInSeconds * 1000 } : { value, exp: Date.now() + expiresInSeconds * 1000 }
+export function sign(value: ExternalValue, expiresInSeconds = 60 * 60 * 24 * 7) {
+  const payloadValue = typeof value === 'object' && value !== null ? { ...(value as JsonObject), exp: Date.now() + expiresInSeconds * 1000 } : { value, exp: Date.now() + expiresInSeconds * 1000 }
   const payload = encode(JSON.stringify(payloadValue))
   const sig = createHmac('sha256', secret()).update(payload).digest('base64url')
   return `${payload}.${sig}`

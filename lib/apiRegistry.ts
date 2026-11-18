@@ -33,6 +33,72 @@ export const API_REGISTRY: ApiEndpoint[] = [
  },
  {
   "method": "GET",
+  "path": "/api/admin/database/drive-backups",
+  "access": "Admin session",
+  "description": "List verified Google Drive point-in-time backups and JSON recovery mirrors"
+ },
+ {
+  "method": "POST",
+  "path": "/api/admin/database/drive-backups",
+  "access": "Admin session",
+  "description": "Dispatch a manual backup or protected point-in-time restore workflow"
+ },
+ {
+  "method": "GET",
+  "path": "/api/growth-tree",
+  "access": "Public",
+  "description": "Homepage growth-tree branch content (1985–2026)"
+ },
+ {
+  "method": "GET",
+  "path": "/api/admin/growth-tree",
+  "access": "CMS admin/editor/analyst",
+  "description": "Read homepage growth-tree branch content and source status"
+ },
+ {
+  "method": "PUT",
+  "path": "/api/admin/growth-tree",
+  "access": "CMS admin/editor",
+  "description": "Update homepage growth-tree branch content"
+ },
+ {
+  "method": "GET",
+  "path": "/api/admin/theme/typography",
+  "access": "CMS admin/editor",
+  "description": "Read the single site-theme typography settings"
+ },
+ {
+  "method": "PUT",
+  "path": "/api/admin/theme/typography",
+  "access": "CMS admin/editor",
+  "description": "Update the single site-theme typography settings"
+ },
+ {
+  "method": "GET",
+  "path": "/api/admin/footer",
+  "access": "CMS admin/editor",
+  "description": "Read footer visibility, sections, columns and content settings"
+ },
+ {
+  "method": "PUT",
+  "path": "/api/admin/footer",
+  "access": "CMS admin/editor",
+  "description": "Update the single-site footer layout and content settings"
+ },
+ {
+  "method": "GET",
+  "path": "/api/admin/job-application-form",
+  "access": "CMS admin/editor",
+  "description": "Read configurable job application fields and validation rules"
+ },
+ {
+  "method": "PUT",
+  "path": "/api/admin/job-application-form",
+  "access": "CMS admin/editor",
+  "description": "Update configurable job application fields and validation rules"
+ },
+ {
+  "method": "GET",
   "path": "/api/admin/database/export",
   "access": "Admin session",
   "description": "Export editable CMS and public site data as structured JSON"
@@ -90,6 +156,12 @@ export const API_REGISTRY: ApiEndpoint[] = [
   "path": "/api/admin/jobs",
   "access": "CMS session",
   "description": "Job summaries and applications"
+ },
+ {
+  "method": "GET",
+  "path": "/api/jobs/application-form",
+  "access": "Public",
+  "description": "Read published job application form configuration"
  },
  {
   "method": "POST",
@@ -272,18 +344,6 @@ export const API_REGISTRY: ApiEndpoint[] = [
   "description": ""
  },
  {
-  "method": "GET",
-  "path": "/api/footer",
-  "access": "Public",
-  "description": ""
- },
- {
-  "method": "GET",
-  "path": "/api/home",
-  "access": "Public",
-  "description": ""
- },
- {
   "method": "POST",
   "path": "/api/jobs/apply",
   "access": "Public",
@@ -318,18 +378,6 @@ export const API_REGISTRY: ApiEndpoint[] = [
   "path": "/api/navigation",
   "access": "Public",
   "description": "Public navigation"
- },
- {
-  "method": "GET",
-  "path": "/api/news",
-  "access": "Public",
-  "description": "Public news feed (projects, notices, reports, jobs by date)"
- },
- {
-  "method": "GET",
-  "path": "/api/pages",
-  "access": "Public",
-  "description": ""
  },
  {
   "method": "POST",

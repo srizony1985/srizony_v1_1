@@ -3,11 +3,11 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
 const client = readFileSync(new URL('../app/admin/dashboard/settings/SettingsClient.tsx', import.meta.url), 'utf8')
-const styles = readFileSync(new URL('../app/admin/dashboard/settings/settings.css', import.meta.url), 'utf8')
+const table = readFileSync(new URL('../components/admin/cms/AdminTable.tsx', import.meta.url), 'utf8')
 const shell = readFileSync(new URL('../app/admin/dashboard/_components/Shell.tsx', import.meta.url), 'utf8')
 
-test('Settings imports route-specific styles and keeps its existing sidebar destinations discoverable', () => {
-  assert.match(client, /import '\.\/settings\.css'/)
+test('Settings uses the consolidated stylesheet and keeps its existing sidebar destinations discoverable', () => {
+  assert.doesNotMatch(client, /settings\.css|Admin\.css|site-polish\.css/)
   assert.match(shell, /label: 'CMS Users', href: '\/admin\/dashboard\/settings\?view=users'/)
   assert.match(shell, /label: 'Database & APIs', href: '\/admin\/dashboard\/settings\?view=database'/)
   assert.match(shell, /label: 'Reporting', href: '\/admin\/dashboard\/settings\?view=reporting'/)
@@ -42,17 +42,31 @@ test('Password reset dialog manages focus, Escape, keyboard tab order and backgr
   assert.match(client, /previousFocus\.focus\(\)/)
 })
 
-test('Reporting includes indeterminate select-all, row selection and selected/all CSV exports', () => {
-  assert.match(client, /selectAllRef\.current\.indeterminate = someVisibleSelected && !allVisibleSelected/)
-  assert.match(client, /aria-label="Select all matching rows"/)
-  assert.match(client, /aria-label=\{`Select row \$\{index \+ 1\}`\}/)
+test('Reporting uses the shared table selection model and preserves selected/all CSV exports', () => {
+  assert.match(client, /<AdminTable[\s\S]*?selectable[\s\S]*?selectedIds=\{\[\.\.\.selected\]\.map\(String\)\}/)
+  assert.match(table, /<Checkbox\s+checked=\{allSelected\}\s+indeterminate=\{someSelected\}/)
+  assert.match(table, /aria-label="Select all visible rows"/)
+  assert.match(table, /aria-label=\{`Select row \${id}`\}/)
   assert.match(client, /exportRows\(selectedRows, 'selected'\)/)
   assert.match(client, /exportRows\(data \?\? \[\], 'all'\)/)
 })
 
-test('Settings stylesheet has compact responsive layouts and visible keyboard focus', () => {
-  assert.match(styles, /@media \(max-width: 760px\)/)
-  assert.match(styles, /@media \(max-width: 520px\)/)
-  assert.match(styles, /:focus-visible/)
-  assert.match(styles, /prefers-reduced-motion/)
+test('Settings screens are built from the shared shadcn primitives', () => {
+  assert.match(client, /<Card/)
+  assert.match(client, /<Button/)
+  assert.match(client, /<Input/)
+  assert.match(client, /<NativeSelect/)
+  assert.match(client, /<label/)
+  assert.doesNotMatch(client, /Admin\.css|settings\.css/)
+})
+
+
+test('Settings uses the shared toolbar tabs and exposes an associated accessible panel', () => {
+  assert.match(client, /import \{[^}]*AdminTabs[^}]*\} from '@\/components\/admin\/cms'/)
+  assert.match(client, /tabs=\{[\s\S]*?<AdminTabs/)
+  assert.match(client, /id="database-view-tabs"/)
+  assert.match(client, /panelId="database-view-panel"/)
+  assert.match(client, /id="settings-view-panel"/)
+  assert.match(client, /aria-label=\{`\$\{meta\.title\} settings`\}/)
+  assert.match(client, /router\.replace\('\/admin\/dashboard\/footer'\)/)
 })

@@ -8,7 +8,7 @@ export type Sdg = { n: string; icon: LucideIcon; tone: string; label: Record<Lan
 export default function SdgCard({ item, lang }: { item: Sdg; lang: Lang }) {
   const Icon = item.icon
   return (
-    <article className="sf-diagram-sdg-card" style={{ '--tone': item.tone } as CSSProperties}>
+    <article className="sf-diagram-sdg-card" style={{ '--sf-card-tone': item.tone } as CSSProperties}>
       <div className="sf-diagram-sdg-icon"><Icon size={26} /></div>
       <div className="sf-diagram-sdg-number">{localizeDigits(item.n, lang)}</div>
       <h3>{item.label[lang]}</h3>

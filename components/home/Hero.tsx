@@ -16,7 +16,6 @@ import type {
 } from '@/types/entityType'
 import SafeImage from '@/components/ui/SafeImage'
 import AppLink from '@/components/ui/AppLink'
-import Button from '@/components/ui/ActionButton'
 import Container from '@/components/containers/Container'
 import { useInView } from '@/components/hooks/useInView'
 
@@ -38,15 +37,12 @@ export default function Hero({
   slidesOverride,
   tone = 'green',
 }: HeroProps) {
-  // An explicitly empty CMS list is intentional.
-  // Never restore bundled slides when the CMS provides [].
-  const slideSource = slidesOverride !== undefined
-    ? slidesOverride
-    : (hero.slides ?? [])
-
-  // Slides arrive already normalized by the database gateway. Images and slide
-  // copy are CMS content, not client-side defaults from the data directory.
-  const slides = useMemo(() => slideSource, [slideSource])
+  const slides = useMemo(
+    () => slidesOverride !== undefined
+      ? slidesOverride
+      : (hero.slides ?? []),
+    [hero.slides, slidesOverride],
+  )
 
   const count = slides.length
 
@@ -72,15 +68,6 @@ export default function Hero({
     [count],
   )
 
-  // Reset the active slide when the number of slides changes.
-  useEffect(() => {
-    setIndex((current) =>
-      count > 0 ? current % count : 0,
-    )
-  }, [count])
-
-  // Autoplay respects user preference, reduced motion,
-  // hover pause, and browser tab visibility.
   useEffect(() => {
     if (count < 2 || paused || !heroInView || hero.autoplay === false) return
 
@@ -137,7 +124,7 @@ export default function Hero({
 
       if (frame) window.cancelAnimationFrame(frame)
     }
-  }, [heroInView])
+  }, [heroInView, heroRef])
 
   // Display at most five pagination dots, centered around
   // the active slide whenever possible.
@@ -276,53 +263,6 @@ export default function Hero({
       </div>
 
       <div className="sf-hero-shade" />
-
-      {hero.copyVisible !== false && hero.copyRemoved !== true && (
-        <div className="sf-hero-body">
-          <Container className="sf-hero-content">
-            {hero.eyebrow?.[lang] && (
-              <span className="sf-hero-eyebrow">
-                {hero.eyebrow[lang]}
-              </span>
-            )}
-
-            {(hero.headingLineOne?.[lang] ||
-              hero.headingLineTwo?.[lang]) && (
-              <h1 className="sf-hero-title">
-                {hero.headingLineOne?.[lang] && (
-                  <span>{hero.headingLineOne[lang]}</span>
-                )}
-                {hero.headingLineTwo?.[lang] && (
-                  <span>{hero.headingLineTwo[lang]}</span>
-                )}
-              </h1>
-            )}
-
-            {hero.description?.[lang] && (
-              <p className="sf-hero-lead">
-                {hero.description[lang]}
-              </p>
-            )}
-
-            <div className="sf-hero-actions">
-              {hero.primaryAction?.label?.[lang] &&
-                hero.primaryAction.href && (
-                  <Button href={hero.primaryAction.href}>
-                    {hero.primaryAction.label[lang]}
-                  </Button>
-                )}
-
-              {hero.secondaryAction?.label?.[lang] &&
-                hero.secondaryAction.href && (
-                  <Button href={hero.secondaryAction.href} variant="outline">
-                    {hero.secondaryAction.label[lang]}
-                  </Button>
-                )}
-            </div>
-          </Container>
-        </div>
-      )}
-
       {activeSlide &&
         (activeSlide.title?.[lang] ||
           activeSlide.description?.[lang]) && (

@@ -1,3 +1,4 @@
+import type { ExternalValue } from '@/types/json'
 import { NextResponse } from 'next/server'
 import { createHash, randomBytes } from 'node:crypto'
 import { z } from 'zod'
@@ -7,6 +8,7 @@ import { donations } from '@/lib/db/schema'
 import { ensureDonationsSchema } from '@/lib/db/ensureOperationalSchema'
 import { enforcePublicRequestLimits } from '@/lib/publicRateLimit'
 import { readBoundedRequestText } from '@/lib/securityPrimitives.mjs'
+import { FALLBACK_CONTACT } from '@/lib/siteFallback'
 
 const cfg = () => ({
   storeId: process.env.SSLCOMMERZ_STORE_ID,
@@ -20,10 +22,15 @@ const bodySchema = z.object({
   method: z.enum(['all', 'cards', 'bkash', 'nagad', 'rocket', 'mobile', 'internet']).default('all'),
   anonymous: z.boolean().default(true),
   name: z.string().trim().max(120).optional(),
-  email: z.email().max(254),
-  phone: z.string().trim().min(7).max(30),
+  email: z.email().max(254).optional(),
+  phone: z.string().trim().regex(/^\+?[0-9]{7,20}$/).optional(),
   message: z.string().trim().max(1000).optional(),
-}).strict()
+}).strict().superRefine((body, ctx) => {
+  if (body.anonymous) return
+  if (!body.name) ctx.addIssue({ code: 'custom', path: ['name'], message: 'Donor name is required.' })
+  if (!body.email) ctx.addIssue({ code: 'custom', path: ['email'], message: 'Donor email is required.' })
+  if (!body.phone) ctx.addIssue({ code: 'custom', path: ['phone'], message: 'Donor phone is required.' })
+})
 
 const methodFilter: Record<string, string | undefined> = {
   all: undefined, cards: 'visacard,mastercard,amexcard,othercard', bkash: 'bkash',
@@ -43,12 +50,11 @@ export async function POST(req: Request) {
   try {
     const raw = await readBoundedRequestText(req, 8_192)
     if (raw === null) return NextResponse.json({ error: 'Request body is too large or invalid.' }, { status: 413 })
-    let input: unknown = null
+    let input: ExternalValue = null
     try { input = JSON.parse(raw) } catch { /* schema validation returns a generic input error */ }
     const parsed = bodySchema.safeParse(input)
-    if (!parsed.success) return NextResponse.json({ error: 'Please provide a valid amount and the contact details required by the payment gateway.' }, { status: 400 })
+    if (!parsed.success) return NextResponse.json({ error: 'Please provide a valid donation amount and, for identified donations, valid donor contact details.' }, { status: 400 })
     const body = parsed.data
-    if (!body.anonymous && !body.name) return NextResponse.json({ error: 'Please provide the donor name.' }, { status: 400 })
 
     const rawIdempotencyKey = req.headers.get('idempotency-key')?.trim() || ''
     if (!/^[A-Za-z0-9._:-]{8,128}$/.test(rawIdempotencyKey)) {
@@ -57,8 +63,23 @@ export async function POST(req: Request) {
 
     const normalized = {
       amount: body.amount.toFixed(2), method: body.method, anonymous: body.anonymous,
-      name: body.anonymous ? '' : (body.name || '').trim(), email: body.email.trim().toLowerCase(),
-      phone: body.phone.trim(), message: body.anonymous ? '' : (body.message || ''),
+      name: body.anonymous ? '' : (body.name || '').trim(),
+      // Never persist a donor's contact data for an anonymous donation.
+      email: body.anonymous ? '' : (body.email || '').trim().toLowerCase(),
+      phone: body.anonymous ? '' : (body.phone || '').trim(),
+      message: body.anonymous ? '' : (body.message || ''),
+    }
+    // SSLCOMMERZ marks cus_name, cus_email and cus_phone as mandatory for
+    // session creation. For anonymous donations it receives the Foundation's
+    // published office contact, never a donor's private contact information.
+    const gatewayCustomer = body.anonymous ? {
+      name: 'Anonymous Donor',
+      email: process.env.DONATION_ANONYMOUS_GATEWAY_EMAIL?.trim() || FALLBACK_CONTACT.email,
+      phone: process.env.DONATION_ANONYMOUS_GATEWAY_PHONE?.trim() || FALLBACK_CONTACT.primaryPhone,
+    } : {
+      name: normalized.name || 'Donor',
+      email: normalized.email,
+      phone: normalized.phone,
     }
     const idempotencyKey = digest(rawIdempotencyKey)
     const fingerprint = digest(JSON.stringify(normalized))
@@ -112,7 +133,7 @@ export async function POST(req: Request) {
       cancel_url: `${siteUrl}/api/donations/callback?status=cancelled`,
       ipn_url: `${siteUrl}/api/donations/callback?status=ipn`,
       product_name: 'Donation to Srizony Foundation', product_category: 'donation', product_profile: 'non-physical-goods', product_amount: normalized.amount,
-      cus_name: body.anonymous ? 'Anonymous Donor' : normalized.name || 'Donor', cus_email: normalized.email, cus_phone: normalized.phone,
+      cus_name: gatewayCustomer.name, cus_email: gatewayCustomer.email, cus_phone: gatewayCustomer.phone,
       cus_add1: 'Bangladesh', cus_city: 'Dhaka', cus_state: 'Dhaka', cus_postcode: '1000', cus_country: 'Bangladesh',
       shipping_method: 'NO', num_of_item: '1', value_a: body.method, value_c: body.anonymous ? 'anonymous' : 'identified',
     })

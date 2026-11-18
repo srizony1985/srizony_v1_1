@@ -5,6 +5,7 @@ import type { Lang, PageData } from '@/types/entityType'
 import { useSite } from '@/components/containers/SiteProvider'
 import Container from '@/components/containers/Container'
 import Button from '@/components/ui/ActionButton'
+import { plainSectionTitle } from '@/lib/sectionTitle'
 
 type DonateSection = Extract<PageData['sections'][number], { type: 'cta' }>
 
@@ -26,7 +27,7 @@ export default function DonateBanner({ lang, section }: { lang: Lang; section?: 
   return (
     <section className="sf-donate">
       <Container className="sf-donate-in">
-        <div className="sf-donate-copy"><h2 className="sf-h2">{title}</h2>{section?.body?.[lang] && <p>{section.body[lang]}</p>}</div>
+        <div className="sf-donate-copy"><h2 className="sf-h2">{plainSectionTitle(title)}</h2>{section?.body?.[lang] && <p>{section.body[lang]}</p>}</div>
         <div className="sf-cta-actions">
           {showPrimary && label && <Button href={href} action={primaryAction} variant="accent" animated className="sf-btn--lg sf-btn--pulse">
             <Heart size={18} aria-hidden="true" /> {label}

@@ -1,3 +1,5 @@
+import type { ExternalRecord, ExternalValue } from '../types/json'
+
 /**
  * Landing-page image plan.
  *
@@ -215,15 +217,26 @@ export function prepareHeroSlides<T extends Slide>(slides: T[]): T[] {
   return result
 }
 
-type Media = { src: string; alt?: Bi; [k: string]: unknown }
+type LandingMedia = ExternalRecord & { src: string; alt?: Bi }
+
+function asExternalRecord(value: ExternalValue): ExternalRecord | null {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? value as ExternalRecord
+    : null
+}
+
+function readString(record: ExternalRecord | null, key: string): string {
+  const value = record?.[key]
+  return typeof value === 'string' ? value : ''
+}
 
 /**
  * Walk landing sections in page order and make sure no picture repeats —
  * neither inside the sections nor against the hero rail or the SDG cards.
  * A repeated picture is replaced by the best topical match that is still unused.
  */
-export function dedupeLandingSections<S extends { type: string }>(sections: S[], heroSlides: { image: string }[], namespace = ''): S[] {
-  const used = new Set<string>([...heroSlides.map((s) => imageKey(s.image)), ...Object.values(SDG_BACKGROUND_URLS).map(imageKey)])
+export function dedupeLandingSections<S extends object>(sections: S[], heroSlides: { image: string }[], namespace = ''): S[] {
+  const used = new Set<string>([...heroSlides.map((slide) => imageKey(slide.image)), ...Object.values(SDG_BACKGROUND_URLS).map(imageKey)])
   const entries = Object.values(IMAGE_POOL) as PoolEntry[]
   const namespaceHash = [...namespace].reduce((hash, char) => (hash * 31 + char.charCodeAt(0)) >>> 0, 0)
   const take = (title: string, current?: string) => {
@@ -237,7 +250,7 @@ export function dedupeLandingSections<S extends { type: string }>(sections: S[],
     for (let offset = 0; offset < entries.length; offset += 1) {
       const entry = entries[(offset + namespaceHash) % entries.length]
       if (used.has(imageKey(entry.url))) continue
-      const score = entry.tags.reduce((n, tag) => n + (words.some((w) => tag.startsWith(w) || w.startsWith(tag)) ? 1 : 0), 0)
+      const score = entry.tags.reduce((total, tag) => total + (words.some((word) => tag.startsWith(word) || word.startsWith(tag)) ? 1 : 0), 0)
       if (score > bestScore) {
         best = entry
         bestScore = score
@@ -247,37 +260,56 @@ export function dedupeLandingSections<S extends { type: string }>(sections: S[],
     used.add(imageKey(best.url))
     return best.url
   }
-  const fix = (media: unknown, title: string): unknown => {
+
+  const fix = (media: ExternalValue, title: string): ExternalValue => {
     if (typeof media === 'string') return media ? take(title, media) : media
-    if (media && typeof media === 'object' && typeof (media as Media).src === 'string') {
-      const record = media as Media
-      return { ...record, src: take(title, record.src) }
+    const record = asExternalRecord(media)
+    if (record && typeof record.src === 'string') {
+      return { ...record, src: take(title, record.src) } as LandingMedia
     }
     return media
   }
 
-  return sections.map((section: any) => {
-    if (section.type === 'richText' && section.image) return { ...section, image: fix(section.image, section.heading?.en || 'legacy') }
-    if (section.type === 'gallery' && Array.isArray(section.items)) {
-      return { ...section, items: section.items.map((media: any, index: number) => fix(media, media?.alt?.en || `${namespace} gallery ${index + 1}`)) }
+  return sections.map((sectionValue) => {
+    const section = asExternalRecord(sectionValue)
+    if (!section) return sectionValue
+    const heading = asExternalRecord(section.heading)
+    const sectionTitle = readString(heading, 'en') || 'legacy'
+
+    if (section.type === 'richText' && section.image) {
+      return { ...section, image: fix(section.image, sectionTitle) } as S
     }
-    if (section.type === 'cards' && section.variant === 'impact') return section
+    if (section.type === 'gallery' && Array.isArray(section.items)) {
+      const items = section.items.map((mediaValue: ExternalValue, index: number) => {
+        const mediaRecord = asExternalRecord(mediaValue)
+        const alt = asExternalRecord(mediaRecord?.alt)
+        const title = readString(alt, 'en') || `${namespace} gallery ${index + 1}`
+        return fix(mediaValue, title)
+      })
+      return { ...section, items } as S
+    }
+    if (section.type === 'cards' && section.variant === 'impact') return sectionValue
     if ((section.type === 'cards' || section.type === 'carousel') && Array.isArray(section.items)) {
-      return { ...section, items: section.items.map((item: any) => {
-        const title = item.title?.en || item.title_en || item.href || 'Community programme'
-        if (item.image) return { ...item, image: fix(item.image, `${title} ${item.href || ''}`) }
+      const items = section.items.map((itemValue: ExternalValue) => {
+        const item = asExternalRecord(itemValue)
+        if (!item) return itemValue
+        const itemTitle = asExternalRecord(item.title)
+        const title = readString(itemTitle, 'en') || readString(item, 'title_en') || readString(item, 'href') || 'Community programme'
+        const href = readString(item, 'href')
+        if (item.image) return { ...item, image: fix(item.image, `${title} ${href}`) }
         if (item.image_src || item.image_url) {
           const imageKeyName = typeof item.image_src === 'string' ? 'image_src' : 'image_url'
-          return { ...item, [imageKeyName]: fix(item[imageKeyName], `${title} ${item.href || ''}`) }
+          return { ...item, [imageKeyName]: fix(item[imageKeyName], `${title} ${href}`) }
         }
         // ContentCard generates fallback photography for image-less cards.
         // Materialize that fallback here so every card on this page gets a unique
         // image, while keeping the icon-only impact grid photo-free.
-        if (item.illustration) return item
-        const image = take(`${title} ${item.href || ''}`)
-        return image ? { ...item, image: { src: image, alt: { en: title, bn: item.title?.bn || title }, kind: 'image' } } : item
-      }) }
+        if (item.illustration) return itemValue
+        const image = take(`${title} ${href}`)
+        return image ? { ...item, image: { src: image, alt: { en: title, bn: readString(itemTitle, 'bn') || title }, kind: 'image' } } : itemValue
+      })
+      return { ...section, items } as S
     }
-    return section
+    return sectionValue
   })
 }

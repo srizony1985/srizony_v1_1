@@ -2,10 +2,11 @@
 
 import Link from 'next/link'
 import type { Lang, PageData } from '@/types/entityType'
-import Container from '@/components/containers/Container'
 import Reveal from '@/components/containers/Reveal'
 import SafeImage from '@/components/ui/SafeImage'
 import Button from '@/components/ui/ActionButton'
+import { plainSectionTitle } from '@/lib/sectionTitle'
+import Container from '../containers/Container'
 
 type CarouselSection = Extract<PageData['sections'][number], { type: 'carousel' }>
 
@@ -33,8 +34,8 @@ export default function SuccessStoriesGallery({ page, lang }: { page: PageData; 
         <Reveal>
           <header className="sf-sec-head sf-sec-head--center sf-success-gallery-head">
             {source.eyebrow?.[lang] && <span className="sf-eyebrow">{source.eyebrow[lang]}</span>}
-            <h2 id="sf-success-gallery-title" className="sf-h2">{source.heading?.[lang] || (lang === 'en' ? 'Success Stories of Srizony' : 'সৃজনীর সাফল্যের গল্পসমূহ')}</h2>
-            {source.body?.[lang] && <p className="sf-lead">{source.body[lang]}</p>}
+            <h2 id="sf-success-gallery-title" className="sf-h2">{plainSectionTitle(source.heading?.[lang] || (lang === 'en' ? 'Success Stories of Srizony' : 'সৃজনীর সাফল্যের গল্পসমূহ'))}</h2>
+            {source.body?.[lang] && <p className="sf-lead sf-success-gallery-lead">{source.body[lang]}</p>}
           </header>
         </Reveal>
         {items.length > 0 ? <div className="sf-success-gallery-grid">

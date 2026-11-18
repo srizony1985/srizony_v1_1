@@ -109,6 +109,25 @@ Do **not** use `db:seed:reset`, `db:rebuild-cms`, or any reset script against pr
 - Editing site identity, navigation, landing/page content, theme, media, staff, locations, documents, collections or workflows persists to the DB and updates the appropriate public output.
 - An explicit empty DB value is never replaced by a bundled fallback after configuration.
 
+
+### Navigation typography schema repair
+
+Migration `0021_navigation_typography.sql` adds the optional `nav_items.typography` JSONB column. The application also applies this one additive, idempotent change before its public navigation query and includes it in the existing CMS runtime schema repair, so an older deployment does not fail with PostgreSQL error `42703` while loading the root layout. Existing navigation rows remain unchanged and receive `NULL` (default typography) until an editor saves an override.
+
+For a controlled production rollout, still apply the migration using the deployment's `DATABASE_URL`:
+
+```bash
+npm run db:migrate
+```
+
+Alternatively, run this exact idempotent statement in the Neon SQL Editor if the deployment needs immediate repair:
+
+```sql
+ALTER TABLE nav_items ADD COLUMN IF NOT EXISTS typography JSONB;
+```
+
+Do not reset or reseed the database to fix this missing column; neither is required.
+
 ## Operational note
 
 A successful archive/static verification does not prove a production database migration has been run. Run `npm run db:bootstrap` with the target environment's `DATABASE_URL`, then inspect `/admin/dashboard/cms-pipeline` to verify record counts and identity source. Keep a database backup before applying migrations to an existing production database.

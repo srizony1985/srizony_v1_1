@@ -43,22 +43,23 @@ function AnimatedValue({ value, lang }: { value: number; lang: Lang }) {
 }
 
 /** Consistent stats collection used for both the home story and CMS-managed pages. */
-export default function Stats({ items, lang, animated = false, showIcons = false, className = '', style }: {
+export default function Stats({ items, lang, animated = false, showIcons = false, className = '', style, dataColumns }: {
   items: readonly StatItem[]
   lang: Lang
   animated?: boolean
   showIcons?: boolean
   className?: string
   style?: CSSProperties
+  dataColumns?: number
 }) {
   const listClass = showIcons ? 'sf-tiles' : 'sf-stats-row'
   return (
-    <ul className={`${listClass} ${className}`.trim()} style={style}>
+    <ul className={`${listClass} ${className}`.trim()} data-columns={dataColumns} style={style}>
       {items.map((item, index) => {
         const Icon = item.icon ? ICONS[item.icon] : null
         const numeric = typeof item.value === 'number' || (typeof item.value === 'string' && /^\d+$/.test(item.value))
         return (
-          <li key={item.id ?? `${item.label.en}-${index}`} style={showIcons ? { '--i': index } as CSSProperties : undefined}>
+          <li key={item.id ?? `${item.label.en}-${index}`} style={showIcons ? { '--sf-stat-index': index } as CSSProperties : undefined}>
             {showIcons && (item.illustration || item.image?.src)
               ? <span className="sf-tile-illustration"><CmsCardIllustration name={item.illustration ?? 'users'} imageSrc={item.image?.src} alt={item.image?.alt?.[lang] || item.label[lang]} compact /></span>
               : showIcons && Icon && <span className="sf-tile-icon" aria-hidden="true"><Icon size={22} /></span>}

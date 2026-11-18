@@ -323,7 +323,7 @@ CREATE TABLE IF NOT EXISTS hero_stats (
 
 CREATE TABLE IF NOT EXISTS nav_groups (
   id BIGSERIAL PRIMARY KEY,
-  key VARCHAR(120) NOT NULL UNIQUE,
+  key VARCHAR(120) NOT NULL,
   label_en TEXT NOT NULL,
   label_bn TEXT NOT NULL,
   sort_order INTEGER NOT NULL DEFAULT 0
@@ -339,6 +339,42 @@ CREATE TABLE IF NOT EXISTS nav_items (
   featured BOOLEAN NOT NULL DEFAULT false,
   sort_order INTEGER NOT NULL DEFAULT 0
 );
+
+-- Navigation group keys are used by later migrations with ON CONFLICT (key).
+-- Establish the unique index here, before migration 0008 first relies on it.
+-- Older partially provisioned databases may contain duplicate keys; preserve
+-- every group and its nav_items by assigning deterministic, collision-free
+-- legacy keys to the duplicate rows before enforcing uniqueness.
+DO $$
+DECLARE
+  duplicate_group RECORD;
+  replacement_key TEXT;
+  suffix INTEGER;
+BEGIN
+  FOR duplicate_group IN
+    SELECT id
+    FROM (
+      SELECT id, row_number() OVER (PARTITION BY key ORDER BY id) AS row_number
+      FROM nav_groups
+    ) ranked
+    WHERE row_number > 1
+    ORDER BY id
+  LOOP
+    replacement_key := 'legacy-' || duplicate_group.id::text;
+    suffix := 0;
+
+    WHILE EXISTS (SELECT 1 FROM nav_groups WHERE key = replacement_key) LOOP
+      suffix := suffix + 1;
+      replacement_key := 'legacy-' || duplicate_group.id::text || '-' || suffix::text;
+    END LOOP;
+
+    UPDATE nav_groups
+    SET key = replacement_key
+    WHERE id = duplicate_group.id;
+  END LOOP;
+END $$;
+
+CREATE UNIQUE INDEX IF NOT EXISTS nav_groups_key_uq ON nav_groups(key);
 
 CREATE TABLE IF NOT EXISTS content_entries (
   id BIGSERIAL PRIMARY KEY,

@@ -1,7 +1,9 @@
+import type { JsonObject } from '@/types/json'
 import { NextResponse } from 'next/server'
 import { sql } from 'drizzle-orm'
 import { getAdminSession, hasAdminRole } from '@/lib/adminAuth'
-import { db, withDbRetry } from '@/lib/db'
+import { db, isTransientDatabaseError, withDbRetry } from '@/lib/db'
+import { readDriveSnapshotManifestInfo } from '@/lib/google/drive-snapshot'
 import { API_REGISTRY } from '@/lib/apiRegistry'
 import { ensureCmsSchema } from '@/lib/cms/ensureSchema'
 
@@ -73,7 +75,33 @@ export async function GET() {
   if (!hasAdminRole(admin, 'admin')) return NextResponse.json({ error: 'Administrator permission required.' }, { status: 403 })
 
   const database = db
-  if (!database) return NextResponse.json({ tables: tables.map(([name, label]) => ({ name, label, count: null })), apis: API_REGISTRY, connected: false })
+  const driveFallback = async () => {
+    try {
+      const manifest = await readDriveSnapshotManifestInfo()
+      const entries = new Map((manifest?.tables ?? []).map((entry) => [entry.table, entry]))
+      const snapshots = tables.map(([name, label]) => {
+        const snapshot = entries.get(name)
+        return { name, label, snapshot }
+      })
+      const available = snapshots.filter((item) => item.snapshot?.available)
+      if (!available.length) return NextResponse.json({ error: 'No recent verified Google Drive snapshots are available.', tables: tables.map(([name, label]) => ({ name, label, count: null, available: false })), apis: API_REGISTRY, connected: false, dataSource: 'unavailable' }, { status: 503 })
+      const oldestAge = Math.max(...available.map((item) => item.snapshot!.ageMs ?? 0))
+      return NextResponse.json({
+        tables: snapshots.map(({ name, label, snapshot }) => ({ name, label, count: snapshot?.available ? snapshot.rowCount : null, available: Boolean(snapshot?.available), sizeBytes: snapshot?.sizeBytes ?? null, revision: snapshot?.revision ?? null, snapshotAt: snapshot?.updatedAt ?? null })),
+        apis: API_REGISTRY,
+        connected: false,
+        dataSource: 'google-drive-snapshot',
+        readOnly: true,
+        snapshotAgeMs: oldestAge,
+        manifestExportedAt: manifest?.exportedAt ?? null,
+        missingSnapshots: snapshots.filter((item) => !item.snapshot?.available).map((item) => item.name),
+      }, { headers: { 'Cache-Control': 'no-store', 'X-Srizony-Data-Source': 'google-drive-snapshot', Warning: '110 - \"Response is stale\"' } })
+    } catch (error) {
+      console.error('[cms-database] Google Drive manifest could not be read.', error)
+      return NextResponse.json({ error: 'Google Drive snapshot manifest is unavailable.', tables: tables.map(([name, label]) => ({ name, label, count: null, available: false })), apis: API_REGISTRY, connected: false, dataSource: 'unavailable' }, { status: 503 })
+    }
+  }
+  if (!database) return driveFallback()
 
   try {
     await ensureCmsSchema()
@@ -81,14 +109,16 @@ export async function GET() {
       sql`(SELECT COUNT(*)::int FROM ${sql.raw(`"${name}"`)}) AS ${sql.raw(`"${name}"`)}`,
     )
     const row = await withDbRetry(() => database.execute(sql`SELECT ${sql.join(countExpressions, sql`, `)}`))
-    const counts = (row.rows[0] || {}) as Record<string, unknown>
+    const counts = (row.rows[0] || {}) as JsonObject
 
     return NextResponse.json({
       tables: tables.map(([name, label]) => ({ name, label, count: Number(counts[name] ?? 0) })),
       apis: API_REGISTRY,
       connected: true,
     }, { headers: { 'Cache-Control': 'no-store' } })
-  } catch {
+  } catch (error) {
+    if (isTransientDatabaseError(error)) return driveFallback()
+    console.error('Unable to read database status.', error)
     return NextResponse.json({ error: 'Unable to read database status.' }, { status: 503 })
   }
 }

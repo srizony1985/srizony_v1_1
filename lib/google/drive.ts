@@ -1,5 +1,6 @@
+import type { ExternalValue, JsonValue } from '@/types/json'
 import 'server-only'
-import { createPrivateKey, createSign, randomBytes } from 'node:crypto'
+import { createHash, createPrivateKey, createSign, randomBytes } from 'node:crypto'
 
 const TOKEN_URL = 'https://oauth2.googleapis.com/token'
 const DRIVE_API = 'https://www.googleapis.com/drive/v3'
@@ -8,6 +9,9 @@ const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive'
 
 type ServiceAccount = { clientEmail: string; privateKey: string }
 let tokenCache: { token: string; expiresAt: number } | null = null
+type DriveJsonFile = { id: string; name: string; mimeType?: string; capabilities?: { canEdit?: boolean; canDownload?: boolean } }
+const driveJsonFileCache = new Map<string, { file: DriveJsonFile | null; fetchedAt: number }>()
+const DRIVE_FILE_LOOKUP_TTL_MS = 60_000
 
 function decodeBase64(value: string, label: string) {
   try { return Buffer.from(value, 'base64').toString('utf8') }
@@ -17,7 +21,7 @@ function decodeBase64(value: string, label: string) {
 function parseServiceAccountJson(raw?: string) {
   if (!raw?.trim()) return null
   try {
-    const parsed = JSON.parse(raw.trim().replace(/^\uFEFF/, '')) as unknown
+    const parsed = JSON.parse(raw.trim().replace(/^\uFEFF/, '')) as JsonValue
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('invalid')
     return parsed as { client_email?: string; private_key?: string }
   } catch {
@@ -35,7 +39,7 @@ function getServiceAccount(): ServiceAccount {
   const encodedKey = process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY_BASE64?.trim()
   const rawPrivateKey = json?.private_key ?? (encodedKey ? decodeBase64(encodedKey, 'private key') : process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY) ?? ''
   if (typeof rawPrivateKey !== 'string') throw new Error('Google service-account private key must be a string.')
-  let privateKey = rawPrivateKey.trim().replace(/^\uFEFF/, '').replace(/\\r\\n/g, '\n').replace(/\\n/g, '\n').replace(/\\r/g, '\r').replace(/\r\n?/g, '\n')
+  const privateKey = rawPrivateKey.trim().replace(/^\uFEFF/, '').replace(/\\r\\n/g, '\n').replace(/\\n/g, '\n').replace(/\\r/g, '\r').replace(/\r\n?/g, '\n')
   if (!clientEmail || !privateKey) {
     throw new Error('Google Drive is not configured. Set GOOGLE_SERVICE_ACCOUNT_JSON_BASE64, GOOGLE_SERVICE_ACCOUNT_JSON, or GOOGLE_SERVICE_ACCOUNT_EMAIL and GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY.')
   }
@@ -100,25 +104,32 @@ function folderId() {
 
 export async function checkGoogleDriveConnection() {
   const id = folderId()
-  const response = await driveFetch(`${DRIVE_API}/files/${encodeURIComponent(id)}?fields=id,name,mimeType,driveId,trashed,capabilities(canAddChildren,canEdit)`)
-  const folder = await response.json() as { id: string; name: string; mimeType: string; driveId?: string; trashed?: boolean; capabilities?: { canAddChildren?: boolean; canEdit?: boolean } }
+  const params = new URLSearchParams({
+    supportsAllDrives: 'true',
+    fields: 'id,name,mimeType,driveId,trashed,capabilities/canAddChildren,capabilities/canEdit,capabilities/canListChildren',
+  })
+  const response = await driveFetch(`${DRIVE_API}/files/${encodeURIComponent(id)}?${params}`)
+  const folder = await response.json() as { id: string; name: string; mimeType: string; driveId?: string; trashed?: boolean; capabilities?: { canAddChildren?: boolean; canEdit?: boolean; canListChildren?: boolean } }
   if (folder.mimeType !== 'application/vnd.google-apps.folder' || folder.trashed) throw new Error('GOOGLE_DRIVE_FOLDER_ID must point to an active Google Drive folder.')
-  if (folder.capabilities?.canEdit === false) throw new Error('The service account cannot edit this folder. Share it with the service-account email as Editor.')
+  if (folder.capabilities?.canListChildren === false) throw new Error('The service account cannot list files in this folder. Grant at least Viewer access to the service account or its Shared Drive membership.')
   // A service account may edit files that already exist in a personal My Drive
-  // folder even when it is not allowed to create new children there.
+  // folder even when it cannot create new children. Full archive uploads require
+  // a Shared Drive because a standalone service account has no personal quota.
   return folder
 }
 
 export async function listGoogleDriveBackups() {
   const folder = await checkGoogleDriveConnection()
-  const files: Array<{ id: string; name: string; mimeType?: string; createdTime?: string; modifiedTime?: string; size?: string; webViewLink?: string; appProperties?: Record<string, string>; capabilities?: { canEdit?: boolean } }> = []
+  const files: Array<{ id: string; name: string; mimeType?: string; createdTime?: string; modifiedTime?: string; size?: string; webViewLink?: string; appProperties?: Record<string, string>; capabilities?: { canEdit?: boolean; canDownload?: boolean } }> = []
   let pageToken: string | undefined
   do {
     const params = new URLSearchParams({
       q: `'${folder.id.replace(/'/g, "\\'")}' in parents and trashed=false`,
       pageSize: '1000',
       spaces: 'drive',
-      fields: 'nextPageToken,files(id,name,mimeType,createdTime,modifiedTime,size,webViewLink,appProperties,capabilities(canEdit))',
+      supportsAllDrives: 'true',
+      includeItemsFromAllDrives: 'true',
+      fields: 'nextPageToken,files(id,name,mimeType,createdTime,modifiedTime,size,webViewLink,appProperties,capabilities/canEdit,capabilities/canDownload)',
       orderBy: 'name',
     })
     if (pageToken) params.set('pageToken', pageToken)
@@ -128,53 +139,102 @@ export async function listGoogleDriveBackups() {
     pageToken = listing.nextPageToken
   } while (pageToken)
   const backups = files
-    .filter((file) => file.name.endsWith('.json') && file.mimeType !== 'application/vnd.google-apps.folder')
-    .sort((a, b) => String(b.modifiedTime || '').localeCompare(String(a.modifiedTime || '')))
-    .slice(0, 100)
+    .filter((file) => file.mimeType !== 'application/vnd.google-apps.folder' && (
+      file.name.endsWith('.tar.gz') || file.name.endsWith('.json')
+    ))
+    .sort((a, b) => {
+      const aTime = a.appProperties?.backupUtc || (a.name.endsWith('.json') ? a.modifiedTime : a.createdTime) || a.createdTime || a.modifiedTime || ''
+      const bTime = b.appProperties?.backupUtc || (b.name.endsWith('.json') ? b.modifiedTime : b.createdTime) || b.createdTime || b.modifiedTime || ''
+      return String(bTime).localeCompare(String(aTime))
+    })
     .map((file) => ({
       id: file.id,
       name: file.name,
-      createdTime: file.modifiedTime ?? file.createdTime ?? null,
+      type: file.name.endsWith('.tar.gz') ? 'point-in-time' as const : 'json-mirror' as const,
+      createdTime: file.appProperties?.backupUtc ?? (file.name.endsWith('.json') ? file.modifiedTime : file.createdTime) ?? file.createdTime ?? file.modifiedTime ?? null,
       sizeBytes: Number(file.size ?? 0),
       webViewLink: file.webViewLink ?? null,
       sha256: file.appProperties?.sha256 ?? null,
-      canEdit: file.capabilities?.canEdit !== false,
+      restorable: file.name.endsWith('.tar.gz') && file.appProperties?.application === 'srizony-foundation' && file.appProperties?.backupType === 'full' && /^[a-f0-9]{64}$/i.test(file.appProperties?.sha256 ?? ''),
+      canEdit: file.capabilities?.canEdit === true,
+      canDownload: file.capabilities?.canDownload === true,
     }))
-  return { folderName: folder.name, isSharedDrive: Boolean(folder.driveId), canAddChildren: folder.capabilities?.canAddChildren !== false, backups }
+  return {
+    folderName: folder.name,
+    isSharedDrive: Boolean(folder.driveId),
+    folderCanEdit: folder.capabilities?.canEdit !== false,
+    canListChildren: folder.capabilities?.canListChildren !== false,
+    // Only a Shared Drive can reliably own files uploaded by this standalone service account.
+    canAddChildren: Boolean(folder.driveId) && folder.capabilities?.canAddChildren === true,
+    backups,
+  }
 }
 
-export async function readDriveJson<T = unknown>(name: string): Promise<T | null> {
+async function findDriveJsonFile(name: string, refresh = false): Promise<DriveJsonFile | null> {
   const safeName = safeDriveName(name)
+  const cached = driveJsonFileCache.get(safeName)
+  if (!refresh && cached && Date.now() - cached.fetchedAt < DRIVE_FILE_LOOKUP_TTL_MS) return cached.file
+
   const q = new URLSearchParams({
     q: `name='${safeName.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}' and '${folderId()}' in parents and trashed=false`,
     pageSize: '10',
-    fields: 'files(id,name,mimeType)',
+    fields: 'files(id,name,mimeType,capabilities/canEdit,capabilities/canDownload)',
     spaces: 'drive',
+    supportsAllDrives: 'true',
+    includeItemsFromAllDrives: 'true',
   })
-  const listing = await (await driveFetch(`${DRIVE_API}/files?${q}`)).json() as { files?: Array<{ id: string; name: string; mimeType?: string }> }
+  const listing = await (await driveFetch(`${DRIVE_API}/files?${q}`)).json() as { files?: DriveJsonFile[] }
   const matches = listing.files ?? []
-  if (!matches.length) return null
   if (matches.length > 1) throw new Error(`Found duplicate Google Drive files named "${safeName}". Keep exactly one.`)
-  if (matches[0].mimeType === 'application/vnd.google-apps.folder' || matches[0].mimeType?.startsWith('application/vnd.google-apps.')) throw new Error(`"${safeName}" must be a real JSON file.`)
-  const content = await driveFetch(`${DRIVE_API}/files/${encodeURIComponent(matches[0].id)}?alt=media`)
-  try { return await content.json() as T }
-  catch { throw new Error(`The contents of ${safeName} are not valid JSON.`) }
+  const file = matches[0] ?? null
+  if (file && (file.mimeType === 'application/vnd.google-apps.folder' || file.mimeType?.startsWith('application/vnd.google-apps.'))) {
+    throw new Error(`"${safeName}" must be a real uploaded JSON file.`)
+  }
+  driveJsonFileCache.set(safeName, { file, fetchedAt: Date.now() })
+  return file
 }
 
-export async function writeDriveJson(name: string, value: unknown) {
+/**
+ * Read a JSON document and return a digest of the exact bytes received from
+ * Drive. The database mirror uses this to compare each table file to the
+ * SHA-256 recorded in the manifest before trusting any row.
+ */
+export async function readDriveJsonWithDigest<T = JsonValue>(name: string): Promise<{ value: T; sha256: string; sizeBytes: number } | null> {
   const safeName = safeDriveName(name)
-  const q = new URLSearchParams({
-    q: `name='${safeName.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}' and '${folderId()}' in parents and trashed=false`,
-    pageSize: '10',
-    fields: 'files(id,name,mimeType,capabilities(canEdit))',
-    spaces: 'drive',
-  })
-  const listing = await (await driveFetch(`${DRIVE_API}/files?${q}`)).json() as { files?: Array<{ id: string; name: string; mimeType?: string; capabilities?: { canEdit?: boolean } }> }
-  const matches = listing.files ?? []
-  if (!matches.length) throw new Error(`Refusing to create "${safeName}". Create the JSON file in your Gmail My Drive folder first and share it with the service account as Editor.`)
-  if (matches.length > 1) throw new Error(`Found duplicate Google Drive files named "${safeName}". Keep exactly one.`)
-  const existing = matches[0]
-  if (existing.mimeType === 'application/vnd.google-apps.folder' || existing.mimeType?.startsWith('application/vnd.google-apps.')) throw new Error(`"${safeName}" must be a real uploaded .json file.`)
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const file = await findDriveJsonFile(safeName, attempt > 0)
+    if (!file) return null
+    try {
+      const content = await driveFetch(`${DRIVE_API}/files/${encodeURIComponent(file.id)}?alt=media&supportsAllDrives=true`)
+      const raw = await content.text()
+      let value: T
+      try { value = JSON.parse(raw) as T }
+      catch { throw new Error(`The contents of ${safeName} are not valid JSON.`) }
+      return { value, sha256: createHash('sha256').update(raw, 'utf8').digest('hex'), sizeBytes: Buffer.byteLength(raw, 'utf8') }
+    } catch (error) {
+      // A Drive file may have been replaced since the cached name lookup.
+      // Refresh the ID once before surfacing the error.
+      driveJsonFileCache.delete(safeName)
+      if (attempt === 1) throw error
+    }
+  }
+  return null
+}
+
+/**
+ * Read a JSON document from the configured Drive folder. File-ID lookup is
+ * cached briefly to avoid spending an additional Drive API request for every
+ * snapshot read, and Shared Drive query flags are always enabled.
+ */
+export async function readDriveJson<T = JsonValue>(name: string): Promise<T | null> {
+  const result = await readDriveJsonWithDigest<T>(name)
+  return result?.value ?? null
+}
+
+export async function writeDriveJson(name: string, value: ExternalValue) {
+  const safeName = safeDriveName(name)
+  const existing = await findDriveJsonFile(safeName, true)
+  if (!existing) throw new Error(`Refusing to create "${safeName}". Pre-create the JSON file in the configured Drive folder and share it with the service account as Editor.`)
   if (existing.capabilities?.canEdit === false) throw new Error(`The service account cannot edit "${safeName}". Grant Editor access to this file or its parent folder.`)
   const boundary = `srizony_${cryptoRandomBoundary()}`
   const metadata = { name: safeName, mimeType: 'application/json' }
@@ -184,6 +244,7 @@ export async function writeDriveJson(name: string, value: unknown) {
   ].join('\r\n')
   const endpoint = `${UPLOAD_API}/files/${encodeURIComponent(existing.id)}?uploadType=multipart&supportsAllDrives=true&fields=id,name,modifiedTime`
   const response = await driveFetch(endpoint, { method: 'PATCH', headers: { 'Content-Type': `multipart/related; boundary=${boundary}` }, body })
+  driveJsonFileCache.delete(safeName)
   return await response.json() as { id: string; name: string; modifiedTime?: string }
 }
 

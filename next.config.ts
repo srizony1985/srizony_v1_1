@@ -18,9 +18,21 @@ const nextConfig: NextConfig = {
     }]
   },
   images: {
+    // Restrict storage-host access to the public-assets path. `domains` is
+    // deprecated and would allow every path on each host.
     remotePatterns: [
       { protocol: 'https', hostname: 'images.unsplash.com' },
       { protocol: 'https', hostname: 'api.dicebear.com' },
+      {
+        protocol: 'https',
+        hostname: 'br-weathered-water-b3x7n5e4.storage.c-4.ap-southeast-1.aws.neon.tech',
+        pathname: '/public-assets/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'br-noisy-heart-aooybxhv.storage.c-2.ap-southeast-1.aws.neon.tech',
+        pathname: '/public-assets/**',
+      },
     ],
   },
 }

@@ -1,7 +1,13 @@
 import { NextResponse } from 'next/server'
-import { getPublicSiteSnapshot } from '@/lib/site'
+
+/** Retired compatibility endpoint. Public clients use the consolidated site snapshot API. */
 export async function GET() {
-  const site = await getPublicSiteSnapshot('/')
-  const g = site.global
-  return NextResponse.json({ primaryNav: g.primaryNav, navGroups: g.navGroups, ui: g.ui, contactInfo: g.contactInfo, logo: g.images.logo }, { headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300' } })
+  return NextResponse.json(
+    { error: { code: 'ENDPOINT_RETIRED', message: 'This endpoint is retired. Use /api/site?slug=%2F.' } },
+    { status: 410, headers: {
+      'Cache-Control': 'no-store',
+      'Deprecation': 'true',
+      'Link': '</api/site?slug=%2F>; rel="successor-version"',
+    } },
+  )
 }

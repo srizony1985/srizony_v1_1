@@ -1,10 +1,15 @@
 'use client'
 
+import type { ExternalValue, JsonObject } from '@/types/json'
+import type { LeafletApi, LeafletBounds, LeafletLayerGroup, LeafletMap, LeafletTileLayer } from '@/types/leaflet'
+
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { Building2, Compass, Mail, MapPin, Navigation, Phone, Search, User, X } from 'lucide-react'
 import type { Branch } from '@/types/branch'
 import { MAP_H, MAP_W, OUTLINE_COORDS, OUTLINE_PATH, project } from '@/lib/bangladeshMap'
 import { localizeDigits } from '@/lib/utils'
+import { getMapBoundaries } from '@/lib/api/mapBoundaries'
+import { plainSectionTitle } from '@/lib/sectionTitle'
 import type { Lang, PageData } from '@/types/entityType'
 import { useSite } from '@/components/containers/SiteProvider'
 import LogoLoader from '@/components/ui/LogoLoader'
@@ -14,19 +19,18 @@ import { useWebsiteEssentials } from '@/components/hooks/useWebsiteEssentials'
 
 /* ───────────── Leaflet loader (CDN, so no extra npm dependency) ───────────── */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 declare global {
   interface Window {
-    L?: any
+    L?: LeafletApi
   }
 }
 const LEAFLET = 'https://unpkg.com/leaflet@1.9.4/dist'
 const MAPTILER_API_KEY = process.env.NEXT_PUBLIC_MAPTILER_API_KEY?.trim() ?? ''
 // Simplified GeoBoundaries BGD ADM2/ADM0 data is fetched through our same-origin cached API.
 // The local SVG outline remains the offline fallback.
-let leafletPromise: Promise<any> | null = null
+let leafletPromise: Promise<LeafletApi> | null = null
 
-function loadLeaflet(): Promise<any> {
+function loadLeaflet(): Promise<LeafletApi> {
   if (window.L) return Promise.resolve(window.L)
   if (leafletPromise) return leafletPromise
   leafletPromise = new Promise((resolve, reject) => {
@@ -79,10 +83,10 @@ type GeoPolygon = GeoPosition[][]
 type GeoGeometry =
   | { type: 'Polygon'; coordinates: GeoPolygon }
   | { type: 'MultiPolygon'; coordinates: GeoPolygon[] }
-type MapFeature = { type: 'Feature'; properties: Record<string, unknown>; geometry: GeoGeometry }
+type MapFeature = { type: 'Feature'; properties: JsonObject; geometry: GeoGeometry }
 type FeatureCollection = { type: 'FeatureCollection'; features: MapFeature[] }
 
-const normalizeDistrictName = (value: unknown) => {
+const normalizeDistrictName = (value: ExternalValue) => {
   const name = String(value ?? '').toLowerCase().replace(/\bdistrict\b|\bzila\b|\bzilla\b/g, '').replace(/[^a-z]/g, '')
   const aliases: Record<string, string> = {
     jessore: 'jashore',
@@ -97,10 +101,7 @@ const normalizeDistrictName = (value: unknown) => {
 const featureDistrictName = (feature: MapFeature) =>
   String(feature.properties.shapeName ?? feature.properties.ADM2_EN ?? feature.properties.NAME_2 ?? feature.properties.name ?? '')
 
-const DISTRICT_COLORS = {
-  light: ['#72c7c4', '#f6bd60', '#a8dadc', '#cdb4db', '#f4a7a0', '#b8d99b', '#91b9e8', '#f2a65a'],
-  dark: ['#168b8b', '#9b6b1d', '#286b75', '#73508e', '#9f4f52', '#4a7837', '#355f9c', '#9b5821'],
-} as const
+const DISTRICT_COLOR_COUNT = 8
 
 function districtPaletteIndex(name: string): number {
   const normalized = normalizeDistrictName(name) || name.trim().toLowerCase()
@@ -109,12 +110,7 @@ function districtPaletteIndex(name: string): number {
     hash ^= normalized.charCodeAt(index)
     hash = Math.imul(hash, 16777619)
   }
-  return (hash >>> 0) % DISTRICT_COLORS.light.length
-}
-
-/** Stable district colours shared by the SVG fallback and interactive Leaflet map. */
-function districtPaletteFill(name: string): string {
-  return `var(--sf-fp-district-${districtPaletteIndex(name) + 1})`
+  return (hash >>> 0) % DISTRICT_COLOR_COUNT
 }
 
 function geoFeaturePath(feature: MapFeature): string {
@@ -134,7 +130,7 @@ function geoFeaturePath(feature: MapFeature): string {
   })).filter(Boolean).join(' ')
 }
 
-function parseFeatureCollection(value: unknown): MapFeature[] {
+function parseFeatureCollection(value: ExternalValue): MapFeature[] {
   if (!value || typeof value !== 'object') return []
   const collection = value as Partial<FeatureCollection>
   if (collection.type !== 'FeatureCollection' || !Array.isArray(collection.features)) return []
@@ -307,7 +303,7 @@ export default function LocationMaps({ page, variant = 'default' }: { page: Page
   const [query, setQuery] = useState('')
   const [hoverId, setHoverId] = useState<string | null>(null)
   const [pinnedId, setPinnedId] = useState<string | null>(null)
-  const [mode, setMode] = useState<'loading' | 'map' | 'svg'>('loading')
+  const [mode, setMode] = useState<'loading' | 'map' | 'svg'>(MAPTILER_API_KEY ? 'loading' : 'svg')
   const [size, setSize] = useState({ w: 560, h: 560 })
   const measuredSizeRef = useRef({ w: 560, h: 560 })
   const [districtFeatures, setDistrictFeatures] = useState<MapFeature[]>([])
@@ -318,10 +314,10 @@ export default function LocationMaps({ page, variant = 'default' }: { page: Page
   const boxRef = useRef<HTMLDivElement | null>(null)
   const listRef = useRef<HTMLUListElement | null>(null)
   const leafletEl = useRef<HTMLDivElement | null>(null)
-  const mapRef = useRef<any>(null)
-  const tileRef = useRef<any>(null)
-  const circlesRef = useRef<any>(null)
-  const fitRef = useRef<any>(null)
+  const mapRef = useRef<LeafletMap | null>(null)
+  const tileRef = useRef<LeafletTileLayer | null>(null)
+  const circlesRef = useRef<LeafletLayerGroup | null>(null)
+  const fitRef = useRef<LeafletBounds | null>(null)
   const sectionRef = useRef<HTMLElement | null>(null)
   const [wantMap, setWantMap] = useState(false)
   const [isMobileViewport, setIsMobileViewport] = useState(false)
@@ -350,7 +346,7 @@ export default function LocationMaps({ page, variant = 'default' }: { page: Page
     const name = normalizeDistrictName(active.branch.district.en)
     const feature = districtFeatures.find((item) => normalizeDistrictName(featureDistrictName(item)) === name)
     return feature ? projectedFeatureBounds(feature) ?? COUNTRY_SVG_VIEW : COUNTRY_SVG_VIEW
-  }, [isMobileViewport, activeId, active, districtFeatures])
+  }, [active, districtFeatures])
 
   /* Delayed hover bookkeeping keeps map pins and the location rail from popping rapidly. */
   const clearTimer = () => {
@@ -408,7 +404,9 @@ export default function LocationMaps({ page, variant = 'default' }: { page: Page
       if (previous.w === next.w && previous.h === next.h) return
       measuredSizeRef.current = next
       setSize(next)
-      mapRef.current?.invalidateSize({ pan: false, debounceMoveend: true })
+      if (mapRef.current != null && typeof mapRef.current.invalidateSize === 'function') {
+        mapRef.current.invalidateSize({ pan: false, debounceMoveend: true })
+      }
     }
     update()
     const ro = new ResizeObserver(update)
@@ -475,7 +473,10 @@ export default function LocationMaps({ page, variant = 'default' }: { page: Page
   useEffect(() => {
     const el = sectionRef.current
     if (!el) return
-    if (!('IntersectionObserver' in window)) return setWantMap(true)
+    if (!('IntersectionObserver' in window)) {
+      const timeout = globalThis.setTimeout(() => setWantMap(true), 0)
+      return () => globalThis.clearTimeout(timeout)
+    }
     const io = new IntersectionObserver(([e]) => {
       if (e.isIntersecting) {
         setWantMap(true)
@@ -491,11 +492,7 @@ export default function LocationMaps({ page, variant = 'default' }: { page: Page
     if (!wantMap) return
     const controller = new AbortController()
     let cancelled = false
-    fetch('/api/map-boundaries', { signal: controller.signal, cache: 'force-cache' })
-      .then((response) => {
-        if (!response.ok) throw new Error(`Boundary request failed: ${response.status}`)
-        return response.json() as Promise<{ districts?: unknown; country?: unknown }>
-      })
+    getMapBoundaries(controller.signal)
       .then((data) => {
         if (cancelled) return
         const districts = parseFeatureCollection(data.districts)
@@ -515,18 +512,17 @@ export default function LocationMaps({ page, variant = 'default' }: { page: Page
     if (!wantMap) return
     // The interactive basemap requires a MapTiler key; keep the local Bangladesh SVG usable until configured.
     if (!MAPTILER_API_KEY) {
-      setMode('svg')
       return
     }
     let cancelled = false
-    let map: any
+    let map: LeafletMap | undefined
     let pinFrame = 0
     let updatePinPositions: (() => void) | undefined
     const timeout = new Promise<never>((_, rej) => window.setTimeout(() => rej(new Error('timeout')), 8000))
     Promise.race([loadLeaflet(), timeout])
       .then((L) => {
         if (cancelled || !leafletEl.current) return
-        map = L.map(leafletEl.current, {
+          map = L.map(leafletEl.current, {
           zoomControl: false,
           zoomSnap: 0.25,
           maxZoom: 13,
@@ -542,14 +538,16 @@ export default function LocationMaps({ page, variant = 'default' }: { page: Page
         // Leaflet has no pixel projection until the map has an initial view.
         // Set a Bangladesh-centered view before registering the ready callback
         // or switching the overlay pins from the SVG projection to Leaflet.
-        mapRef.current = map
-        map.setView([23.685, 90.3563], 7, { animate: false })
-        L.control.zoom({ position: 'bottomright' }).addTo(map)
+        const currentMap = map
+        if (!currentMap) return
+        mapRef.current = currentMap
+        currentMap.setView([23.685, 90.3563], 7, { animate: false })
+        L.control.zoom({ position: 'bottomright' }).addTo(currentMap)
         const tiles = L.tileLayer(tileUrl(document.documentElement.dataset.mode === 'dark'), {
           maxZoom: 20,
           opacity: 0.92,
           attribution: '© <a href="https://www.maptiler.com/copyright/" target="_blank" rel="noopener">MapTiler</a> © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a>',
-        }).addTo(map)
+        }).addTo(currentMap)
         tileRef.current = tiles
         // A failed/invalid API key can return blank tiles. Fade failed tiles away so the
         // local map background and district/country vector overlays remain clearly visible.
@@ -567,17 +565,18 @@ export default function LocationMaps({ page, variant = 'default' }: { page: Page
         tiles.on('tileload', () => {
           if (!tileFallbackApplied) tileErrors = Math.max(0, tileErrors - 1)
         })
-        circlesRef.current = L.layerGroup().addTo(map)
+        circlesRef.current = L.layerGroup().addTo(currentMap)
         // Keep all of Bangladesh visible at every aspect ratio; re-fit after mobile/desktop resize.
         fitRef.current = L.latLngBounds(BD_BOUNDS)
         const fit = (animate: boolean) => {
-          if (!map || !map.getSize().x || !map.getSize().y) return
-          const padding = window.innerWidth <= 560 ? [10, 10] : [18, 18]
+          const bounds = fitRef.current
+          if (!bounds || !currentMap || !currentMap.getSize().x || !currentMap.getSize().y) return
+          const padding: [number, number] = window.innerWidth <= 560 ? [10, 10] : [18, 18]
           // Keep the minimum zoom low enough that a narrower viewport can always fit the country.
-          map.setMinZoom(4)
-          map.fitBounds(fitRef.current, { padding, maxZoom: 6.5, animate })
+          currentMap.setMinZoom(4)
+          currentMap.fitBounds(bounds, { padding, maxZoom: 6.5, animate })
         }
-        map.whenReady(() => fit(false))
+        currentMap.whenReady(() => fit(false))
         // Reposition only the pin DOM nodes during map movement. Updating React
         // state for every Leaflet move event re-rendered the complete map and all
         // branch cards at interaction frame rate.
@@ -586,21 +585,21 @@ export default function LocationMaps({ page, variant = 'default' }: { page: Page
           pinFrame = window.requestAnimationFrame(() => {
             pinFrame = 0
             const layer = pinLayerRef.current
-            if (!layer || !map?._loaded) return
+            if (!layer || !currentMap || !currentMap._loaded) return
             const pins = layer.querySelectorAll<HTMLElement>('[data-map-lat][data-map-lng]')
             pins.forEach((pin) => {
               const lat = Number(pin.dataset.mapLat)
               const lng = Number(pin.dataset.mapLng)
               if (!Number.isFinite(lat) || !Number.isFinite(lng)) return
-              const point = map.latLngToContainerPoint([lat, lng])
+              const point = currentMap.latLngToContainerPoint([lat, lng])
               pin.style.left = `${point.x}px`
               pin.style.top = `${point.y}px`
             })
           })
         }
-        map.on('move zoom resize', updatePinPositions)
-        map.on('focus', () => map.scrollWheelZoom.enable())
-        map.on('blur', () => map.scrollWheelZoom.disable())
+        currentMap.on('move zoom resize', updatePinPositions)
+        currentMap.on('focus', () => currentMap.scrollWheelZoom.enable())
+        currentMap.on('blur', () => currentMap.scrollWheelZoom.disable())
         // setView above initializes Leaflet synchronously; the ready callback
         // now has a valid center/zoom and can safely fit the Bangladesh country bounds.
         setMode('map')
@@ -612,7 +611,7 @@ export default function LocationMaps({ page, variant = 'default' }: { page: Page
       cancelled = true
       if (pinFrame) window.cancelAnimationFrame(pinFrame)
       if (map && updatePinPositions) map.off('move zoom resize', updatePinPositions)
-      map?.remove()
+      if (map) (map as LeafletMap & { remove: () => void }).remove()
       mapRef.current = null
       tileRef.current = null
       circlesRef.current = null
@@ -632,7 +631,7 @@ export default function LocationMaps({ page, variant = 'default' }: { page: Page
 
     let targetBounds = fitRef.current
     let maxZoom = 6.5
-    const mobile = window.matchMedia('(max-width: 700px)').matches
+    const mobile = isMobileViewport
     if (active && districtFeatures.length) {
       const selectedName = normalizeDistrictName(active.branch.district.en)
       const feature = districtFeatures.find((item) => normalizeDistrictName(featureDistrictName(item)) === selectedName)
@@ -657,7 +656,7 @@ export default function LocationMaps({ page, variant = 'default' }: { page: Page
       })
     })
     return () => window.cancelAnimationFrame(raf)
-  }, [mode, activeId, active, districtFeatures, size.w, size.h])
+  }, [mode, activeId, active, districtFeatures, size.w, size.h, isMobileViewport])
 
   /* Render real district shapes and colour the selected district boundary. */
   useEffect(() => {
@@ -668,7 +667,6 @@ export default function LocationMaps({ page, variant = 'default' }: { page: Page
     const primary = cssVar('--sf-primary')
     const accent = cssVar('--sf-accent')
     const districtFill = colorMode === 'dark' ? cssVar('--sf-bg') : cssVar('--sf-soft')
-    const districtColors = colorMode === 'dark' ? DISTRICT_COLORS.dark : DISTRICT_COLORS.light
     const selectedName = normalizeDistrictName(active?.branch.district.en)
 
     if (districtFeatures.length) {
@@ -681,7 +679,7 @@ export default function LocationMaps({ page, variant = 'default' }: { page: Page
             color: selected ? accent : cssVar('--sf-muted'),
             weight: selected ? 3.25 : 1.05,
             opacity: 1,
-            fillColor: selected ? accent : feature ? districtColors[districtPaletteIndex(featureDistrictName(feature))] : districtFill,
+            fillColor: selected ? accent : feature ? cssVar(`--sf-fp-district-${districtPaletteIndex(featureDistrictName(feature)) + 1}`) : districtFill,
             fillOpacity: selected ? 0.62 : 0.48,
             lineJoin: 'round',
             interactive: false,
@@ -734,10 +732,6 @@ export default function LocationMaps({ page, variant = 'default' }: { page: Page
 
   /* pixel position of a pin inside the map box */
   const pixel = (r: Resolved) => {
-    if (mode === 'map' && mapRef.current?._loaded) {
-      const p = mapRef.current.latLngToContainerPoint([r.branch.lat, r.branch.lng])
-      return { x: p.x as number, y: p.y as number }
-    }
     const bounds = svgViewport
     const s = Math.min(size.w / bounds.width, size.h / bounds.height)
     return {
@@ -746,17 +740,43 @@ export default function LocationMaps({ page, variant = 'default' }: { page: Page
     }
   }
 
+  // Leaflet pin placement is an imperative DOM update, not a render-time ref read.
+  useEffect(() => {
+    if (mode !== 'map') return
+    const layer = pinLayerRef.current
+    const map = mapRef.current
+    if (!layer || !map?._loaded) return
+    layer.querySelectorAll<HTMLElement>('[data-map-lat][data-map-lng]').forEach((pin) => {
+      const lat = Number(pin.dataset.mapLat)
+      const lng = Number(pin.dataset.mapLng)
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return
+      const point = map.latLngToContainerPoint([lat, lng])
+      pin.style.left = `${point.x}px`
+      pin.style.top = `${point.y}px`
+    })
+  }, [mode, visible, size.w, size.h])
+
+  const selectedAreaPoint = useMemo(() => {
+    if (mode === 'map' || !active || districtFeatures.length) return null
+    const bounds = svgViewport
+    const s = Math.min(size.w / bounds.width, size.h / bounds.height)
+    return {
+      x: (size.w - bounds.width * s) / 2 + (active.vx - bounds.x) * s,
+      y: (size.h - bounds.height * s) / 2 + (active.vy - bounds.y) * s,
+    }
+  }, [mode, active, districtFeatures.length, svgViewport, size.w, size.h])
+
   if (variant !== 'contact' && (footprintCopy?.visible === false || !footprintEyebrow || !footprintTitle)) return null
   const sectionId = variant === 'contact' ? 'contact-locations' : 'national-footprint'
   const titleId = variant === 'contact' ? 'sf-contact-map-title' : 'sf-fp-title'
 
   return (
-    <section id={sectionId} ref={sectionRef} className={`sf-section sf-footprint${variant === 'contact' ? ' sf-footprint--contact' : ''}`} aria-labelledby={titleId}>
+    <section id={sectionId} ref={sectionRef} className="sf-section sf-footprint" aria-labelledby={titleId}>
       <div className="sf-container">
         <Reveal>
           <header className="sf-sec-head sf-sec-head--center">
             <span className="sf-eyebrow">{footprintEyebrow?.[lang] ?? ''}</span>
-            <h2 id={titleId} className="sf-h2">{footprintTitle?.[lang] ?? ''}</h2>
+            <h2 id={titleId} className="sf-h2">{plainSectionTitle(footprintTitle?.[lang])}</h2>
             <p className="sf-lead">{footprintLead[lang]}</p>
           </header>
         </Reveal>
@@ -785,7 +805,6 @@ export default function LocationMaps({ page, variant = 'default' }: { page: Page
                           key={`${featureDistrictName(feature)}-${index}`}
                           d={geoFeaturePath(feature)}
                           className={`sf-fp-district${selected ? ' is-selected' : ''}`}
-                          style={{ fill: selected ? 'var(--sf-accent)' : districtPaletteFill(featureDistrictName(feature)), fillOpacity: selected ? 0.72 : 0.42 }}
                         />
                       })}
                       {countryFeature && <path d={geoFeaturePath(countryFeature)} className="sf-fp-country-edge" />}
@@ -812,15 +831,14 @@ export default function LocationMaps({ page, variant = 'default' }: { page: Page
                 </div>
               )}
 
-              {mode !== 'map' && active && !districtFeatures.length && (() => {
-                const point = pixel(active)
-                return <div className="sf-fp-selected-area" aria-hidden="true" style={{ left: point.x, top: point.y }} />
-              })()}
+              {selectedAreaPoint && (
+                <div className="sf-fp-selected-area" aria-hidden="true" style={{ '--sf-map-x': `${selectedAreaPoint.x}px`, '--sf-map-y': `${selectedAreaPoint.y}px` } as CSSProperties} />
+              )}
 
               <div className="sf-fp-pins" ref={pinLayerRef}>
                 {visible.map((r, i) => {
                   const { x, y } = pixel(r)
-                  if (x < -30 || y < -30 || x > size.w + 30 || y > size.h + 30) return null
+                  if (mode !== 'map' && (x < -30 || y < -30 || x > size.w + 30 || y > size.h + 30)) return null
                   const isActive = r.branch.id === activeId
                   const isHead = r.branch.kind === 'head'
                   return (
@@ -829,7 +847,7 @@ export default function LocationMaps({ page, variant = 'default' }: { page: Page
                       className={`sf-fp-pin ${isHead ? 'is-head' : ''} ${isActive ? 'is-active' : ''} ${hoverId === r.branch.id ? 'is-hovered' : ''}`}
                       data-map-lat={mode === 'map' ? r.branch.lat : undefined}
                       data-map-lng={mode === 'map' ? r.branch.lng : undefined}
-                      style={{ left: x, top: y, ['--i' as string]: i } as CSSProperties}
+                      style={{ '--sf-map-x': `${x}px`, '--sf-map-y': `${y}px`, '--sf-map-sequence': i } as CSSProperties}
                       onPointerEnter={(e) => e.pointerType === 'mouse' && openHover(r.branch.id)}
                       onPointerLeave={(e) => e.pointerType === 'mouse' && scheduleClose()}
                       onFocus={() => openHover(r.branch.id)}

@@ -12,7 +12,7 @@ import { isLandingComponentKey } from '@/components/home/LandingSectionRenderer'
  */
 export default function HomePage({ page }: { page: PageData }) {
   return (
-    <Container variant="page" className={`sf-home sf-home--layout-${page.layout ?? 'standard'}`}>
+    <Container variant="home" className={`sf-home sf-home--layout-${page.layout ?? 'wide'}`}>
       {page.sections.map((section, index) => {
         if (section.visible === false || !isLandingComponentKey(section.homeComponent)) return null
         return <LandingSectionRenderer key={`${section.homeComponent}-${index}`} page={page} section={section} />

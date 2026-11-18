@@ -1,64 +1,155 @@
-name: Neon to personal Google Drive JSON mirror
+name: Production Google Drive backups
 
 on:
+  # Hourly incremental JSON mirror; the 20:00 UTC run is the full daily snapshot
+  # (02:00 the following day in Asia/Dhaka).
   schedule:
-    # Hourly incremental snapshots limit CI runner churn while keeping a practical recovery point.
-    - cron: '0 * * * *'
-    # Full snapshot at 02:35 Bangladesh time (includes high-churn analytics tables).
-    - cron: '35 20 * * *'
+    - cron: '0 0-19,21-23 * * *'
+    - cron: '0 20 * * *'
   workflow_dispatch:
     inputs:
-      full_snapshot:
-        description: 'Include every public table, including high-churn analytics tables'
+      operation:
+        description: 'Backup, or restore a verified point-in-time archive'
+        type: choice
+        required: true
+        default: backup
+        options:
+          - backup
+          - restore
+      restore_file_id:
+        description: 'Google Drive file ID (required only for restore)'
+        type: string
         required: false
-        type: boolean
-        default: false
-
-concurrency:
-  group: srizony-personal-drive-json-mirror
-  cancel-in-progress: false
+      confirm_restore:
+        description: 'Type RESTORE PRODUCTION exactly to authorize a destructive restore'
+        type: string
+        required: false
 
 permissions:
   contents: read
 
+concurrency:
+  group: srizony-google-drive-backup-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
-  mirror:
+  json-mirror:
+    name: Hourly / daily JSON mirror
+    if: github.event_name == 'schedule'
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 45
     env:
-      DRIVE_JSON_FULL_SNAPSHOT: ${{ github.event.schedule == '35 20 * * *' && 'true' || (inputs.full_snapshot && 'true' || 'false') }}
-      DRIVE_JSON_MAX_FILE_BYTES: ${{ vars.DRIVE_JSON_MAX_FILE_BYTES || '209715200' }}
-      NEON_OBJECT_STORAGE_BUCKET: ${{ vars.NEON_OBJECT_STORAGE_BUCKET || 'uploads' }}
+      BACKUP_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+      GOOGLE_DRIVE_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
+      GOOGLE_SERVICE_ACCOUNT_JSON_BASE64: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON_BASE64 }}
     steps:
       - name: Check out source
-        uses: actions/checkout@v7
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v7
+        uses: actions/checkout@v4
+      - name: Set up project Node.js
+        uses: actions/setup-node@v4
         with:
-          node-version-file: '.nvmrc'
+          node-version-file: .nvmrc
           cache: npm
-
-      - name: Install PostgreSQL client
+      - name: Install dependencies
+        run: npm ci
+      - name: Validate backup configuration
+        shell: bash
         run: |
-          sudo apt-get install -y postgresql-client
-          psql --version
-
-      - name: Install only backup runtime dependencies from the lockfile
-        run: npm ci --omit=dev
-
-      - name: Sync changed Neon tables to existing Drive JSON files
+          set -euo pipefail
+          test -n "$BACKUP_DATABASE_URL"
+          test -n "$GOOGLE_DRIVE_FOLDER_ID"
+          test -n "$GOOGLE_SERVICE_ACCOUNT_JSON_BASE64"
+      - name: Create daily full snapshot (02:00 Asia/Dhaka)
+        if: github.event.schedule == '0 20 * * *'
+        run: npm run backup:google-drive:full
+      - name: Create hourly incremental mirror
+        if: github.event.schedule != '0 20 * * *'
         run: npm run backup:google-drive
+
+  archive-backup:
+    name: Create full PostgreSQL and media archive
+    if: github.event_name == 'workflow_dispatch' && inputs.operation == 'backup'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      BACKUP_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+      GOOGLE_DRIVE_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
+      GOOGLE_SERVICE_ACCOUNT_JSON_BASE64: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON_BASE64 }}
+      AWS_ENDPOINT_URL_S3: ${{ secrets.AWS_ENDPOINT_URL_S3 }}
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      NEON_OBJECT_STORAGE_BUCKET: ${{ vars.NEON_OBJECT_STORAGE_BUCKET || 'uploads' }}
+      NEON_PUBLIC_ASSETS_BUCKET: ${{ vars.NEON_PUBLIC_ASSETS_BUCKET || 'public-assets' }}
+      BACKUP_DRIVE_RETENTION_DAYS: ${{ vars.BACKUP_DRIVE_RETENTION_DAYS || '0' }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up project Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Install PostgreSQL client and AWS CLI
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes postgresql-client awscli
+      - name: Install dependencies
+        run: npm ci
+      - name: Validate backup configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in BACKUP_DATABASE_URL GOOGLE_DRIVE_FOLDER_ID GOOGLE_SERVICE_ACCOUNT_JSON_BASE64 AWS_ENDPOINT_URL_S3 AWS_REGION AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY; do
+            test -n "${!name:-}" || { echo "Missing required setting: $name" >&2; exit 1; }
+          done
+      - name: Create full point-in-time archive
+        run: npm run backup:google-drive:archive
+
+  restore-production:
+    name: Restore selected production archive (destructive)
+    if: github.event_name == 'workflow_dispatch' && inputs.operation == 'restore'
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 120
+    env:
+      BACKUP_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+      GOOGLE_DRIVE_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
+      GOOGLE_SERVICE_ACCOUNT_JSON_BASE64: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON_BASE64 }}
+      AWS_ENDPOINT_URL_S3: ${{ secrets.AWS_ENDPOINT_URL_S3 }}
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      NEON_OBJECT_STORAGE_BUCKET: ${{ vars.NEON_OBJECT_STORAGE_BUCKET || 'uploads' }}
+      NEON_PUBLIC_ASSETS_BUCKET: ${{ vars.NEON_PUBLIC_ASSETS_BUCKET || 'public-assets' }}
+      BACKUP_DRIVE_RETENTION_DAYS: ${{ vars.BACKUP_DRIVE_RETENTION_DAYS || '0' }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up project Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Install PostgreSQL client and AWS CLI
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes postgresql-client awscli
+      - name: Install dependencies
+        run: npm ci
+      - name: Validate destructive restore request
         env:
-          BACKUP_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
-          DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
-          GOOGLE_DRIVE_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
-          GOOGLE_SERVICE_ACCOUNT_JSON_BASE64: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON_BASE64 }}
-          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
-          GOOGLE_SERVICE_ACCOUNT_EMAIL: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_EMAIL }}
-          GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY }}
-          GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY_BASE64: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY_BASE64 }}
-          AWS_ENDPOINT_URL_S3: ${{ secrets.AWS_ENDPOINT_URL_S3 }}
-          AWS_REGION: ${{ vars.AWS_REGION }}
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          RESTORE_FILE_ID: ${{ inputs.restore_file_id }}
+          CONFIRM_RESTORE: ${{ inputs.confirm_restore }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$CONFIRM_RESTORE" == 'RESTORE PRODUCTION' ]] || { echo 'Type RESTORE PRODUCTION exactly.' >&2; exit 1; }
+          [[ "$RESTORE_FILE_ID" =~ ^[A-Za-z0-9_-]{10,200}$ ]] || { echo 'A valid Google Drive backup file ID is required.' >&2; exit 1; }
+      - name: Create pre-restore safety backup
+        run: npm run backup:google-drive:archive
+      - name: Restore selected verified archive
+        env:
+          RESTORE_FILE_ID: ${{ inputs.restore_file_id }}
+          CONFIRM_RESTORE: ${{ inputs.confirm_restore }}
+        run: npm run restore:google-drive

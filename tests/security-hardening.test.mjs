@@ -104,7 +104,8 @@ test('CSP report ingestion is bounded and rate-limited', () => {
   assert.match(report, /enforcePublicRequestLimits/ )
   assert.match(report, /MAX_REPORT_BYTES = 16_384/)
   assert.match(report, /readBoundedRequestText\(req, MAX_REPORT_BYTES\)/)
-  assert.match(report, /status: 429/)
+  assert.match(report, /if \(!limits\.allowed\)[\s\S]*return respondNoContent\(\)/)
+  assert.doesNotMatch(report, /status: 429/)
 })
 
 test('public email errors do not disclose internal exception messages', () => {

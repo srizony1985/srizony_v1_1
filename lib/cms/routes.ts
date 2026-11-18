@@ -1,3 +1,4 @@
+import type { ExternalValue, JsonObject } from '@/types/json'
 /** Canonical public routes shared by the CMS, seeded content, and the page router. */
 import { CONTENT_COLLECTION_ROUTES } from './components'
 
@@ -149,17 +150,17 @@ export function normalizeCmsRoutePath(path: string): string {
 }
 
 /** Is this path represented by an internal item in the active primary/menu tree? */
-export function isNavigationPagePath(path: string, global: unknown): boolean {
+export function isNavigationPagePath(path: string, global: ExternalValue): boolean {
   const requested = canonicalizeCmsRoute(path)
   if (requested === LANDING_ROUTE) return true
   if (!global || typeof global !== 'object') return false
-  const root = global as Record<string, unknown>
+  const root = global as JsonObject
   const seen = new Set<string>()
-  const visit = (items: unknown): void => {
+  const visit = (items: ExternalValue): void => {
     if (!Array.isArray(items)) return
     for (const raw of items) {
       if (!raw || typeof raw !== 'object') continue
-      const item = raw as Record<string, unknown>
+      const item = raw as JsonObject
       const href = typeof item.href === 'string' ? item.href : ''
       if (href.startsWith('/') && item.menuType !== 'external') seen.add(canonicalizeCmsRoute(href))
       visit(item.children)

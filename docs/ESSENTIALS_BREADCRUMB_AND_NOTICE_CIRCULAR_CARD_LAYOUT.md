@@ -23,8 +23,7 @@
 - `components/ui/PublicBreadcrumb.tsx` (new)
 - `app/[...slug]/page.tsx` and `app/bn/[[...slug]]/page.tsx` resolve `/resources` and `/management-staff` through the shared slug-page template.
 - `components/pages/SectionContent.tsx`
-- `app/site-polish.css`
-- `site-polish.css` (compatibility copy, synchronized)
+- `app/globals.css` (the sole application stylesheet)
 - `tests/essentials-breadcrumb-and-feed-card-layout.test.mjs` (new)
 - `tests/ui-layout-contract.test.ts`
 
@@ -35,7 +34,7 @@ No database schema, seed, or migration changes are required. These changes affec
 - JavaScript tests: 55 passed, 0 failed.
 - Focused TypeScript UI tests: 13 passed, 0 failed (Node's experimental type-stripping runner for these file-only tests).
 - TypeScript/TSX syntax transpilation: 235 files, 0 syntax errors.
-- `app/site-polish.css` and root `site-polish.css`: identical.
+- All public, CMS and component styles are consolidated in `app/globals.css`.
 - Full dependency-backed semantic typecheck and Next.js production build: not run in this environment.
 
 ## Local verification

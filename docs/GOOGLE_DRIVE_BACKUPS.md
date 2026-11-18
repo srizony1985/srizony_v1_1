@@ -1,126 +1,127 @@
-# Google Drive JSON mirror (personal Gmail / My Drive)
+# Google Drive backup, point-in-time restore, and degraded reads
 
-SF_V1.2 keeps **Neon PostgreSQL as its production database**. The Google Drive integration creates an incremental, recoverable JSON mirror in a normal consumer Gmail account's **My Drive**. It does not require Google Workspace, a Shared Drive, or personal-drive storage ownership by the service account.
+Neon PostgreSQL remains the transactional production source of truth. Google Drive is the active read-failover provider and point-in-time recovery target. It stores two layers:
 
-The service account is deliberately restricted to **updating pre-created files**. It never creates new Drive files. You create one `.json` file per PostgreSQL table and one `backup-manifest.json` file from your own Gmail account, then share the folder with the service-account email as Editor. This avoids the service-account ownership/quota restriction that affects new files in personal My Drive.
+1. **Full point-in-time archives** (`.tar.gz`) for destructive restoration of PostgreSQL and both configured object-storage buckets.
+2. **Incremental JSON table mirrors** (`.json`) for public-site and supported CMS read fallback when Neon has a transient network, quota, or connection outage.
 
-## What gets mirrored
+The Drive mirror is intentionally a validated **read-only runtime fallback**, not a writable SQL database. Google Drive file updates do not provide PostgreSQL transactions, foreign-key enforcement, unique constraints, row locks, or atomic commits across several table files. CMS edits, role changes, uploads, applications, donations, payment callbacks and other transactional writes therefore remain disabled while Neon is unavailable. The site and CMS read screens use manifest-listed snapshots no older than `DRIVE_READ_FALLBACK_MAX_AGE_HOURS` (default 168 hours / 7 days). The admin header indicates when Google Drive is the active read provider and disables the global Save action.
 
-- One JSON file per PostgreSQL public table, such as `pages.json`, `cms_content_items.json`, `nav_items.json`, and `media_items.json`.
-- Each table file includes a format version, table name, exported timestamp, Neon change revision, row count and full row payload.
-- Image objects referenced by `media_items` are downloaded from Neon S3-compatible object storage and embedded in the matching JSON row as `backupEncoding: "base64"`, `backupContentType`, `backupBase64`, and `backupSha256`.
-- A `backup-manifest.json` file records the files, row counts, SHA-256 digests, revisions and image counts from the last successful run.
+## Full point-in-time backup scope
 
-The first incremental workflow run requires that the expected JSON files already exist. Missing files, duplicate filenames, Google Docs/Sheets files, or files without service-account edit permission cause the run to fail safely instead of creating or overwriting an ambiguous item.
+A full archive contains:
 
-## 1. Create the personal Drive folder and JSON files
+- `database.dump`: PostgreSQL custom-format dump of the complete configured database (schema, tables, rows, indexes, constraints, functions and database-resident CMS configuration).
+- `storage/<private-bucket>/` and `storage/<public-bucket>/`: copies of both configured S3-compatible object-storage buckets.
+- `runtime-config.json`: non-secret runtime settings such as timezone, public site URL and bucket names.
+- `manifest.json`: backup-start timestamp, `Asia/Dhaka` timezone, PostgreSQL snapshot start/end, object-storage copy start/end, git commit, backup format, storage bucket names and the PostgreSQL dump SHA-256.
 
-1. Sign in to the personal Gmail account that will own the backup folder.
-2. Create a folder in **My Drive**, for example `SF_V1.2 Database Backups`.
-3. Enable the Google Drive API in a Google Cloud project and create a service account with an RSA JSON key.
-4. Copy the service account's `client_email` from its JSON credentials.
-5. Share the folder with that email and grant **Editor** access. Do not use a Workspace Shared Drive; it is not required.
-6. Run the following command locally after configuring a direct `DATABASE_URL` or `BACKUP_DATABASE_URL` and installing PostgreSQL client tools:
+Deployment secrets, service-account credentials, database URLs, SMTP/API tokens, and private keys are intentionally excluded. Keep those in the hosting/GitHub secret manager. The recorded git commit identifies the application-code revision that was deployed at backup time; it is not a source-code archive.
 
-   ```bash
-   npm run backup:google-drive:list
-   ```
+The archive represents a database dump and object-store synchronization performed by one backup job. PostgreSQL dump generation uses a consistent database snapshot. The separate object buckets are copied sequentially, so the process is not an atomic transaction spanning Neon and object storage. The manifest records each phase's timestamps so operators can see the consistency window. For applications that mutate media references concurrently during a backup, pause high-volume media mutations or use immutable/versioned object keys for the strongest cross-store consistency. PostgreSQL global roles, passwords, provider infrastructure, and deployment secrets are not included; database roles/permissions must be provisioned by the environment, and the restore intentionally uses `--no-owner --no-privileges`.
 
-   The command prints every required filename, including `backup-manifest.json`. It reads the PostgreSQL catalog only; it does not contact Google Drive.
-7. From your Gmail account, create a real uploaded `.json` file for every printed name inside the folder. Each can initially contain `{}`. Do not create Google Docs documents with a `.json` title; upload actual plain-text JSON files.
-8. Share the folder with the service account as Editor. If permissions do not inherit to existing files, share the files themselves as Editor too.
+## Schedule and manual backup
 
-When the CMS creates new database tables in a future migration, run the filename-list command again and create the new file from your Gmail account before the next backup run.
+- Full archive: daily at **02:00 Bangladesh time (`Asia/Dhaka`)**, implemented as `0 20 * * *` UTC (Bangladesh is UTC+6).
+- JSON mirror: hourly, with a full table mirror refresh during the daily 02:00 job.
+- CMS manual backup: Settings → Database & APIs → Point-in-time backups & recovery → **Create backup now**.
+- GitHub Actions manual backup: run workflow `Srizony production backup and recovery` with operation `backup`.
+- Retention: all full archives are retained by default so the CMS can show every available restore point. Set `BACKUP_DRIVE_RETENTION_DAYS` to a positive number of days to enable automated pruning; at least the two newest full archives are retained.
 
-## 2. Configure GitHub Actions secrets
+GitHub Actions scheduled workflows can be delayed by GitHub queueing. The displayed 02:00 time is the configured target, not a hard real-time guarantee. Check the workflow run history for actual start and completion timestamps.
 
-Add these GitHub repository **secrets**:
+## Google Drive permissions
 
-| Secret | Required | Purpose |
-|---|---:|---|
-| `BACKUP_DATABASE_URL` | Yes | Direct Neon/PostgreSQL URL; use the non-pooled endpoint where available. |
-| `GOOGLE_DRIVE_FOLDER_ID` | Yes | ID of the personal My Drive backup folder. |
-| `GOOGLE_SERVICE_ACCOUNT_JSON_BASE64` | Yes (preferred) | Base64 of the complete service-account JSON key. |
-| `AWS_ENDPOINT_URL_S3` | When image rows exist | Neon-compatible S3 endpoint for downloading source images. |
-| `AWS_ACCESS_KEY_ID` | When image rows exist | Storage read credential. |
-| `AWS_SECRET_ACCESS_KEY` | When image rows exist | Storage read credential. |
+The full archive writer must create new `.tar.gz` files. The service account therefore needs permission to add children to the backup folder (`capabilities.canAddChildren`). A **Shared Drive folder** with the service account granted Contributor/Content manager access is the preferred destination. A service account may be unable to create new files in a normal personal Gmail My Drive because service accounts do not own personal-drive storage quota. Use delegated user OAuth or another supported Drive destination if a Shared Drive is unavailable.
 
-Alternative Google credential inputs are supported: `GOOGLE_SERVICE_ACCOUNT_JSON`, or `GOOGLE_SERVICE_ACCOUNT_EMAIL` together with `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY` (or `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY_BASE64`). Keep all credentials in GitHub Secrets or a server-side secret manager. Never use `NEXT_PUBLIC_*` variables or commit key files.
+The JSON mirror is separate: it updates existing, pre-created `.json` files and may work in a personal My Drive folder even when the service account cannot create new files. The CMS status panel disables full backup creation when Drive reports that the connected folder cannot accept new files.
 
-Add these repository **variables**:
+## Required GitHub Actions secrets and variables
+
+Secrets:
+
+| Secret | Purpose |
+|---|---|
+| `BACKUP_DATABASE_URL` | Direct PostgreSQL/Neon connection URL; use the non-pooled endpoint for `pg_dump` and `pg_restore`. |
+| `GOOGLE_DRIVE_FOLDER_ID` | Destination folder ID for archive files and JSON mirrors. |
+| `GOOGLE_SERVICE_ACCOUNT_JSON_BASE64` | Base64-encoded complete service-account JSON (preferred). |
+| `AWS_ENDPOINT_URL_S3` | S3-compatible object-storage endpoint. |
+| `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | Object-storage credentials. |
+| `GITHUB_BACKUP_TOKEN` | Fine-grained token used by the CMS to inspect and dispatch this repository's workflow; grant Actions: read and write, plus Metadata: read. |
+
+Alternative Google credential inputs supported by the scripts are `GOOGLE_SERVICE_ACCOUNT_JSON`, or `GOOGLE_SERVICE_ACCOUNT_EMAIL` plus `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY` (or `_BASE64`).
+
+Variables:
 
 | Variable | Default | Purpose |
-|---|---:|---|
-| `AWS_REGION` | — | Region required by the S3-compatible endpoint. |
-| `NEON_OBJECT_STORAGE_BUCKET` | `uploads` | Default private bucket for media rows with no explicit bucket. |
-| `DRIVE_JSON_MAX_FILE_BYTES` | `209715200` (200 MiB) | Maximum uncompressed JSON size per table file. Increase only when the Drive workflow runner has sufficient memory. |
+|---|---|---|
+| `GITHUB_BACKUP_REPOSITORY` | `GITHUB_REPOSITORY` | `owner/repository` dispatched by the CMS. |
+| `GITHUB_BACKUP_REF` | `main` | Branch/ref containing the workflow. |
+| `AWS_REGION` | provider-specific | S3-compatible region. |
+| `NEON_OBJECT_STORAGE_BUCKET` | `uploads` | Private media bucket. |
+| `NEON_PUBLIC_ASSETS_BUCKET` | `public-assets` | Public media bucket. |
+| `DRIVE_JSON_IMAGE_FETCH_HOSTS` | `images.unsplash.com,api.dicebear.com,images.pexels.com` | Additional exact HTTPS hostnames permitted when embedding seeded/remote images in the JSON mirror. |
+| `DRIVE_JSON_MAX_IMAGE_BYTES` | `26214400` | Maximum size of a single embedded image (25 MiB). |
+| `BACKUP_DRIVE_RETENTION_DAYS` | `0` | Full archive retention in days; `0` disables automatic pruning. |
+| `DRIVE_READ_FALLBACK_MAX_AGE_HOURS` | `168` | Maximum age for public-site and supported CMS Drive fallback snapshots. |
+| `DRIVE_READ_FALLBACK_CACHE_MS` | `180000` | Per-process snapshot cache lifetime (5,000–300,000 ms); reduces repeated Drive reads while keeping mirror refresh latency bounded. |
+| `CMS_ADMIN_USERS_JSON` | — | Optional emergency/break-glass CMS administrator list. Use an environment-configured admin to access the CMS during a Neon outage; database-backed sessions are deliberately not authenticated against stale user snapshots. |
 
-To encode the service account JSON locally:
+The hosting environment also needs the Drive credentials and `GOOGLE_DRIVE_FOLDER_ID` for CMS provider health, snapshot reads, media fallback and backup history. Configure at least one strong `CMS_ADMIN_USERS_JSON` environment administrator for controlled CMS read access during a Neon outage; do not enable stale-snapshot session validation because it could preserve a revoked user's access. Set `GITHUB_BACKUP_TOKEN`, `GITHUB_BACKUP_REPOSITORY`, and optional `GITHUB_BACKUP_REF` in the server-side production environment. Never put these values in `NEXT_PUBLIC_*` variables.
 
-```bash
-# macOS
-base64 -i service-account.json | tr -d '\n'
+## Deploy and verify
 
-# Linux
-base64 -w 0 service-account.json
-```
+1. Configure Neon, Drive, S3, and GitHub secrets/variables.
+2. Confirm the service account can add files to the selected folder.
+3. Apply migrations: `npm run db:migrate`.
+4. In GitHub Actions, run the workflow manually with operation `backup`.
+5. Verify the run ends successfully and the `.tar.gz` appears in the configured Drive folder with a SHA-256 `appProperty`.
+6. Verify CMS Settings → Database & APIs lists the archive as a restorable point.
+7. For disaster-recovery readiness, periodically test restore into a separate staging database and isolated object-storage buckets before considering a production restore procedure validated.
 
-## 3. Apply the migration and run a test
-
-The project migration `drizzle/0019_google_drive_json_mirror.sql` adds a small transactional change journal to Neon. It marks modified tables dirty in the same Neon transaction as the write. High-churn analytics, security, and abuse-control tables (`visitor_events`, `site_visitors`, rate-limit tables, and login-attempt tables) are intentionally excluded from this per-write journal to avoid making every page-view or rate-limit write contend on one queue row. They are included in the daily full snapshot.
-
-Deploy the application migration first:
-
-```bash
-npm run db:migrate
-```
-
-Then run **GitHub → Actions → Neon to personal Google Drive JSON mirror → Run workflow**. For the first population, enable `full_snapshot` so all public tables (including analytics/security tables) are written. Subsequent incremental runs only export tables whose Neon revision changed.
-
-The workflow runs every hour and performs a full snapshot daily at 02:35 Bangladesh time. GitHub Actions schedules can be delayed or queued; hourly is a target cadence, not a real-time guarantee. You can also run a full snapshot locally:
+Local scripts require PostgreSQL client tools (`pg_dump`, `pg_restore`), AWS CLI and Node dependencies:
 
 ```bash
-npm run backup:google-drive:full
+npm run backup:google-drive:archive
+npm run restore:google-drive -- --file-id '<DRIVE_FILE_ID>' --confirm 'RESTORE PRODUCTION'
 ```
 
-A normal local incremental run is:
+Never run the restore command against production casually. The CMS restore button requires a typed confirmation, accepts only a verified full archive in the configured Drive folder, and dispatches a GitHub workflow. That workflow creates a fresh pre-restore archive before downloading and verifying the selected backup. It then replaces the configured media buckets and restores PostgreSQL. The restore is destructive and should be used only after confirming the target database, bucket names and selected timestamp.
 
-```bash
-npm run backup:google-drive
-```
+## Recovery limitations
 
-## 4. Database failover boundary — important
+- The current restore script restores archived PostgreSQL objects into the configured database using `pg_restore --clean --if-exists`, and synchronizes the two configured object buckets. PostgreSQL objects represented in the archive are replaced, but `pg_restore --clean` does not remove unrelated tables or other objects created after the backup that are absent from the archive. For a mathematically exact database rewind, restore to a fresh Neon branch/database or perform a separately approved schema reset; test the target-specific process in staging before production. This is not a zero-downtime database failover.
+- The Drive JSON fallback is read-only and intentionally limited to the public page documents, global-site settings and navigation snapshots. Other application queries and every write require Neon.
+- Secrets and deployment-only configuration must be restored from the secret manager. Keep the deployment's app-code git commit available for the matching application version.
+- Google Drive revision history is not a substitute for these full archives; files may be revised/merged by Drive and its history is not guaranteed to provide a complete restore point.
 
-**Google Drive JSON is a backup/recovery mirror, not a live PostgreSQL replacement.** The application uses SQL, relational constraints, transactions, joins, row locks, and Neon-specific database calls throughout its API and CMS. Google Drive files do not provide those semantics. Automatically redirecting a failed Neon write to a JSON file would risk losing cross-table consistency, duplicate IDs, partial multi-file updates, and races across server instances.
 
-The implemented behavior is deliberately safe:
+## Runtime Drive failover coverage
 
-- Writes continue to go to Neon only.
-- The Neon transaction marks changed tables for replication.
-- GitHub Actions copies those table snapshots to existing Drive JSON files.
-- If Neon is unavailable, the application reports its normal database-unavailable state; it does **not** claim that a Drive JSON file has accepted a transactional write.
-- The last successful Drive mirror remains available for recovery, with a lag determined by the last successful workflow run.
+The server checks Neon first. Only transient failures such as connection loss, quota exhaustion, rate limits and temporary 5xx responses trigger Drive reads. A successful Neon response (including an empty result) remains authoritative and never gets replaced with older Drive data.
 
-For true automatic write failover, use a second PostgreSQL-compatible service with replication/failover support (or a deliberately engineered multi-primary architecture). A personal Drive folder cannot safely provide that role. A PGlite/local JSON fallback on serverless instances is also not a reliable multi-instance production database because instances do not share a durable transaction coordinator or lock manager.
+Supported Drive-backed reads include:
 
-## 5. Restore approach
+- Public page documents, global site state, published content feeds and the public navigation tree.
+- CMS content/navigation inspection, job and application lists, visitor/submission/donation/form-user reports, dashboard aggregates, pipeline status, table/entity browsing, and CMS user listings.
+- Website essentials, footer configuration, theme typography and other settings stored in `site_settings`.
+- Public image responses when the media item and SHA-256-verified image bytes are present in the `media_items.json` snapshot. Media payloads are limited to supported image MIME types and are integrity checked before serving.
 
-Treat the JSON mirror as a recovery export, not a one-click SQL restore. To restore safely:
+Snapshot-backed admin responses identify `google-drive-snapshot` as their data source and are read-only. The database status screen reads counts and sizes from the manifest rather than downloading every table document. Runtime file discovery includes the Shared Drive flags and briefly caches file IDs to lower API usage. Each table file's exact downloaded bytes are checked against the manifest SHA-256 where present, in addition to row-count and revision checks.
 
-1. Create an isolated staging Neon/PostgreSQL database and apply the SF migrations to recreate the schema.
-2. Download `backup-manifest.json` and the required table JSON files from Drive.
-3. Verify each table file against the SHA-256 recorded in the manifest.
-4. Restore relational tables in dependency order using a reviewed import process with foreign-key checks enabled; then reset serial/identity sequences.
-5. For each `media_items` row with `backupEncoding: "base64"`, decode `backupBase64`, use `backupContentType` as the restored MIME type when `content_type` is missing, verify `backupSha256`, upload the bytes to the intended staging S3 bucket under a safe media key, and update the corresponding `storage_key`, `storage_bucket`, and `src` references. Remove the `backup*` helper fields before importing the row into PostgreSQL.
-6. Validate CMS login, pages, menus, content detail routes, donations, applications, private documents and public images before considering a recovery complete.
+### Authentication and write boundary
 
-Do not import a Drive snapshot over a live production database. A successful upload and checksum verify the cloud copy, not the integrity of a full application restore. Perform restore drills in staging after schema changes and at least quarterly.
+A `cms_users.json` snapshot is used only for the CMS user listing. Password hashes and old roles/status values in a backup are not a safe authentication authority: an account might have been disabled or demoted after the last mirror. When Neon is down, use an environment-configured break-glass administrator from `CMS_ADMIN_USERS_JSON`. Database-backed login, role/session revocation, CMS writes, uploads, public form submissions, job applications, donations and payment callbacks remain unavailable until the transactional primary is healthy. The UI shows a read-only recovery banner and disables the global Save action; individual write endpoints must continue returning an explicit 503 rather than claiming that a snapshot was changed.
 
-## 6. Files and commands
+### What is required for fully writable Drive-only CMS operation
 
-- `scripts/backup-google-drive-json.mjs` — incremental/full snapshot runner.
-- `scripts/lib/google-drive-json.mjs` — service-account Drive API client with existing-file-only updates, duplicate checks, resumable uploads and checksum verification.
-- `drizzle/0019_google_drive_json_mirror.sql` — Neon transactional change journal and low-overhead table triggers.
-- `.github/workflows/production-google-drive-backup.yml` — hourly incremental and daily full backup schedules.
+That is a separate storage migration, not a toggle. Every SQL-backed CMS service and public write route would need to be rewritten around a single serialized write coordinator, append-only operation journal, idempotency keys, conflict detection, recovery/replay, and compaction. A process-local lock is not sufficient on a horizontally scaled/serverless host. Apps Script `LockService` can serialize code sections, but the application would need to route *all* mutations through that coordinator, and Shared Drive ownership/permissions and Drive API quota limits still apply. Until that migration is designed and load-tested, the current read-only failover is the safe mode; use a second transactional PostgreSQL provider for uninterrupted editing and transactional submissions.
 
-The legacy compressed archive script remains available as `npm run backup:google-drive:archive`; it creates new Drive files and is not the command used by the personal-My-Drive JSON workflow.
+Ready images from project `/public/photos` and `/public/images` paths, plus allow-listed HTTPS hosts, are included in the JSON snapshot with a snapshot-only `backupStorageKey` so the existing by-ID Drive media fallback can serve them. The default external image host allowlist is `images.unsplash.com`, `api.dicebear.com`, and `images.pexels.com`; add exact hosts with `DRIVE_JSON_IMAGE_FETCH_HOSTS`.
+
+
+### CMS integration preflight
+
+The Database & APIs → Database Info & Transfer panel checks Google service-account authentication, folder readability/listing, Shared Drive file-creation capability, editable pre-created JSON mirror files, downloadable verified restore archives, and whether the configured GitHub Actions workflow is active. Full archive creation stays disabled until the folder is in a Shared Drive with `capabilities.canAddChildren=true` and the workflow is available. Restore is enabled only when a verified full archive is downloadable and the pre-restore backup can also be created.
+
+The GitHub token's API permissions can be checked, but GitHub does not reveal the values of repository Actions secrets to the CMS. The workflow validates `BACKUP_DATABASE_URL`, Google service-account credentials, the Drive folder, and object-storage credentials at run time. A successful CMS preflight therefore confirms the API access and Drive permissions; it does not replace a successful end-to-end workflow run.

@@ -1,3 +1,4 @@
+import type { JsonValue } from '@/types/json'
 import type { Section } from '../../types/entityType'
 
 /**
@@ -44,7 +45,7 @@ const wrapperKeys = [
  * older API writes can leave strings or objects in `content_types`. Normalize
  * those shapes defensively so one malformed row cannot take down navigation.
  */
-function collectCandidates(value: unknown, depth = 0): unknown[] {
+function collectCandidates(value: unknown, depth = 0): JsonValue[] {
   if (depth > 6 || value == null) return []
 
   if (Array.isArray(value)) {
@@ -53,7 +54,8 @@ function collectCandidates(value: unknown, depth = 0): unknown[] {
       if (Array.isArray(entry) || (typeof entry === 'object' && entry !== null)) {
         return collectCandidates(entry, depth + 1)
       }
-      return [entry]
+      if (entry === null || typeof entry === 'number' || typeof entry === 'boolean') return [entry]
+      return []
     })
   }
 
@@ -72,7 +74,7 @@ function collectCandidates(value: unknown, depth = 0): unknown[] {
     return candidate.split(/[,|]/).map((part) => part.trim()).filter(Boolean)
   }
 
-  if (typeof value === 'object') {
+  if (typeof value === 'object' && value !== null && !(value instanceof Date) && !(value instanceof Uint8Array)) {
     const record = value as Record<string, unknown>
 
     for (const key of wrapperKeys) {

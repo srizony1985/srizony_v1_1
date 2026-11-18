@@ -1,8 +1,10 @@
+import type { ExternalValue } from '@/types/json'
 import { createHash, timingSafeEqual } from 'node:crypto'
 import { isIP } from 'node:net'
 import { sql } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { adminAuditLog } from '@/lib/db/schema'
+import { assertRequiredColumns } from '@/lib/db/schema-validation'
 
 export function requiredSecret(name: string) {
   const value = process.env[name]?.trim()
@@ -26,7 +28,7 @@ export function requestIp(request: Request) {
   return isIP(raw) ? raw : 'unknown'
 }
 
-export async function auditAdminAction(input: { actorEmail: string; action: string; entity?: string; entityId?: string; metadata?: unknown; request?: Request }) {
+export async function auditAdminAction(input: { actorEmail: string; action: string; entity?: string; entityId?: string; metadata?: ExternalValue; request?: Request }) {
   if (!db) return
   try {
     await db.insert(adminAuditLog).values({
@@ -47,20 +49,12 @@ let loginRateLimitTableReady: Promise<void> | null = null
 
 async function ensureLoginRateLimitTable() {
   if (!db) throw new Error('Database is required for login rate limiting.')
-  if (!loginRateLimitTableReady) {
-    loginRateLimitTableReady = db.execute(sql`
-      CREATE TABLE IF NOT EXISTS admin_login_attempts (
-        key VARCHAR(255) PRIMARY KEY,
-        attempts INTEGER NOT NULL DEFAULT 0,
-        first_attempt_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-        locked_until TIMESTAMPTZ,
-        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-      )
-    `).then(() => undefined).catch((error) => {
-      loginRateLimitTableReady = null
-      throw error
-    })
-  }
+  loginRateLimitTableReady ??= assertRequiredColumns(db, {
+    admin_login_attempts: ['key', 'attempts', 'first_attempt_at', 'locked_until', 'updated_at'],
+  }, 'Admin login rate limiting').catch((error) => {
+    loginRateLimitTableReady = null
+    throw error
+  })
   await loginRateLimitTableReady
 }
 

@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { type ComponentType } from 'react'
 type Props={className?:string;accent?:string}
 export type IllustrationName='women-business'|'small-enterprise'|'agriculture'|'migrant-household'|'rural-development'|'career'|'education'
 export function WomenBusiness({className,accent='#2d6a4f'}:Props){return <svg viewBox="0 0 480 260" className={className} aria-hidden="true"><rect width="480" height="260" rx="24" fill="#f5faf6"/><rect x="48" y="118" width="180" height="92" rx="16" fill="#fff" stroke="#8bb79b" strokeWidth="4"/><path d="M70 180h136M70 155h92" stroke="#2d6a4f" strokeWidth="9" strokeLinecap="round"/><circle cx="336" cy="98" r="30" fill="#f0c8b0"/><path d="M307 136c15-14 45-14 59 0v74h-59z" fill={accent}/><rect x="292" y="190" width="92" height="15" rx="7" fill="#d8eadf"/></svg>}
@@ -8,4 +8,18 @@ export function MigrantHousehold({className,accent='#2d6a4f'}:Props){return <svg
 export function RuralDevelopment({className,accent='#2d6a4f'}:Props){return <svg viewBox="0 0 480 260" className={className} aria-hidden="true"><rect width="480" height="260" rx="24" fill="#f4f8f5"/><rect x="60" y="105" width="118" height="108" rx="14" fill="#fff" stroke="#8bb79b" strokeWidth="4"/><rect x="92" y="70" width="54" height="40" rx="8" fill="#d7eadf" stroke="#8bb79b" strokeWidth="4"/><path d="M119 105v108" stroke="#8bb79b" strokeWidth="4"/><rect x="228" y="93" width="166" height="120" rx="14" fill="#fff" stroke="#8bb79b" strokeWidth="4"/><path d="M255 126h110M255 158h110M255 190h72" stroke={accent} strokeWidth="10" strokeLinecap="round"/></svg>}
 export function Career({className,accent='#2d6a4f'}:Props){return <svg viewBox="0 0 480 260" className={className} aria-hidden="true"><rect width="480" height="260" rx="24" fill="#f5faf6"/><rect x="64" y="62" width="352" height="152" rx="20" fill="#fff" stroke="#8bb79b" strokeWidth="4"/><rect x="96" y="99" width="92" height="82" rx="15" fill="#dceee3"/><path d="M119 142l17 16 33-38" fill="none" stroke={accent} strokeWidth="11" strokeLinecap="round" strokeLinejoin="round"/><path d="M221 104h155M221 138h118M221 172h89" stroke="#8bb79b" strokeWidth="11" strokeLinecap="round"/></svg>}
 export function Education({className,accent='#2d6a4f'}:Props){return <svg viewBox="0 0 480 260" className={className} aria-hidden="true"><rect width="480" height="260" rx="24" fill="#f4f8f5"/><path d="M64 100l176-64 176 64-176 64z" fill="#dceee3" stroke="#8bb79b" strokeWidth="4"/><path d="M132 137v54c42 35 174 35 216 0v-54" fill="#fff" stroke="#8bb79b" strokeWidth="4"/><path d="M240 82v106" stroke={accent} strokeWidth="8"/><circle cx="240" cy="75" r="12" fill={accent}/></svg>}
-export function LoanIllustration({name,className}:{name:IllustrationName;className?:string}){const m:any={'women-business':WomenBusiness,'small-enterprise':SmallEnterprise,agriculture:Agriculture,'migrant-household':MigrantHousehold,'rural-development':RuralDevelopment,career:Career,education:Education};const C=m[name]||WomenBusiness;return <C className={className}/>} 
+type IllustrationComponent = ComponentType<Props>
+const ILLUSTRATIONS: Record<IllustrationName, IllustrationComponent> = {
+  'women-business': WomenBusiness,
+  'small-enterprise': SmallEnterprise,
+  agriculture: Agriculture,
+  'migrant-household': MigrantHousehold,
+  'rural-development': RuralDevelopment,
+  career: Career,
+  education: Education,
+}
+export function LoanIllustration({ name, className }: { name: IllustrationName; className?: string }) {
+  const Illustration = ILLUSTRATIONS[name] ?? WomenBusiness
+  return <Illustration className={className} />
+}
+

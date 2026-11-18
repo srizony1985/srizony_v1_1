@@ -1,16 +1,17 @@
+import type { ExternalValue, JsonObject } from '@/types/json'
 import { getAllCmsContent } from '@/lib/site'
 import type { Lang } from '@/types/entityType'
 
 type SearchResult = { slug: string; title: { en: string; bn: string }; subtitle: { en: string; bn: string }; excerpt: { en: string; bn: string }; kind: 'page' | 'report' }
 
-function extractText(value: unknown, output: string[] = []): string[] {
+function extractText(value: ExternalValue, output: string[] = []): string[] {
   if (typeof value === 'string') output.push(value)
   else if (Array.isArray(value)) value.forEach((item) => extractText(item, output))
   else if (value && typeof value === 'object') Object.values(value).forEach((item) => extractText(item, output))
   return output
 }
 
-function snippet(value: unknown, query: string): string {
+function snippet(value: ExternalValue, query: string): string {
   const text = extractText(value).join(' ').replace(/\s+/g, ' ').trim()
   if (!text) return ''
   const lower = text.toLocaleLowerCase()
@@ -26,7 +27,7 @@ export async function searchPublicSite(query: string, lang: Lang, limit = 30): P
   const results: SearchResult[] = []
   for (const page of content.availablePages) {
     if (page.status && page.status !== 'published') continue
-    const source = content.overrides[page.slug] as Record<string, unknown> | undefined
+    const source = content.overrides[page.slug] as JsonObject | undefined
     const title = page.title || { en: page.slug, bn: page.slug }
     const subtitle = page.subtitle || { en: '', bn: '' }
     const searchable = extractText(source || page).join(' ').toLocaleLowerCase()

@@ -9,6 +9,7 @@ import Reveal from '@/components/containers/Reveal'
 import Container from '@/components/containers/Container'
 import SafeImage from '@/components/ui/SafeImage'
 import Button from '@/components/ui/ActionButton'
+import { plainSectionTitle } from '@/lib/sectionTitle'
 
 type CarouselSection = Extract<PageData['sections'][number], { type: 'carousel' }>
 
@@ -151,7 +152,7 @@ export default function NewsRail({ page, lang }: { page: PageData; lang: Lang })
         <Reveal>
           <header className="sf-sec-head sf-sec-head--center">
             <span className="sf-eyebrow">{intro.eyebrow?.[lang]}</span>
-            <h2 id="sf-news-rail-title" className="sf-h2">{intro.title[lang]}</h2>
+            <h2 id="sf-news-rail-title" className="sf-h2">{plainSectionTitle(intro.title[lang])}</h2>
             {intro.body?.[lang] && <p className="sf-lead sf-news-rail-lead">{intro.body[lang]}</p>}
           </header>
         </Reveal>

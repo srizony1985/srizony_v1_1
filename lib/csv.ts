@@ -1,5 +1,6 @@
+import type { ExternalValue, JsonObject } from '@/types/json'
 /** CSV helpers used by Settings → Reporting (runs in the browser, no network). */
-function cell(value: unknown): string {
+function cell(value: ExternalValue): string {
   if (value === null || value === undefined) return ''
   let text = value instanceof Date ? value.toISOString() : typeof value === 'object' ? JSON.stringify(value) : String(value)
   // Neutralise spreadsheet formula injection.
@@ -7,7 +8,7 @@ function cell(value: unknown): string {
   return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text
 }
 
-export function toCsv(rows: Record<string, unknown>[], columns: string[]) {
+export function toCsv(rows: JsonObject[], columns: string[]) {
   return [columns.map(cell).join(','), ...rows.map((row) => columns.map((c) => cell(row[c])).join(','))].join('\r\n')
 }
 

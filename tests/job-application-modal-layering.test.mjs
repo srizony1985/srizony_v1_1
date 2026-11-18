@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
 const component = readFileSync(new URL('../components/pages/JobPostingDetail.tsx', import.meta.url), 'utf8')
-const styles = readFileSync(new URL('../app/site-polish.css', import.meta.url), 'utf8')
+const styles = readFileSync(new URL('../app/globals.css', import.meta.url), 'utf8')
 
 test('job application modal renders through a body portal', () => {
   assert.match(component, /import\s*\{\s*createPortal\s*\}\s*from\s*'react-dom'/)

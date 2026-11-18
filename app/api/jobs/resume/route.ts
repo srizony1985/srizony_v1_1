@@ -6,6 +6,8 @@ import { mediaItems } from '@/lib/db/schema'
 import { ensureCmsSchema } from '@/lib/cms/ensureSchema'
 import { enforcePublicJobRateLimit } from '@/lib/cms/jobs'
 import { requestIp } from '@/lib/security'
+import { readCmsDocument } from '@/lib/cms/document-store'
+import { DEFAULT_JOB_APPLICATION_FORM, normalizeJobApplicationFormConfig, type JobApplicationFormConfig } from '@/lib/jobApplicationForm'
 import { deleteObject, getPrivateStorageBucket, sanitizeFileName, uploadObject } from '@/lib/storage'
 import { hasPdfSignature, MAX_RESUME_BYTES, safeResumeFileName } from '@/lib/jobApplicationValidation'
 
@@ -26,6 +28,11 @@ export async function POST(request: Request) {
 
   try {
     await ensureCmsSchema()
+    const savedForm = await readCmsDocument<JobApplicationFormConfig>('job-application-form.json')
+    const formConfig = normalizeJobApplicationFormConfig(savedForm || DEFAULT_JOB_APPLICATION_FORM)
+    if (!formConfig.fields.some((field) => field.type === 'resume')) {
+      return NextResponse.json({ error: 'Resume uploads are not enabled on the current application form.' }, { status: 409, headers: noStore })
+    }
     const allowed = await enforcePublicJobRateLimit('resume-upload', requestIp(request), 5)
     if (!allowed) return NextResponse.json({ error: 'Upload limit reached. Please try again later.' }, { status: 429, headers: noStore })
 

@@ -1,9 +1,6 @@
 'use client'
 
 import Image from 'next/image'
-import type { CSSProperties } from 'react'
-import s from '@/app/css_extra/LogoLoader.module.css'
-
 type Props = {
   /** Text under the logo. Empty string hides it. */
   label?: string
@@ -19,8 +16,6 @@ type Props = {
   className?: string
 }
 
-const MARK: Record<NonNullable<Props['size']>, number> = { sm: 22, md: 86, lg: 120 }
-
 export default function LogoLoader({
   label = 'Loading',
   fullScreen = false,
@@ -28,14 +23,14 @@ export default function LogoLoader({
   inline = false,
   className = '',
 }: Props) {
-  const mark = MARK[size]
   const showLabel = Boolean(label) && size !== 'sm'
+  const mark = size === 'sm' ? '22px' : size === 'lg' ? '120px' : '86px'
 
   const classes = [
-    s.loader,
-    inline ? s.inline : '',
-    fullScreen ? s.fullscreen : '',
-    s[size],
+    "sf-loader",
+    inline ? "sf-loader-inline" : '',
+    fullScreen ? "sf-loader-fullscreen" : '',
+    `sf-loader-size-${size}`,
     className,
   ]
     .filter(Boolean)
@@ -48,32 +43,31 @@ export default function LogoLoader({
   return (
     <span
       className={classes}
-      style={{ ['--mark' as string]: `${mark}px` } as CSSProperties}
       role={decorative ? undefined : 'status'}
       aria-live={decorative ? undefined : 'polite'}
       aria-label={decorative ? undefined : label || 'Loading'}
       aria-hidden={decorative || undefined}
     >
-      <span className={s.mark} aria-hidden="true">
-        <span className={`${s.ring} ${s.ringOne}`} />
-        {size !== 'sm' && <span className={`${s.ring} ${s.ringTwo}`} />}
-        <span className={s.glow} />
+      <span className={"sf-loader-mark"} aria-hidden="true">
+        <span className={`${"sf-loader-ring"} ${"sf-loader-ring-one"}`} />
+        {size !== 'sm' && <span className={`${"sf-loader-ring"} ${"sf-loader-ring-two"}`} />}
+        <span className={"sf-loader-glow"} />
         <Image
-          className={s.logo}
+          className={"sf-loader-logo"}
           src="/images/Logo-SF.png"
           alt=""
           width={144}
           height={144}
-          sizes={`${mark}px`}
+          sizes={mark}
           priority={!inline}
           loading="eager"
         />
       </span>
 
       {showLabel && (
-        <span className={s.label} aria-hidden="true">
+        <span className={"sf-loader-label"} aria-hidden="true">
           {label}
-          <span className={s.dots}>
+          <span className={"sf-loader-dots"}>
             <i />
             <i />
             <i />

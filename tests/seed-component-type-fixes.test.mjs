@@ -16,7 +16,7 @@ test('homepage visual components safely handle optional CMS fields', () => {
   const newsRail = read('components/home/NewsRail.tsx')
 
   assert.match(locations, /footprintEyebrow\?\.\[lang\] \?\? ''/)
-  assert.match(locations, /footprintTitle\?\.\[lang\] \?\? ''/)
+  assert.match(locations, /plainSectionTitle\(footprintTitle\?\.\[lang\]\)/)
   assert.doesNotMatch(mission, /<Illustration kind="area"[^>]*label=/)
   assert.match(newsRail, /image\?\.src && <SafeImage src=\{image\.src\}/)
   assert.match(newsRail, /showNewsSecondaryButton && newsSecondaryHref && newsSecondaryLabel\?\.\[lang\]/)
@@ -48,7 +48,8 @@ test('database transfer routes narrow the nullable database before callbacks', (
 test('content collection JSON is narrowed before reading its config fields', () => {
   const content = read('lib/cms/content.ts')
   assert.match(content, /const rawCollection = section\?\.contentCollection/)
-  assert.match(content, /!Array\.isArray\(rawCollection\)[\s\S]*?rawCollection as Record<string, unknown>/)
+  assert.match(content, /const rawCollection = section\?\.contentCollection[\s\S]*?!Array\.isArray\(rawCollection\)[\s\S]*?rawCollection as JsonObject/)
+  assert.doesNotMatch(content, /Record<string,\s*unknown>/)
 })
 
 test('landing feed limits are read only after carousel narrowing', () => {

@@ -1,3 +1,4 @@
+import type { ExternalValue, JsonObject } from '@/types/json'
 import type { AdminRole } from './adminAuth'
 
 export type AdminUserConfig = { email: string; password: string; role?: AdminRole }
@@ -7,11 +8,11 @@ const validEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(value
 export function configuredAdminUsers(): AdminUserConfig[] {
   const raw = process.env.CMS_ADMIN_USERS_JSON?.trim()
   if (raw) {
-    const parsed: unknown = JSON.parse(raw)
+    const parsed: ExternalValue = JSON.parse(raw)
     if (!Array.isArray(parsed)) throw new Error('CMS_ADMIN_USERS_JSON must be an array.')
     const users = parsed.map((item, index) => {
       if (!item || typeof item !== 'object') throw new Error(`CMS_ADMIN_USERS_JSON item ${index + 1} is invalid.`)
-      const candidate = item as Record<string, unknown>
+      const candidate = item as JsonObject
       const email = typeof candidate.email === 'string' ? candidate.email.trim().toLowerCase() : ''
       const password = typeof candidate.password === 'string' ? candidate.password : ''
       const role = candidate.role === undefined ? 'admin' : candidate.role

@@ -12,7 +12,7 @@ let tokenExpiry = 0;
 export function assertDriveJsonConfigured() {
   getGoogleServiceAccountCredentials();
   if (!process.env.GOOGLE_DRIVE_FOLDER_ID?.trim()) {
-    throw new Error('Set GOOGLE_DRIVE_FOLDER_ID to the personal My Drive folder shared with the service account as Editor.');
+    throw new Error('Set GOOGLE_DRIVE_FOLDER_ID to a Drive or Shared Drive folder shared with the service account as Editor.');
   }
 }
 
@@ -53,16 +53,17 @@ function folderId() {
 }
 
 export async function checkDriveJsonFolder() {
-  const params = new URLSearchParams({ fields: 'id,name,mimeType,driveId,trashed,capabilities(canEdit,canAddChildren)' });
+  const params = new URLSearchParams({ fields: 'id,name,mimeType,driveId,trashed,capabilities/canEdit,capabilities/canAddChildren,capabilities/canListChildren', supportsAllDrives: 'true' });
   const folder = await (await request(`${DRIVE_API}/files/${encodeURIComponent(folderId())}?${params}`)).json();
   if (folder.mimeType !== 'application/vnd.google-apps.folder' || folder.trashed) {
     throw new Error('GOOGLE_DRIVE_FOLDER_ID must point to an active Google Drive folder.');
   }
-  if (folder.capabilities?.canEdit === false) {
-    throw new Error('The service account cannot access this folder with edit permission. Share the folder with the service-account email as Editor.');
+  if (folder.capabilities?.canListChildren === false) {
+    throw new Error('The service account cannot list this folder. Grant at least Viewer access to the service account.');
   }
-  // canAddChildren may be false in a consumer My Drive folder shared with a service
-  // account. This workflow only replaces files that the user created beforehand.
+  // Folder edit permission is not required for the JSON mirror: this workflow
+  // updates only pre-created files and checks each file's canEdit capability.
+  // My Drive may not allow this service account to create new child files.
   return folder;
 }
 
@@ -73,9 +74,11 @@ export async function listDriveJsonFiles() {
   do {
     const params = new URLSearchParams({
       q: `'${folder.id.replace(/'/g, "\\'")}' in parents and trashed=false`,
-      fields: 'nextPageToken,files(id,name,mimeType,modifiedTime,createdTime,size,md5Checksum,webViewLink,appProperties,capabilities(canEdit))',
+      fields: 'nextPageToken,files(id,name,mimeType,modifiedTime,createdTime,size,md5Checksum,webViewLink,appProperties,capabilities/canEdit)',
       pageSize: '1000',
       spaces: 'drive',
+      supportsAllDrives: 'true',
+      includeItemsFromAllDrives: 'true',
       orderBy: 'name',
     });
     if (pageToken) params.set('pageToken', pageToken);
@@ -93,7 +96,7 @@ export async function readExistingDriveJson(name, cachedListing) {
   if (!matches.length) throw new Error(`Required Drive file "${safeName}" is missing.`)
   if (matches.length > 1) throw new Error(`Found duplicate Drive files named "${safeName}".`)
   if (matches[0].mimeType === 'application/vnd.google-apps.folder' || matches[0].mimeType?.startsWith('application/vnd.google-apps.')) throw new Error(`"${safeName}" is not a normal JSON file.`)
-  const response = await request(`${DRIVE_API}/files/${encodeURIComponent(matches[0].id)}?alt=media`)
+  const response = await request(`${DRIVE_API}/files/${encodeURIComponent(matches[0].id)}?alt=media&supportsAllDrives=true`)
   try { return await response.json() }
   catch { throw new Error(`The existing Drive file "${safeName}" does not contain valid JSON.`) }
 }
@@ -183,13 +186,13 @@ export async function writeExistingDriveJsonText(name, jsonText, cachedListing) 
     const boundary = `sf_json_${Math.random().toString(16).slice(2)}`;
     const preamble = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n`;
     const suffix = `\r\n--${boundary}--`;
-    uploaded = await (await request(`${UPLOAD_API}/files/${encodeURIComponent(existing.id)}?uploadType=multipart&fields=id,name,mimeType,modifiedTime,size,md5Checksum,webViewLink,appProperties`, {
+    uploaded = await (await request(`${UPLOAD_API}/files/${encodeURIComponent(existing.id)}?uploadType=multipart&supportsAllDrives=true&fields=id,name,mimeType,modifiedTime,size,md5Checksum,webViewLink,appProperties`, {
       method: 'PATCH',
       headers: { 'Content-Type': `multipart/related; boundary=${boundary}` },
       body: Buffer.concat([Buffer.from(preamble), bytes, Buffer.from(suffix)]),
     })).json();
   } else {
-    const start = await request(`${UPLOAD_API}/files/${encodeURIComponent(existing.id)}?uploadType=resumable&fields=id,name,mimeType,modifiedTime,size,md5Checksum,webViewLink,appProperties`, {
+    const start = await request(`${UPLOAD_API}/files/${encodeURIComponent(existing.id)}?uploadType=resumable&supportsAllDrives=true&fields=id,name,mimeType,modifiedTime,size,md5Checksum,webViewLink,appProperties`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json; charset=UTF-8',

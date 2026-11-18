@@ -56,7 +56,7 @@ export default function DevelopmentAreas({ lang, page }: { lang: Lang; page: Pag
             <h2 id="sf-areas-title" className="sf-h2">{intro.title[lang]}</h2>
           </header>
         </Reveal>
-        {areas.length > 0 && <div className="sf-areas-grid" style={{ '--cols': section?.columns ?? 3 } as CSSProperties}>
+        {areas.length > 0 && <div className="sf-areas-grid" data-columns={section?.columns ?? 3} style={{ '--cols': section?.columns ?? 3 } as CSSProperties}>
           {areas.map((area, index) => <ProjectCard key={`${area.href}-${index}`} area={area} lang={lang} index={index} />)}
         </div>}
         <SectionActions config={section?.buttonConfig} lang={lang} arrow className="sf-home-section-actions" />

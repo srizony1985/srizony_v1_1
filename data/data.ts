@@ -10,7 +10,8 @@ import { HERO_FEATURED, LEGACY_IMAGE, SLUG_IMAGE_KEYS, poolUrl } from './landing
 import { HOME_HERO_COPY_DEFAULTS } from './homeHeroDefaults'
 import { contentDetails } from './contentDetails'
 import { canonicalizeCmsRoute, getContentRouteParent } from '../lib/cms/routes'
-import type { Bilingual, HeroData, MediaItem, NavGroup, NavItem, PageData, ContentEntry, IconName, SDGStep, PaymentInfo } from '../types/entityType'
+import type { Bilingual, HeroData, MediaItem, NavGroup, NavItem, PageData, PageSection, ContentEntry, IconName, IllustrationName, SDGStep, PaymentInfo } from '../types/entityType'
+import type { ExternalRecord } from '../types/json'
 
 // ---- system: image registry ----
 /**
@@ -274,12 +275,12 @@ function externalizeImageManifest<T>(value: T): T {
   if (typeof value === 'string') return openImageUrlForPath(value) as T
   if (Array.isArray(value)) return value.map((item) => externalizeImageManifest(item)) as T
   if (value && typeof value === 'object') {
-    return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([key, child]) => [key, externalizeImageManifest(child)])) as T
+    return Object.fromEntries(Object.entries(value as ExternalRecord).map(([key, child]) => [key, externalizeImageManifest(child)])) as T
   }
   return value
 }
 
-const images = externalizeImageManifest(localImageManifest) as unknown as typeof localImageManifest
+const images = externalizeImageManifest(localImageManifest)
 
 const byFileName: Record<string, string> = Object.values(images).flatMap(group =>
   typeof group === 'string' ? [[group.split('/').pop()!.replace(/\.[^.]+$/, ''), group]] :
@@ -669,7 +670,9 @@ const pages: Record<string, PageData> = {
       },
       {
         type:'cards',
+        homeComponent:'impactCards',
         variant:'impact',
+        eyebrow:{en:'Our impact',bn:'আমাদের প্রভাব'},
         heading:{en:'What We Do',bn:'আমরা যা করি'},
         columns:3,
         items:[
@@ -864,7 +867,7 @@ const pages: Record<string, PageData> = {
   '/loans': {slug:'/loans',title:{en:'Get Loan',bn:'ঋণ নিন'},subtitle:{en:'Dedicated loan products for different household, enterprise, agriculture and education needs',bn:'পরিবার, উদ্যোগ, কৃষি ও শিক্ষার বিভিন্ন প্রয়োজনের জন্য পৃথক ঋণ পণ্য'},heroImage:images.loans.smallEnterprise,sections:[
     {type:'richText',eyebrow:{en:'Loan Products',bn:'ঋণ পণ্য'},heading:{en:'Choose the product that matches your purpose.',bn:'আপনার প্রয়োজনের সঙ্গে মিল রেখে ঋণ পণ্য বেছে নিন।'},body:[{en:'The foundation publishes a range of loan offerings under its microfinance activities, including women business, small enterprise, agricultural development, household migrant, ru…',bn:'ফাউন্ডেশন তার ক্ষুদ্রঋণ কার্যক্রমের অধীনে নারী উদ্যোক্তা, ক্ষুদ্র উদ্যোগ, কৃষি উন্নয়ন, অভিবাসী পরিবার, গ্রামীণ উন্নয়ন, চাকরিজীবী ও শিক্ষার্থী ঋণসহ বিভিন্ন ঋণ পণ্য প্রকাশ করে।'},{en:'This page is the loan catalogue. The microfinance page explains the wider financial-inclusion system, member structure, savings and portfolio.',bn:'এই পেজটি ঋণ পণ্যের ক্যাটালগ। ক্ষুদ্রঋণ পেজে সামগ্রিক আর্থিক অন্তর্ভুক্তি ব্যবস্থা, সদস্য কাঠামো, সঞ্চয় ও পোর্টফোলিও ব্যাখ্যা করা হয়েছে।'}],image:imageMedia(images.loans.smallEnterprise,{en:'Loan products',bn:'ঋণ পণ্য'})},
     {type:'cards',heading:{en:'Loan Products',bn:'ঋণ পণ্যসমূহ'},columns:3,items:[
-      ...loanItems.map((x,i)=>({title:{en:x[0],bn:x[1]},body:{en:x[2],bn:x[3]},href:x[4],illustration:['women-business','small-enterprise','agriculture','migrant-household','rural-development','career','education'][i] as any}))
+      ...loanItems.map((x,i)=>({title:{en:x[0],bn:x[1]},body:{en:x[2],bn:x[3]},href:x[4],illustration:['women-business','small-enterprise','agriculture','migrant-household','rural-development','career','education'][i] as IllustrationName}))
     ]},
     {type:'cards',heading:{en:'Loan Details',bn:'ঋণের বিস্তারিত'},columns:3,items:[
       {title:{en:'Purpose',bn:'উদ্দেশ্য'},body:{en:'Each product is designed around a stated household, enterprise, agriculture, migration, employment or education need.',bn:'প্রতিটি পণ্য পরিবার, উদ্যোগ, কৃষি, অভিবাসন, কর্মসংস্থান বা শিক্ষার নির্দিষ্ট প্রয়োজনকে কেন্দ্র করে তৈরি।'},icon:'check'},
@@ -918,7 +921,7 @@ function canonicalizeRouteReferences<T>(value: T): T {
   if (typeof value === 'string') return (value.startsWith('/') ? canonicalizeCmsRoute(value) : value) as T
   if (Array.isArray(value)) return value.map((item) => canonicalizeRouteReferences(item)) as T
   if (value && typeof value === 'object') {
-    return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([key, child]) => [
+    return Object.fromEntries(Object.entries(value as ExternalRecord).map(([key, child]) => [
       key.startsWith('/') ? canonicalizeCmsRoute(key) : key,
       canonicalizeRouteReferences(child),
     ])) as T
@@ -946,7 +949,7 @@ const excludedNavigationLabels = new Set([
   'নির্বাহী সচিবালয়', 'নির্বাহী সচিবালয়', 'সিনিয়র ম্যানেজমেন্ট', 'সিনিয়র ম্যানেজমেন্ট',
   'জনসংযোগ', 'সামাজিক উদ্যোগ',
 ])
-const normalizeNavigationLabel = (value: unknown) => String(value ?? '').trim().toLocaleLowerCase().replace(/[\s_-]+/g, ' ')
+const normalizeNavigationLabel = (value: string) => String(value ?? '').trim().toLocaleLowerCase().replace(/[\s_-]+/g, ' ')
 function collectNavigationPaths(items: NavItem[], parentExcluded = false) {
   for (const item of items) {
     const rawPath = String(item.href || '').split(/[?#]/, 1)[0].replace(/\/+$/, '').toLocaleLowerCase() || '/'
@@ -975,9 +978,12 @@ for (const [rawSlug, rawPage] of Object.entries(rawAllPages)) {
   // either page's editorial content.
   const preferred = isCanonicalSource && !existing.canonicalSource ? page : existing.page
   const secondary = preferred === page ? existing.page : page
-  const sectionKey = (section: any) => `${String(section?.type || '')}:${String(section?.heading?.en || '')}:${String(section?.heading?.bn || '')}`
+  const sectionKey = (section: PageSection) => {
+    const heading = 'heading' in section ? section.heading : undefined
+    return `${section.type}:${String(heading?.en || '')}:${String(heading?.bn || '')}`
+  }
   const seen = new Set((preferred.sections || []).map(sectionKey))
-  const mergedSections = [...(preferred.sections || []), ...(secondary.sections || []).filter((section: any) => {
+  const mergedSections = [...(preferred.sections || []), ...(secondary.sections || []).filter((section) => {
     const key = sectionKey(section)
     if (seen.has(key)) return false
     seen.add(key)

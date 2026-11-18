@@ -111,6 +111,7 @@ export const COMPONENTS: Record<ContentComponent, ComponentDef> = {
       { key: 'employmentType', label: 'Employment type', type: 'select', options: ['Full-time', 'Part-time', 'Contract', 'Internship'] },
       { key: 'vacancies', label: 'Vacancies', type: 'number' },
       { key: 'salary', label: 'Salary', type: 'text', max: 120 },
+      { key: 'file', label: 'Job circular attachment (PDF)', type: 'url', help: 'Optional: add the approved job circular PDF for applicants to review.' },
     ]
   },
   'success-story': {

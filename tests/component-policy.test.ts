@@ -1,12 +1,14 @@
+import type { ExternalRecord } from '../types/json'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { isLandingComponentKey, validatePageComponentLayers } from '../lib/cms/component-policy'
 
-const section = (type: string, extra: Record<string, unknown> = {}) => ({ type, ...extra })
+const section = (type: string, extra: ExternalRecord = {}) => ({ type, ...extra })
 
 test('landing routes accept only registered landing compositions', () => {
   assert.equal(validatePageComponentLayers('/', [section('stats', { homeComponent: 'growth' })]), null)
   assert.match(String(validatePageComponentLayers('/', [section('richText')])), /registered landing component/)
+  assert.equal(validatePageComponentLayers('/', [section('cards', { homeComponent: 'impactCards', variant: 'impact' })]), null)
   assert.match(String(validatePageComponentLayers('/', [section('cards', { homeComponent: 'growth' })])), /requires the “stats” section type/)
 })
 
@@ -19,6 +21,7 @@ test('normal slug pages accept sectional components and reusable landing composi
 test('landing component keys are explicit and finite', () => {
   assert.equal(isLandingComponentKey('hero'), true)
   assert.equal(isLandingComponentKey('news'), true)
+  assert.equal(isLandingComponentKey('impactCards'), true)
   assert.equal(isLandingComponentKey('successStories'), true)
   assert.equal(isLandingComponentKey('stories'), true)
   assert.equal(isLandingComponentKey('richText'), false)

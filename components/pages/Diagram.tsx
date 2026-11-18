@@ -1,8 +1,10 @@
 'use client'
 
-import { Fragment } from 'react'
+import { Fragment, useState, type CSSProperties } from 'react'
 import {
   ArrowRight,
+  ChevronLeft,
+  ChevronRight,
   CheckCircle2,
   CloudSun,
   Coins,
@@ -16,8 +18,7 @@ import {
 import type { Section } from '@/types/entityType'
 import { useSite } from '@/components/containers/SiteProvider'
 import DiagramHeading from '@/components/pages/DiagramHeading'
-import type { Sdg } from '@/components/pages/SdgCard'
-import SdgCard from '@/components/pages/SdgCard'
+import { Sdg } from './SdgCard'
 
 type Lang = 'en' | 'bn'
 type Bi = Record<Lang, string>
@@ -194,31 +195,75 @@ export default function Diagram({
   section: Extract<Section, { type: 'diagram' }>
 }) {
   const { lang } = useSite() as { lang: Lang }
+  const [activeSdgIndex, setActiveSdgIndex] = useState(0)
+  const activeSdg = SDGS[activeSdgIndex]
 
   const t = (value?: Bi) => value?.[lang] || ''
+  const moveSdg = (step: number) => setActiveSdgIndex((current) => (current + step + SDGS.length) % SDGS.length)
 
   const heading = t(section.heading)
   const body = t(section.body as Bi | undefined)
 
   if (section.variant === 'sdg') {
+    const ActiveIcon = activeSdg.icon
+    const progress = ((activeSdgIndex + 1) / SDGS.length) * 100
     return (
       <section className="sf-diagram-shell sf-diagram-shell--sdg">
         <DiagramHeading
-          eyebrow={lang === 'en' ? 'SDG' : 'এসডিজি'}
+          eyebrow={lang === 'en' ? 'OUR SDG CONTRIBUTION' : 'এসডিজিতে আমাদের অবদান'}
           title={heading}
           body={body}
         />
 
-        <div
-          className="sf-diagram-sdg-rail"
-          role="region"
-          aria-label={heading || (lang === 'en' ? 'SDG' : 'এসডিজি')}
-          tabIndex={0}
-        >
-          <div className="sf-diagram-sdg-track">
-            {SDGS.map((item) => (
-              <SdgCard key={item.n} item={item} lang={lang} />
-            ))}
+        <div className="sf-diagram-sdg-experience" style={{ '--sf-sdg-tone': activeSdg.tone } as CSSProperties}>
+          <div className="sf-sdg-stage" aria-label={heading || (lang === 'en' ? 'Sustainable Development Goals' : 'টেকসই উন্নয়ন লক্ষ্যমাত্রা')}>
+            <div className="sf-sdg-stage-visual" aria-hidden="true">
+              <span className="sf-sdg-stage-orbit sf-sdg-stage-orbit--one" />
+              <span className="sf-sdg-stage-orbit sf-sdg-stage-orbit--two" />
+              <div className="sf-sdg-stage-icon"><ActiveIcon size={58} strokeWidth={1.65} /></div>
+              <span className="sf-sdg-stage-number">{activeSdg.n.padStart(2, '0')}</span>
+            </div>
+            <div className="sf-sdg-stage-copy" key={activeSdg.n} aria-live="polite" aria-atomic="true">
+              <p className="sf-sdg-stage-kicker">{lang === 'en' ? `SUSTAINABLE DEVELOPMENT GOAL ${activeSdg.n}` : `টেকসই উন্নয়ন লক্ষ্য ${activeSdg.n}`}</p>
+              <h3>{activeSdg.label[lang]}</h3>
+              <p>{activeSdg.text[lang]}</p>
+              <span className="sf-sdg-stage-tag">{lang === 'en' ? 'Srizony programme focus' : 'সৃজনী কর্মসূচির অগ্রাধিকার'}</span>
+            </div>
+          </div>
+
+          <div className="sf-sdg-slider-footer">
+            <div className="sf-sdg-progress-copy">
+              <span>{lang === 'en' ? 'Explore our focus areas' : 'আমাদের অগ্রাধিকার ক্ষেত্র দেখুন'}</span>
+              <strong><span>{String(activeSdgIndex + 1).padStart(2, '0')}</span> / {String(SDGS.length).padStart(2, '0')}</strong>
+            </div>
+            <div className="sf-sdg-progress-track" role="progressbar" aria-label={lang === 'en' ? 'SDG slide progress' : 'এসডিজি স্লাইড অগ্রগতি'} aria-valuemin={0} aria-valuemax={SDGS.length} aria-valuenow={activeSdgIndex + 1}>
+              <span style={{ '--sf-sdg-progress': `${progress}%` } as CSSProperties} />
+            </div>
+            <div className="sf-sdg-slider-controls">
+              <div className="sf-sdg-slider-dots" role="group" aria-label={lang === 'en' ? 'Choose a sustainable development goal' : 'টেকসই উন্নয়ন লক্ষ্য নির্বাচন করুন'}>
+                {SDGS.map((item, index) => {
+                  const Icon = item.icon
+                  return (
+                    <button
+                      key={item.n}
+                      className={`sf-sdg-dot ${index === activeSdgIndex ? 'is-active' : ''}`}
+                      type="button"
+                      aria-label={`${lang === 'en' ? 'Goal' : 'লক্ষ্য'} ${item.n}: ${item.label[lang]}`}
+                      aria-pressed={index === activeSdgIndex}
+                      onClick={() => setActiveSdgIndex(index)}
+                      style={{ '--sf-sdg-dot-tone': item.tone } as CSSProperties}
+                    >
+                      <Icon size={19} aria-hidden="true" />
+                      <span>{item.n}</span>
+                    </button>
+                  )
+                })}
+              </div>
+              <div className="sf-sdg-arrow-controls">
+                <button type="button" onClick={() => moveSdg(-1)} aria-label={lang === 'en' ? 'Previous goal' : 'আগের লক্ষ্য'}><ChevronLeft size={20} aria-hidden="true" /></button>
+                <button type="button" onClick={() => moveSdg(1)} aria-label={lang === 'en' ? 'Next goal' : 'পরের লক্ষ্য'}><ChevronRight size={20} aria-hidden="true" /></button>
+              </div>
+            </div>
           </div>
         </div>
       </section>

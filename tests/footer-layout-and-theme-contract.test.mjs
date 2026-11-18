@@ -1,0 +1,66 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+
+const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8')
+
+test('CMS footer editor exposes visibility, section count, order, and per-section columns', () => {
+  const editor = read('app/admin/dashboard/_components/FooterSettingsView.tsx')
+  const api = read('app/api/admin/footer/route.ts')
+  const registry = read('lib/apiRegistry.ts')
+  assert.match(editor, /Show website footer/)
+  assert.match(editor, /Brand area/)
+  assert.match(editor, /Show copyright line|Copyright line/)
+  assert.match(editor, /draft\.sections\.length/)
+  assert.match(editor, /Columns inside this section/)
+  assert.match(editor, /moveSection/)
+  assert.match(editor, /showAddress/)
+  assert.match(editor, /showPhones/)
+  assert.match(editor, /showEmail/)
+  assert.match(api, /requireAdmin\('admin', 'editor'\)/)
+  assert.match(api, /FOOTER_CONFIG_SETTING_KEY/)
+  assert.match(registry, /"path": "\/api\/admin\/footer"/)
+})
+
+test('footer splits long link collections into balanced columns and avoids empty outer grid columns', () => {
+  const config = read('lib/footerConfig.ts')
+  const footer = read('components/ui/Footer.tsx')
+  const css = read('app/globals.css')
+  assert.match(config, /baseSize = Math\.floor\(items\.length \/ count\)/)
+  assert.match(config, /remainder = items\.length % count/)
+  assert.match(footer, /effectiveColumns/)
+  assert.match(footer, /visibleSections\.map/)
+  assert.match(css, /repeat\(var\(--sf-footer-columns, 3\), minmax\(0, 1fr\)\)/)
+  assert.match(footer, /data-columns=\{effectiveColumns\}/)
+  assert.match(footer, /data-columns=\{columns.length\}/)
+  assert.match(css, /--sf-footer-section-columns/)
+  assert.match(css, /sf-footer-grid\[data-columns='3'\]/)
+  assert.doesNotMatch(css, /repeat\(min\(var\(--sf-footer-section-columns/)
+})
+
+test('footer editor composes shadcn cards, buttons, form controls and theme tokens', () => {
+  const editor = read('app/admin/dashboard/_components/FooterSettingsView.tsx')
+  const adminShell = read('app/admin/AdminThemeShell.tsx')
+  const card = read('components/ui/card.tsx')
+  const button = read('components/ui/button.tsx')
+  assert.match(editor, /<Card/)
+  assert.match(editor, /<Button/)
+  assert.match(editor, /<Input|<Select|<Checkbox/)
+  assert.match(card, /data-slot="card"/)
+  assert.match(button, /data-slot="button"/)
+  assert.match(adminShell, /<ToastProvider \/>/)
+  assert.doesNotMatch(read('app/admin/layout.tsx'), /Admin\.css/)
+})
+
+test('responsive CMS content grids use valid explicit column counts instead of invalid repeat(min()) syntax', () => {
+  const publicCss = read('app/globals.css')
+  const areas = read('components/home/DevelopmentAreas.tsx')
+  const section = read('components/pages/SectionContent.tsx')
+  const stats = read('components/ui/Stats.tsx')
+  assert.doesNotMatch(publicCss, /repeat\(min\(var\(/)
+  assert.match(areas, /data-columns=\{section\?\.columns \?\? 3\}/)
+  assert.match(section, /dataColumns=\{collection\?\.columns\}/)
+  assert.match(stats, /data-columns=\{dataColumns\}/)
+  assert.match(publicCss, /\.sf-areas-grid\[data-columns='3'\]/)
+  assert.match(publicCss, /cms-stats-collection[^\n]*\[data-columns='3'\]/)
+})

@@ -1,4 +1,4 @@
-import 'dotenv/config'
+import './load-env'
 import { sql } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { ensureCmsSchema } from '@/lib/cms/ensureSchema'

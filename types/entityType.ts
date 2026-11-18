@@ -54,6 +54,7 @@ export type LandingComponentKey =
   | 'growth'
   | 'missionVisionValues'
   | 'locations'
+  | 'impactCards'
   | 'developmentAreas'
   | 'news'
   | 'successStories'
@@ -69,7 +70,8 @@ export type ContentCollectionConfig = {
   gap: number
   viewportItems: number
 }
-export type PageSection = Section & { visible?: boolean; buttonConfig?: SectionButtonConfig; homeComponent?: LandingComponentKey; sectionId?: string; contentCollection?: ContentCollectionConfig }
+export type CmsTypography = { fontFamily?: 'inherit' | 'system' | 'arial' | 'georgia' | 'times' | 'inter' | 'roboto' | 'noto-sans-bengali'; fontWeight?: 300 | 400 | 500 | 600 | 700 | 800 | 900; fontSize?: number; color?: string; letterSpacing?: number; lineHeight?: number; dark?: Omit<CmsTypography, 'dark'> }
+export type PageSection = Section & { visible?: boolean; buttonConfig?: SectionButtonConfig; homeComponent?: LandingComponentKey; sectionId?: string; contentCollection?: ContentCollectionConfig; typography?: CmsTypography }
 
 export type PageData = {
   slug: string
@@ -79,21 +81,31 @@ export type PageData = {
   /** True only when the content image was explicitly selected via the CMS media field. */
   cmsMediaManaged?: boolean
   /** Structured application metadata rendered on CMS job detail pages. */
-  jobDetails?: { location?: Bilingual; employmentType?: string; vacancies?: string; salary?: string; deadline?: string; postedAt?: string }
+  jobDetails?: { location?: Bilingual; employmentType?: string; vacancies?: string; salary?: string; deadline?: string; postedAt?: string; attachmentUrl?: string }
   layout?: 'standard' | 'wide' | 'narrow' | 'editorial'
   /** CMS-controlled vertical spacing around routed page content below the hero. */
   contentPadding?: 'none' | 'compact' | 'normal' | 'spacious'
+  /** CMS-owned component composition for specialised but reusable page templates. */
+  pageView?: 'default' | 'staff-directory' | 'resource-library'
+  /** CMS-owned presentation profile for published content cards. */
+  cardStyle?: 'default' | 'social' | 'enterprise'
+  /** Render the separately managed contact/branch map after the page sections. */
+  showContactMap?: boolean
   title: Bilingual
   subtitle?: Bilingual
   heroImage?: string
   heroTone?: 'green' | 'light' | 'orange'
   sections: PageSection[]
   metaDescription?: Bilingual
+  /** Search engine visibility controls managed by Page Builder. */
+  noIndex?: boolean
+  noFollow?: boolean
   status?: 'draft' | 'published' | 'archived'
   sortOrder?: number
+  typography?: CmsTypography
 }
 
-export type NavItem = { label: Bilingual; href: string; featured?: boolean; menuType?: 'page' | 'external' | 'folder'; renderedComponents?: Section['type'][]; children?: NavItem[] }
+export type NavItem = { label: Bilingual; href: string; featured?: boolean; menuType?: 'page' | 'external' | 'folder'; renderedComponents?: Section['type'][]; typography?: CmsTypography; children?: NavItem[] }
 export type NavGroup = { label: Bilingual; items: NavItem[] }
 
 export type ColorMode = 'light' | 'dark'
@@ -143,7 +155,7 @@ export type ThemeDefinition = {
   darkHeaderInk: string
   darkFooterBg: string
   darkFooterInk: string
-  typography: { body: string; display: string; tracking: string; radius: string }
+  typography: { body: string; display: string; tracking: string; radius: string; baseSize?: number; bodyWeight?: number; headingWeight?: number; headingScale?: number; lineHeight?: number; letterSpacing?: number; navFontSize?: number; navFontWeight?: number; bodyColor?: string; headingColor?: string; navColor?: string; scopes?: { header?: Record<string, string | number>; content?: Record<string, string | number>; footer?: Record<string, string | number>; cms?: Record<string, string | number> } }
 }
 export type UIContent = { en: Record<string,string>; bn: Record<string,string> }
 export type ContactInfo = { email: string; primaryPhone: string; phones: string[]; address: Bilingual; maps: { headOffice: string }; socials: { linkedin: string }; footprint: { name: Bilingual; address: Bilingual; mapQuery: string; kind?: 'site' | 'branch' | 'footprint' }[] }

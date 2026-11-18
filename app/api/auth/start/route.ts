@@ -1,3 +1,4 @@
+import type { ExternalValue } from '@/types/json'
 import { NextResponse } from 'next/server'
 import { createHash, randomBytes } from 'node:crypto'
 import { z } from 'zod'
@@ -20,7 +21,7 @@ const schema = z.object({
 export async function POST(req: Request) {
   const raw = await readBoundedRequestText(req, 16_384)
   if (raw === null) return NextResponse.json({ error: 'Request body is too large or invalid.' }, { status: 413 })
-  let input: unknown = null
+  let input: ExternalValue = null
   try { input = JSON.parse(raw) } catch { /* schema validation returns a generic input error */ }
   const parsed = schema.safeParse(input)
   if (!parsed.success) return NextResponse.json({ error: 'Please complete the enquiry form first.' }, { status: 400 })

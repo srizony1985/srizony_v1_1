@@ -1,8 +1,10 @@
+import type { ExternalValue, JsonObject } from '@/types/json'
 import { NextResponse } from 'next/server'
 import { revalidatePath, revalidateTag } from 'next/cache'
 import { z } from 'zod'
 import { sql } from 'drizzle-orm'
-import { db } from '@/lib/db'
+import { db, isTransientDatabaseError } from '@/lib/db'
+import { readDriveTableSnapshotInfo } from '@/lib/google/drive-snapshot'
 import { requireAdmin, failure } from '@/lib/cms/guard'
 import { ensureCmsSchema } from '@/lib/cms/ensureSchema'
 import { auditAdminAction } from '@/lib/security'
@@ -49,10 +51,68 @@ async function countWorkflowSections(): Promise<number | null> {
   } catch { return null }
 }
 
+function objectValue(value: JsonObject[string] | undefined): JsonObject | null {
+  if (value && typeof value === 'object' && !Array.isArray(value)) return value as JsonObject
+  if (typeof value === 'string') {
+    try {
+      const parsed: ExternalValue = JSON.parse(value)
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as JsonObject : null
+    } catch { return null }
+  }
+  return null
+}
+
+async function readPipelineFromDrive() {
+  const tableNames = ['site_global_state', 'pages', 'nav_groups', 'nav_items', 'media_items', 'cms_content_items', 'site_settings', 'job_applications', 'submissions', 'donations'] as const
+  const snapshots = await Promise.all(tableNames.map(async (table) => ({ table, snapshot: await readDriveTableSnapshotInfo(table) })))
+  const missing = snapshots.filter((item) => !item.snapshot).map((item) => item.table)
+  if (missing.length) return NextResponse.json({ error: 'The Drive mirror is incomplete for CMS pipeline inspection.', missingSnapshots: missing }, { status: 503 })
+
+  const byTable = new Map(snapshots.map((item) => [item.table, item.snapshot!]))
+  const globalRows = byTable.get('site_global_state')!.rows
+  const globalRow = globalRows.find((row) => Number(row.id) === 1) ?? globalRows[0]
+  const globalValue = objectValue(globalRow?.value) ?? {}
+  const identityValue = objectValue(globalValue.siteIdentity)
+  const identity = (identityValue ?? SITE_FALLBACKS.systemData.siteIdentity) as SiteIdentity
+  const pages = byTable.get('pages')!.rows
+  const workflowCount = pages.reduce((total, page) => {
+    const renderCache = objectValue(page.render_cache)
+    const sections = Array.isArray(renderCache?.sections) ? renderCache.sections : []
+    return total + sections.filter((section) => {
+      const record = section && typeof section === 'object' && !Array.isArray(section) ? section as JsonObject : null
+      return Boolean(record && ['contact', 'donation', 'cta', 'contentFeed'].includes(String(record.type)))
+    }).length
+  }, 0)
+  const snapshotAgeMs = Math.max(...snapshots.map((item) => item.snapshot!.ageMs))
+  const snapshotAt = new Date(Math.min(...snapshots.map((item) => Date.parse(item.snapshot!.exportedAt)))).toISOString()
+  const count = (table: typeof tableNames[number]) => byTable.get(table)!.rows.length
+  const domains = [
+    { id: 'identity', label: 'Site identity & global settings', table: 'site_global_state', records: globalRows.length, state: identityValue ? 'google-drive-snapshot' : 'fallback', href: '/admin/dashboard/cms-pipeline' },
+    { id: 'pages', label: 'Landing and slug pages', table: 'pages', records: count('pages'), state: 'google-drive-snapshot', href: '/admin/dashboard/page-builder' },
+    { id: 'navigation', label: 'Single navigation tree', table: 'nav_items (one primary tree)', records: count('nav_items'), state: 'google-drive-snapshot', href: '/admin/dashboard/navigation' },
+    { id: 'media', label: 'Media library', table: 'media_items', records: count('media_items'), state: 'google-drive-snapshot', href: '/admin/dashboard/settings?view=database' },
+    { id: 'collections', label: 'Managed content collections', table: 'cms_content_items', records: count('cms_content_items'), state: 'google-drive-snapshot', href: '/admin/dashboard/site-content' },
+    { id: 'settings', label: 'Website essentials and settings', table: 'site_settings', records: count('site_settings'), state: 'google-drive-snapshot', href: '/admin/dashboard/website-essentials' },
+    { id: 'workflows', label: 'Page workflows and forms', table: 'pages.render_cache', records: workflowCount, state: 'google-drive-snapshot', href: '/admin/dashboard/page-builder' },
+    { id: 'submissions', label: 'Job applications, submissions and donations', table: 'job_applications + submissions + donations', records: count('job_applications') + count('submissions') + count('donations'), state: 'google-drive-snapshot', href: '/admin/dashboard/reports/submissions' },
+  ]
+  return NextResponse.json({
+    database: { provider: 'Neon PostgreSQL', connected: false },
+    fallback: { gateway: 'lib/cms/fallback-gateway.ts', runtimeMode: 'active-drive-snapshot', identitySource: identityValue ? 'google-drive-snapshot' : 'fallback' },
+    identity,
+    identityUpdatedAt: globalRow?.updated_at ? String(globalRow.updated_at) : null,
+    domains,
+    dataSource: 'google-drive-snapshot',
+    readOnly: true,
+    snapshotAt,
+    snapshotAgeMs,
+  }, { headers: { 'Cache-Control': 'no-store', 'X-Srizony-Data-Source': 'google-drive-snapshot', 'X-Snapshot-Updated-At': snapshotAt, Warning: '110 - \"Response is stale\"' } })
+}
+
 export async function GET() {
   const access = await requireAdmin()
   if (access.denied) return access.denied
-  if (!db) return NextResponse.json({ error: 'DATABASE_URL is not configured. Neon PostgreSQL is required for the CMS.' }, { status: 503 })
+  if (!db) return readPipelineFromDrive()
 
   try {
     await ensureCmsSchema()
@@ -61,7 +121,7 @@ export async function GET() {
       count('pages'), count('nav_groups'), count('nav_items'), count('media_items'), count('cms_content_items'), count('site_settings'),
       count('job_applications'), count('submissions'), count('donations'), countWorkflowSections(),
     ])
-    const globalValue = (globalResult.rows[0] as { value?: Record<string, unknown>; updated_at?: string | Date } | undefined)?.value ?? {}
+    const globalValue = (globalResult.rows[0] as { value?: JsonObject; updated_at?: string | Date } | undefined)?.value ?? {}
     const identityInDb = globalValue.siteIdentity && typeof globalValue.siteIdentity === 'object'
     const identity = (identityInDb ? globalValue.siteIdentity : SITE_FALLBACKS.systemData.siteIdentity) as SiteIdentity
     const updatedAtRaw = (globalResult.rows[0] as { updated_at?: string | Date } | undefined)?.updated_at
@@ -83,6 +143,7 @@ export async function GET() {
       domains,
     }, { headers: { 'Cache-Control': 'no-store' } })
   } catch (error) {
+    if (isTransientDatabaseError(error)) return readPipelineFromDrive()
     return failure(error, 'Unable to inspect the CMS data pipeline.')
   }
 }
@@ -91,7 +152,7 @@ export async function PUT(request: Request) {
   const access = await requireAdmin('admin', 'editor')
   if (access.denied) return access.denied
   if (!db) return NextResponse.json({ error: 'DATABASE_URL is not configured.' }, { status: 503 })
-  const body = await request.json().catch(() => null) as { siteIdentity?: unknown } | null
+  const body = await request.json().catch(() => null) as { siteIdentity?: ExternalValue } | null
   const parsed = identitySchema.safeParse(body?.siteIdentity)
   if (!parsed.success) return NextResponse.json({ error: 'Invalid site identity.', issues: parsed.error.flatten() }, { status: 400 })
 

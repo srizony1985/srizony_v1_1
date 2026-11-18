@@ -1,13 +1,121 @@
+import type { JsonObject } from '@/types/json'
 import { NextResponse } from 'next/server'
 import { sql } from 'drizzle-orm'
 import { getAdminSession } from '@/lib/adminAuth'
-import { db, withDbRetry } from '@/lib/db'
+import { db, isTransientDatabaseError, withDbRetry } from '@/lib/db'
+import { readDriveTableSnapshotInfo } from '@/lib/google/drive-snapshot'
 import { ensureDonationsSchema } from '@/lib/db/ensureOperationalSchema'
 import { ensureCmsSchema } from '@/lib/cms/ensureSchema'
 
 function clampDays(value: number) {
   if (!Number.isFinite(value)) return 30
   return Math.max(7, Math.min(90, Math.trunc(value)))
+}
+
+function isRecord(value: JsonObject[keyof JsonObject] | undefined): value is JsonObject {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value))
+}
+
+function numberValue(value: JsonObject[keyof JsonObject] | undefined) {
+  const parsed = Number(value ?? 0)
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+function dhakaDateKey(value: string | Date) {
+  const date = value instanceof Date ? value : new Date(value)
+  if (!Number.isFinite(date.getTime())) return ''
+  const shifted = new Date(date.getTime() + 6 * 60 * 60 * 1000)
+  return `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, '0')}-${String(shifted.getUTCDate()).padStart(2, '0')}`
+}
+
+function addDays(dateKey: string, offset: number) {
+  const [year, month, day] = dateKey.split('-').map(Number)
+  const date = new Date(Date.UTC(year, month - 1, day + offset))
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`
+}
+
+function formatDayLabel(dateKey: string) {
+  const [year, month, day] = dateKey.split('-').map(Number)
+  return new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', timeZone: 'UTC' }).format(new Date(Date.UTC(year, month - 1, day)))
+}
+
+async function buildDriveDashboard(days: number) {
+  const tableNames = ['pages', 'cms_content_items', 'job_applications', 'site_visitors', 'visitor_events', 'donations'] as const
+  const snapshots = await Promise.all(tableNames.map((table) => readDriveTableSnapshotInfo(table)))
+  if (snapshots.some((snapshot) => !snapshot)) {
+    throw new Error('Google Drive does not contain every table required for a complete dashboard snapshot.')
+  }
+  const byTable = new Map(tableNames.map((table, index) => [table, snapshots[index]!]))
+  const asOfMs = Math.min(...snapshots.map((snapshot) => Date.parse(snapshot!.exportedAt)))
+  const asOf = new Date(asOfMs).toISOString()
+  const endDay = dhakaDateKey(asOf)
+  const startDay = addDays(endDay, -(days - 1))
+  const rows = (table: typeof tableNames[number]) => byTable.get(table)!.rows
+  const pages = rows('pages').filter((row) => row.status === 'published')
+  const jobs = rows('cms_content_items').filter((row) => row.component === 'job' && row.status === 'published')
+  const applications = rows('job_applications')
+  const visitors = rows('site_visitors')
+  const events = rows('visitor_events').filter((row) => {
+    const day = dhakaDateKey(String(row.created_at || ''))
+    return day >= startDay && day <= endDay
+  })
+  const donations = rows('donations')
+  const paidDonations = donations.filter((row) => ['paid', 'success'].includes(String(row.status || '').toLowerCase()))
+  const inRange = (row: JsonObject) => {
+    const day = dhakaDateKey(String(row.created_at || ''))
+    return day >= startDay && day <= endDay
+  }
+  const rangePaidDonations = paidDonations.filter(inRange)
+  const today = endDay
+  const openJobs = jobs.filter((job) => {
+    const attributes = isRecord(job.attributes) ? job.attributes : {}
+    const deadline = typeof attributes.deadline === 'string' ? attributes.deadline : ''
+    return !deadline || !/^\d{4}-\d{2}-\d{2}$/.test(deadline) || deadline >= today
+  })
+
+  const trendMap = new Map<string, { visitors: number; applications: number; donations: number; donationAmount: number }>()
+  for (let offset = 0; offset < days; offset += 1) trendMap.set(addDays(startDay, offset), { visitors: 0, applications: 0, donations: 0, donationAmount: 0 })
+  for (const event of events) {
+    const bucket = trendMap.get(dhakaDateKey(String(event.created_at || '')))
+    if (bucket) bucket.visitors += 1
+  }
+  for (const application of applications) {
+    const bucket = trendMap.get(dhakaDateKey(String(application.created_at || '')))
+    if (bucket) bucket.applications += 1
+  }
+  for (const donation of donations.filter(inRange)) {
+    const bucket = trendMap.get(dhakaDateKey(String(donation.created_at || '')))
+    if (bucket) {
+      bucket.donations += 1
+      if (['paid', 'success'].includes(String(donation.status || '').toLowerCase())) bucket.donationAmount += numberValue(donation.amount)
+    }
+  }
+
+  const countBy = (items: JsonObject[], field: string) => {
+    const counts = new Map<string, number>()
+    for (const item of items) {
+      const key = String(item[field] || '').trim()
+      if (key) counts.set(key, (counts.get(key) || 0) + 1)
+    }
+    return [...counts.entries()].map(([key, count]) => ({ key, count })).sort((a, b) => b.count - a.count || a.key.localeCompare(b.key)).slice(0, 5)
+  }
+  const oldestSnapshotAgeMs = Math.max(...snapshots.map((snapshot) => snapshot!.ageMs))
+
+  return {
+    stats: {
+      pages: pages.length, postedJobs: jobs.length, openJobs: openJobs.length, applicants: applications.length,
+      visitors: visitors.length, visits: events.length,
+      returningVisitors: visitors.filter((visitor) => numberValue(visitor.page_views) > 1).length,
+      donations: donations.length,
+      donationTotal: paidDonations.reduce((sum, row) => sum + numberValue(row.amount), 0),
+      rangeDonationTotal: rangePaidDonations.reduce((sum, row) => sum + numberValue(row.amount), 0),
+    },
+    range: days,
+    trends: [...trendMap.entries()].map(([date, value]) => ({ date, label: formatDayLabel(date), ...value })),
+    topPages: countBy(events, 'path').map((row) => ({ path: row.key, visits: row.count })),
+    referrers: countBy(events, 'referrer').map((row) => ({ referrer: row.key, visits: row.count })),
+    dataSource: 'google-drive-snapshot', snapshotAt: asOf, snapshotAgeMs: oldestSnapshotAgeMs,
+  }
 }
 
 export async function GET(request: Request) {
@@ -17,13 +125,13 @@ export async function GET(request: Request) {
   const days = clampDays(Number(new URL(request.url).searchParams.get('days') || 30))
 
   if (!database) {
-    return NextResponse.json({
-      stats: { pages: 0, postedJobs: 0, openJobs: 0, applicants: 0, visitors: 0, visits: 0, returningVisitors: 0, donations: 0, donationTotal: 0, rangeDonationTotal: 0 },
-      topPages: [],
-      referrers: [],
-      range: days,
-      trends: [],
-    })
+    try {
+      const fallback = await buildDriveDashboard(days)
+      return NextResponse.json(fallback, { headers: { 'Cache-Control': 'no-store', 'X-Srizony-Data-Source': 'google-drive-snapshot', 'X-Snapshot-Updated-At': String(fallback.snapshotAt), Warning: '110 - \"Response is stale\"' } })
+    } catch (error) {
+      console.error('Drive dashboard snapshot unavailable:', error)
+      return NextResponse.json({ error: 'Dashboard data is unavailable. Configure Neon or refresh a complete Google Drive snapshot.' }, { status: 503 })
+    }
   }
 
   try {
@@ -120,7 +228,7 @@ export async function GET(request: Request) {
       `)),
     ])
 
-    const row = (result.rows[0] || {}) as Record<string, unknown>
+    const row = (result.rows[0] || {}) as JsonObject
 
     return NextResponse.json({
       stats: {
@@ -137,7 +245,7 @@ export async function GET(request: Request) {
       },
       range: days,
       trends: trendsResult.rows.map((trend) => {
-        const point = trend as Record<string, unknown>
+        const point = trend as JsonObject
         return {
           date: String(point.date),
           label: String(point.label),
@@ -147,10 +255,18 @@ export async function GET(request: Request) {
           donationAmount: Number(point.donation_amount ?? 0),
         }
       }),
-      topPages: topPagesResult.rows.map((row) => ({ path: String((row as Record<string, unknown>).path || '/'), visits: Number((row as Record<string, unknown>).visits || 0) })),
-      referrers: referrersResult.rows.map((row) => ({ referrer: String((row as Record<string, unknown>).referrer || ''), visits: Number((row as Record<string, unknown>).visits || 0) })),
+      topPages: topPagesResult.rows.map((row) => ({ path: String((row as JsonObject).path || '/'), visits: Number((row as JsonObject).visits || 0) })),
+      referrers: referrersResult.rows.map((row) => ({ referrer: String((row as JsonObject).referrer || ''), visits: Number((row as JsonObject).visits || 0) })),
     }, { headers: { 'Cache-Control': 'no-store' } })
   } catch (error) {
+    if (isTransientDatabaseError(error)) {
+      try {
+        const fallback = await buildDriveDashboard(days)
+        return NextResponse.json(fallback, { headers: { 'Cache-Control': 'no-store', 'X-Srizony-Data-Source': 'google-drive-snapshot', 'X-Snapshot-Updated-At': String(fallback.snapshotAt), Warning: '110 - \"Response is stale\"' } })
+      } catch (fallbackError) {
+        console.error('Drive dashboard fallback failed:', fallbackError)
+      }
+    }
     console.error('Admin dashboard summary failed:', error)
     return NextResponse.json({ error: 'Unable to load dashboard summary.' }, { status: 503 })
   }

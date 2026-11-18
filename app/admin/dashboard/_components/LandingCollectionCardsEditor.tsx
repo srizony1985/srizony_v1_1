@@ -71,16 +71,16 @@ export default function LandingCollectionCardsEditor({ component }: { component:
   }
 
   return (
-    <fieldset className="cms-array-fieldset cms-landing-collection-manager">
+    <fieldset className="cms-array-fieldset [grid-column:1/-1] [background:var(--background)] [&>legend]:[display:flex] [&>legend]:[align-items:center] [&>legend]:[gap:5px] [&>legend_span]:[font-size:0.75rem] [&>legend_span]:[color:var(--muted-foreground)] [&>legend_span]:[background:var(--card)] [&>legend_span]:[border:1px_solid_var(--border)] [&>legend_span]:[border-radius:999px] [&>legend_span]:[padding:2px_6px] [min-width:0] [border:1px_solid_var(--border)] [border-radius:var(--radius,_var(--radius))] [background:var(--card)] [padding:12px] [&>legend]:[padding:0_5px] [&>legend]:[font-size:0.75rem] [&>legend]:[font-weight:600] [&>legend]:[color:var(--muted-foreground)] cms-landing-collection-manager [display:grid] [gap:12px] [margin-top:14px] [min-width:0] [padding:14px] [border:1px_solid_var(--border)] [border-radius:var(--radius,_var(--radius))] [background:color-mix(in_srgb,var(--card)_96%,var(--primary))] [&>legend]:[padding-inline:6px] [&>legend]:[font-size:0.875rem] [&>legend]:[font-weight:600] [&>legend]:[color:var(--foreground)]">
       <legend>{copy.title}</legend>
       <p className="admin-small-note">{copy.description}</p>
-      <div className="cms-landing-collection-toolbar">
-        <div className="cms-landing-collection-counts" aria-live="polite">
+      <div className="cms-landing-collection-toolbar [display:flex] [align-items:center] [justify-content:space-between] [gap:12px] [flex-wrap:wrap] max-[560px]:[align-items:flex-start] max-[560px]:[flex-direction:column] max-[560px]:[width:100%]">
+        <div className="cms-landing-collection-counts [display:flex] [align-items:center] [gap:8px] [flex-wrap:wrap] [&>span]:[font-size:0.75rem] [&>span]:[color:var(--muted-foreground)]" aria-live="polite">
           <Badge variant="default">{publishedCount} published</Badge>
           {copy.imageRequired && <Badge variant="outline">{cardReadyCount} ready for gallery</Badge>}
           <span>{records.length} total records</span>
         </div>
-        <div className="cms-landing-collection-actions">
+        <div className="cms-landing-collection-actions [display:flex] [align-items:center] [gap:8px] [flex-wrap:wrap] max-[560px]:[width:100%] max-[560px]:[&>[data-slot=button]]:[flex:1]">
           <Button type="button" size="sm" variant="outline" onClick={() => void reload()} disabled={loading}>
             <RefreshCw size={14} /> Refresh
           </Button>
@@ -91,22 +91,22 @@ export default function LandingCollectionCardsEditor({ component }: { component:
       </div>
 
       {loading && !data ? <p className="admin-small-note">Loading database records…</p>
-        : error ? <div className="admin-error-state" role="alert"><p>{error}</p><Button type="button" size="sm" variant="outline" onClick={() => void reload()}>Try again</Button></div>
-          : <div className="cms-landing-collection-list">
+        : error ? <div className="admin-error-state [padding:20px] [border:1px_solid_color-mix(in_srgb,var(--destructive)_25%,var(--border))] [border-radius:var(--radius,_var(--radius))] [background:color-mix(in_srgb,var(--destructive)_5%,var(--card))] [color:var(--foreground)] [&_strong]:[display:block] [&_strong]:[font-size:0.875rem] [&_p]:[margin:5px_0_12px] [&_p]:[color:var(--muted-foreground)] [&_p]:[font-size:0.875rem] [display:grid] [gap:5px] [&_[data-slot=button]]:[width:max-content] [&_[data-slot=button]]:[margin-top:4px]" role="alert"><p>{error}</p><Button type="button" size="sm" variant="outline" onClick={() => void reload()}>Try again</Button></div>
+          : <div className="cms-landing-collection-list [display:grid] [gap:8px] [min-width:0]">
             {records.map((record) => {
               const title = record.values.title_en || record.values.title_bn || record.slug
               const order = record.values.displayOrder?.trim()
               const isReady = !copy.imageRequired || hasManagedImage(record)
               return (
-                <div className="cms-landing-collection-row" key={record.id}>
-                  <div className="cms-landing-collection-record">
+                <div className="cms-landing-collection-row [display:flex] [align-items:center] [justify-content:space-between] [gap:12px] [padding:10px_12px] [border:1px_solid_var(--border)] [border-radius:var(--radius,_var(--radius))] [background:var(--card)] [min-width:0] max-[560px]:[align-items:flex-start] max-[560px]:[flex-direction:column] max-[560px]:[&>[data-slot=button]]:[align-self:flex-end]" key={record.id}>
+                  <div className="cms-landing-collection-record [display:grid] [gap:4px] [min-width:0] [flex:1] [&>strong]:[font-size:0.875rem] [&>strong]:[color:var(--foreground)] [&>strong]:[overflow-wrap:anywhere] [&>small]:[font-size:0.75rem] [&>small]:[color:var(--muted-foreground)] [&>small]:[overflow-wrap:anywhere]">
                     <strong>{title}</strong>
                     <small>{copy.route}/{record.slug}</small>
-                    <span className="cms-landing-collection-meta">
+                    <span className="cms-landing-collection-meta [display:flex] [align-items:center] [gap:8px] [flex-wrap:wrap] [font-size:0.75rem] [color:var(--muted-foreground)] [&>span]:[display:inline-flex] [&>span]:[align-items:center] [&>span]:[gap:3px]">
                       <Badge variant={record.status === 'published' ? 'default' : 'outline'}>{record.status}</Badge>
                       {hasManagedImage(record) ? <span><ImageIcon size={12} /> Approved CMS image</span> : <span><ImageIcon size={12} /> No approved image</span>}
                       {order ? <span><ArrowUpDown size={12} /> Order {order}</span> : <span>Newest first</span>}
-                      {copy.imageRequired && !isReady && <span className="cms-landing-collection-warning">Hidden from gallery until an image is added</span>}
+                      {copy.imageRequired && !isReady && <span className="cms-landing-collection-warning [color:var(--warning,var(--primary))] [border-left:3px_solid_var(--warning)] [background:color-mix(in_srgb,var(--warning)_8%,var(--card))] [padding:9px_11px] [border-radius:var(--radius,var(--radius))]">Hidden from gallery until an image is added</span>}
                     </span>
                   </div>
                   <Button type="button" size="sm" variant="outline" onClick={() => setEditingRecord(record)}>
@@ -115,7 +115,7 @@ export default function LandingCollectionCardsEditor({ component }: { component:
                 </div>
               )
             })}
-            {!records.length && <div className="admin-empty-state">{copy.empty}</div>}
+            {!records.length && <div className="admin-empty-state [padding:22px] [color:var(--muted-foreground)] [text-align:center] [font-size:0.75rem] [min-height:110px] [display:grid] [place-items:center] [padding:20px] [font-size:0.875rem] [border:1px_dashed_var(--border)] [border-radius:var(--radius,_var(--radius))] [background:var(--background)]">{copy.empty}</div>}
           </div>}
 
       {editingRecord !== undefined && (

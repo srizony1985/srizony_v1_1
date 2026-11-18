@@ -4,7 +4,9 @@ import {
   useEffect,
   useRef,
   useState,
+  useSyncExternalStore,
   type ComponentType,
+  type CSSProperties,
   type FormEvent,
   type KeyboardEvent,
 } from 'react'
@@ -28,7 +30,6 @@ import { localizeDigits } from '@/lib/utils'
 import LogoLoader from '@/components/ui/LogoLoader'
 import CountryCodeSelect, { type CountryCode } from '@/components/ui/CountryCodeSelect'
 import { PaymentMethod } from '@/types/entityType'
-import s from '@/app/css_extra/DonationForm.module.css'
 import { initiateDonation } from '@/lib/api/public'
 
 const amounts = ['500', '1000', '2500', '5000']
@@ -76,6 +77,15 @@ const COUNTRY_CODES: CountryCode[] = [
 const DEFAULT_COUNTRY_ISO = 'BD'
 const DEFAULT_COUNTRY_CODE = '+880'
 
+function subscribeToDonationStatus(onChange: () => void) {
+  window.addEventListener('popstate', onChange)
+  return () => window.removeEventListener('popstate', onChange)
+}
+
+function getDonationStatus() {
+  return new URLSearchParams(window.location.search).get('donation')
+}
+
 /** Smoothly tweens a number; jumps instantly when the user prefers reduced motion. */
 function useAnimatedNumber(target: number, duration = 450) {
   const [value, setValue] = useState(target)
@@ -86,8 +96,12 @@ function useAnimatedNumber(target: number, duration = 450) {
 
     if (reduce || !Number.isFinite(target)) {
       from.current = target
-      setValue(target)
-      return
+
+      const raf = requestAnimationFrame(() => {
+        setValue(target)
+      })
+
+      return () => cancelAnimationFrame(raf)
     }
 
     const start = performance.now()
@@ -178,16 +192,28 @@ export default function DonationForm() {
   /** Anonymous is the default mode. */
   const [anonymous, setAnonymous] = useState(true)
 
-  const [name, setName] = useState('')
-  const [email, setEmail] = useState('')
-  const [phone, setPhone] = useState('')
+  const [name, setName] = useState(() => (profile && !anonymous ? profile.name ?? '' : ''))
+  const [email, setEmail] = useState(() => (profile && !anonymous ? profile.email ?? '' : ''))
+  const [phone, setPhone] = useState(() => {
+    if (!profile || anonymous) return ''
+
+    return splitProfilePhone(profile.phone).number
+  })
   /** ISO code (unique) — dial code is derived, since US and CA both use +1. */
-  const [countryIso, setCountryIso] = useState(DEFAULT_COUNTRY_ISO)
+  const [countryIso, setCountryIso] = useState(() => {
+    if (!profile || anonymous) return DEFAULT_COUNTRY_ISO
+
+    return splitProfilePhone(profile.phone).iso
+  })
   const [message, setMessage] = useState('')
 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [status, setStatus] = useState<string | null>(null)
+  const status = useSyncExternalStore(
+    subscribeToDonationStatus,
+    getDonationStatus,
+    () => null,
+  )
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
 
   const methodRefs = useRef<Array<HTMLButtonElement | null>>([])
@@ -196,39 +222,16 @@ export default function DonationForm() {
   const countryCode =
     COUNTRY_CODES.find((c) => c.country === countryIso)?.code ?? DEFAULT_COUNTRY_CODE
 
-  /**
-   * Autofill profile details ONLY for an identified donation.
-   * Anonymous donations never receive profile donor information.
-   */
-  useEffect(() => {
-    if (!profile || anonymous) return
+  function applyProfileDetails() {
+    if (!profile) return
 
-    setName((value) => value || profile.name)
-    setEmail((value) => value || profile.email)
+    setName((value) => value || profile.name || '')
+    setEmail((value) => value || profile.email || '')
 
-    if (!phone) {
-      const parsed = splitProfilePhone(profile.phone)
-      setCountryIso(parsed.iso)
-      setPhone(parsed.number)
-    }
-  }, [profile, anonymous, phone])
-
-  /** Keep payment contact fields available in either mode: the gateway requires
-   * an email and phone number, while anonymous mode suppresses the donor name
-   * and message from the foundation's donor record/public presentation. */
-  useEffect(() => {
-    if (!anonymous) return
-    setName('')
-    setMessage('')
-    setFieldErrors({})
-  }, [anonymous])
-
-  /** Read payment status from the callback URL. */
-  useEffect(() => {
-    const q = new URLSearchParams(window.location.search)
-    const st = q.get('donation')
-    if (st) setStatus(st)
-  }, [])
+    const parsed = splitProfilePhone(profile.phone)
+    setCountryIso((value) => (phone ? value : parsed.iso))
+    setPhone((value) => value || parsed.number)
+  }
 
   const displayAmount = amount === 'custom' ? custom : amount
   const numeric = Number(displayAmount)
@@ -260,28 +263,30 @@ export default function DonationForm() {
     })
   }
 
-  /** The gateway requires email and phone for every donation; name is optional in anonymous mode. */
+  /** Anonymous gifts need no donor-entered personal details. */
   function validateForm(): boolean {
     const next: FieldErrors = {}
 
-    if (!anonymous && !isValidName(name)) {
-      next.name = t('Please enter your full name.', 'আপনার পূর্ণ নাম লিখুন।')
-    }
-    if (!isValidEmail(email)) {
-      next.email = t('Please enter a valid email address.', 'সঠিক ইমেইল ঠিকানা লিখুন।')
-    }
-    if (!isValidPhone(phone)) {
-      next.phone = t(
-        'Please enter a valid mobile number using digits only.',
-        'শুধু সংখ্যা ব্যবহার করে একটি সঠিক মোবাইল নম্বর লিখুন।',
-      )
+    if (!anonymous) {
+      if (!isValidName(name)) {
+        next.name = t('Please enter your full name.', 'আপনার পূর্ণ নাম লিখুন।')
+      }
+      if (!isValidEmail(email)) {
+        next.email = t('Please enter a valid email address.', 'সঠিক ইমেইল ঠিকানা লিখুন।')
+      }
+      if (!isValidPhone(phone)) {
+        next.phone = t(
+          'Please enter a valid mobile number using digits only.',
+          'শুধু সংখ্যা ব্যবহার করে একটি সঠিক মোবাইল নম্বর লিখুন।',
+        )
+      }
     }
 
     setFieldErrors(next)
     return Object.keys(next).length === 0
   }
 
-  async function startPayment(e: FormEvent<HTMLFormElement>) {
+  function startPayment(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
     if (loading) return
 
@@ -304,10 +309,11 @@ export default function DonationForm() {
       return
     }
 
-    // Email and phone are required by the payment gateway in both modes.
-    // Anonymous mode omits the donor's name and message from the donation record.
+    // Anonymous checkout sends no donor-entered contact details. The server
+    // supplies the Foundation's published contact details to SSLCOMMERZ, which
+    // requires customer name, email and phone fields to initialize a session.
     const payload = anonymous
-      ? { amount: value, method, anonymous: true, email: email.trim(), phone: `${countryCode}${phone}` }
+      ? { amount: value, method, anonymous: true }
       : { amount: value, method, anonymous: false, name: name.trim(), email: email.trim(), phone: `${countryCode}${phone}`, message: message.trim() }
     const fingerprint = JSON.stringify(payload)
     if (!idempotencyRef.current || idempotencyRef.current.fingerprint !== fingerprint) {
@@ -316,19 +322,19 @@ export default function DonationForm() {
 
     setLoading(true)
 
-    try {
-      const { ok, data, status: responseStatus } = await initiateDonation(payload, idempotencyRef.current.key)
-
-      if (!ok || !data.url) {
-        if (responseStatus >= 500) idempotencyRef.current = null
-        throw new Error(data.error || 'Unable to start payment')
-      }
-
-      window.location.assign(data.url)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to start payment.')
-      setLoading(false)
-    }
+    void initiateDonation(payload, idempotencyRef.current.key)
+      .then(({ ok, data, status: responseStatus }) => {
+        if (!ok || typeof data.url !== 'string' || !data.url) {
+          if (responseStatus >= 500) idempotencyRef.current = null
+          const errorMessage = typeof data.error === 'string' ? data.error : 'Unable to start payment'
+          throw new Error(errorMessage)
+        }
+        window.location.assign(data.url)
+      })
+      .catch((err: unknown) => {
+        setError(err instanceof Error ? err.message : 'Unable to start payment.')
+        setLoading(false)
+      })
   }
 
   function resetStatus() {
@@ -336,7 +342,7 @@ export default function DonationForm() {
     url.searchParams.delete('donation')
     idempotencyRef.current = null
     window.history.replaceState(null, '', url.toString())
-    setStatus(null)
+    window.dispatchEvent(new PopStateEvent('popstate'))
   }
 
   /** Arrow-key navigation inside the payment radiogroup. */
@@ -402,13 +408,13 @@ export default function DonationForm() {
     const { Icon } = cfg
 
     return (
-      <div className={s.result} role="status" aria-live="polite">
-        <div className={s.resultIcon} style={{ ['--tone' as string]: cfg.tone }}>
+      <div className={"sf-donation-result"} role="status" aria-live="polite">
+        <div className={"sf-donation-result-icon"} style={{ '--sf-feedback-tone': cfg.tone } as CSSProperties}>
           <Icon size={42} />
         </div>
         <h3>{cfg.title}</h3>
         <p>{cfg.text}</p>
-        <button type="button" className={s.resultBtn} onClick={resetStatus}>
+        <button type="button" className={"sf-donation-result-btn"} onClick={resetStatus}>
           <RotateCcw size={16} />
           {cfg.btn}
         </button>
@@ -417,20 +423,20 @@ export default function DonationForm() {
   }
 
   return (
-    <form className={s.form} onSubmit={startPayment} noValidate aria-busy={loading}>
-      <div className={s.head}>
-        <div className={s.art} aria-hidden="true">
-          <div className={`${s.orbit} ${s.orbitA}`} />
-          <div className={`${s.orbit} ${s.orbitB}`} />
-          <div className={s.artCard}>
+    <form className={"sf-donation-form"} onSubmit={startPayment} noValidate aria-busy={loading}>
+      <div className={"sf-donation-head"}>
+        <div className={"sf-donation-art"} aria-hidden="true">
+          <div className={`${"sf-donation-orbit"} ${"sf-donation-orbit-a"}`} />
+          <div className={`${"sf-donation-orbit"} ${"sf-donation-orbit-b"}`} />
+          <div className={"sf-donation-art-card"}>
             <CreditCard size={24} />
             <span>৳</span>
           </div>
-          <div className={s.heart}>♥</div>
+          <div className={"sf-donation-heart"}>♥</div>
         </div>
 
-        <div className={s.intro}>
-          <div className={s.secure}>
+        <div className={"sf-donation-intro"}>
+          <div className={"sf-donation-secure"}>
             <ShieldCheck size={15} />
             <span>{t('Secure online donation', 'নিরাপদ অনলাইন দান')}</span>
           </div>
@@ -444,19 +450,18 @@ export default function DonationForm() {
         </div>
       </div>
 
-      <div className={s.layout}>
-        <div className={s.main}>
+      <div className={"sf-donation-layout"}>
+        <div className={"sf-donation-main"}>
           {/* 1 — amount */}
           <section
-            className={s.step}
-            style={{ ['--i' as string]: 0 }}
+            className="sf-donation-step sf-donation-step--first"
             aria-labelledby="don-amount"
           >
-            <div className={s.stepHead}>
-              <span className={s.stepNum}>1</span>
+            <div className={"sf-donation-step-head"}>
+              <span className={"sf-donation-step-num"}>1</span>
               <div>
                 <strong id="don-amount">{t('Donation amount', 'দানের পরিমাণ')}</strong>
-                <span className={s.sub}>
+                <span className={"sf-donation-sub"}>
                   {t(
                     'Select a preset or enter your own amount.',
                     'একটি নির্ধারিত বা নিজের পরিমাণ নির্বাচন করুন।',
@@ -465,26 +470,26 @@ export default function DonationForm() {
               </div>
             </div>
 
-            <div className={s.amounts} role="group" aria-labelledby="don-amount">
+            <div className={"sf-donation-amounts"} role="group" aria-labelledby="don-amount">
               {amounts.map((x) => (
                 <button
                   type="button"
                   key={x}
-                  className={`${s.chip} ${amount === x ? s.chipOn : ''}`}
+                  className={`${"sf-donation-chip"} ${amount === x ? "sf-donation-chip-on" : ''}`}
                   aria-pressed={amount === x}
                   onClick={() => {
                     setAmount(x)
                     setCustom('')
                   }}
                 >
-                  <span className={s.cur}>৳</span>
+                  <span className={"sf-donation-cur"}>৳</span>
                   <span>{fmt(group(x))}</span>
                 </button>
               ))}
 
               <button
                 type="button"
-                className={`${s.chip} ${amount === 'custom' ? s.chipOn : ''}`}
+                className={`${"sf-donation-chip"} ${amount === 'custom' ? "sf-donation-chip-on" : ''}`}
                 aria-pressed={amount === 'custom'}
                 onClick={() => setAmount('custom')}
               >
@@ -494,11 +499,11 @@ export default function DonationForm() {
             </div>
 
             <div
-              className={`${s.customWrap} ${amount === 'custom' ? s.customWrapOpen : ''}`}
+              className={`${"sf-donation-custom-wrap"} ${amount === 'custom' ? "sf-donation-custom-wrap-open" : ''}`}
               aria-hidden={amount !== 'custom'}
             >
-              <div className={s.customInner}>
-                <div className={s.customField}>
+              <div className={"sf-donation-custom-inner"}>
+                <div className={"sf-donation-custom-field"}>
                   <span>৳</span>
                   <input
                     inputMode="decimal"
@@ -518,7 +523,7 @@ export default function DonationForm() {
 
                 <p
                   id="don-custom-hint"
-                  className={`${s.fieldHint} ${customTooLow ? s.fieldError : ''}`}
+                  className={`${"sf-donation-field-hint"} ${customTooLow ? "sf-donation-field-error" : ''}`}
                   role={customTooLow ? 'alert' : undefined}
                 >
                   {customTooLow
@@ -530,16 +535,16 @@ export default function DonationForm() {
           </section>
 
           {/* 2 — payment method */}
-          <fieldset className={s.step} style={{ ['--i' as string]: 1 }}>
-            <legend className={s.legend}>
-              <div className={s.stepHead}>
-                <span className={s.stepNum}>2</span>
+          <fieldset className="sf-donation-step sf-donation-step--second">
+            <legend className={"sf-donation-legend"}>
+              <div className={"sf-donation-step-head"}>
+                <span className={"sf-donation-step-num"}>2</span>
                 <strong>{t('Preferred payment method', 'পছন্দের পেমেন্ট পদ্ধতি')}</strong>
               </div>
             </legend>
 
             <div
-              className={s.methods}
+              className={"sf-donation-methods"}
               role="radiogroup"
               aria-label={t('Payment method', 'পেমেন্ট পদ্ধতি')}
             >
@@ -557,21 +562,21 @@ export default function DonationForm() {
                     role="radio"
                     aria-checked={on}
                     tabIndex={on ? 0 : -1}
-                    className={`${s.method} ${on ? s.methodOn : ''}`}
+                    className={`${"sf-donation-method"} ${on ? "sf-donation-method-on" : ''}`}
                     onClick={() => setMethod(m.id as PaymentMethod)}
                     onKeyDown={(e) => onMethodKey(e, i)}
                   >
-                    <span className={s.methodIcon}>
+                    <span className={"sf-donation-method-icon"}>
                       <M size={16} />
                     </span>
-                    <span className={s.methodLabel}>{lang === 'en' ? m.en : m.bn}</span>
-                    {on && <CheckCircle2 size={15} className={s.tick} />}
+                    <span className={"sf-donation-method-label"}>{lang === 'en' ? m.en : m.bn}</span>
+                    {on && <CheckCircle2 size={15} className={"sf-donation-tick"} />}
                   </button>
                 )
               })}
             </div>
 
-            <p className={s.note} aria-live="polite" key={selected.id}>
+            <p className={"sf-donation-note"} aria-live="polite" key={selected.id}>
               <LockKeyhole size={14} />
               <span>{lang === 'en' ? selected.noteEn : selected.noteBn}</span>
             </p>
@@ -579,51 +584,63 @@ export default function DonationForm() {
 
           {/* 3 — donor details */}
           <section
-            className={s.step}
-            style={{ ['--i' as string]: 2 }}
+            className="sf-donation-step sf-donation-step--third"
             aria-labelledby="don-donor"
           >
-            <div className={s.stepHead}>
-              <span className={s.stepNum}>3</span>
+            <div className={"sf-donation-step-head"}>
+              <span className={"sf-donation-step-num"}>3</span>
               <div>
                 <strong id="don-donor">
                   {anonymous
                     ? t('Anonymous donation', 'বেনামী দান')
                     : t('Your details', 'আপনার তথ্য')}
                 </strong>
-                <span className={s.sub}>
+                <span className={"sf-donation-sub"}>
                   {anonymous
-                    ? t('Email and phone are required for secure payment processing; your donor name remains private.', 'নিরাপদ পেমেন্টের জন্য ইমেইল ও ফোন দরকার; আপনার দাতার নাম গোপন থাকবে।')
+                    ? t('No personal details are needed. The Foundation’s general contact details are used for secure gateway processing.', 'কোনো ব্যক্তিগত তথ্য দিতে হবে না। নিরাপদ পেমেন্ট প্রক্রিয়ার জন্য ফাউন্ডেশনের সাধারণ যোগাযোগের তথ্য ব্যবহার করা হবে।')
                     : t(
                         'Provide your contact details for the donation receipt.',
                         'দান রসিদের জন্য আপনার যোগাযোগের তথ্য দিন।',
                       )}
                 </span>
               </div>
-              <UserRound size={16} style={{ marginLeft: 'auto', color: 'var(--sf-muted)' }} />
+              <UserRound size={16} className="sf-donation-section-icon" />
             </div>
 
-            <label className={s.toggle}>
+            <label className={"sf-donation-toggle"}>
               <input
                 type="checkbox"
                 checked={anonymous}
-                onChange={(e) => setAnonymous(e.target.checked)}
+                onChange={(e) => {
+                  const nextAnonymous = e.target.checked
+                  setAnonymous(nextAnonymous)
+                  if (nextAnonymous) {
+                    setName('')
+                    setEmail('')
+                    setPhone('')
+                    setCountryIso(DEFAULT_COUNTRY_ISO)
+                    setMessage('')
+                    setFieldErrors({})
+                  } else {
+                    applyProfileDetails()
+                  }
+                }}
               />
-              <span className={s.switch} aria-hidden="true" />
-              <span className={s.toggleCopy}>
+              <span className={"sf-donation-switch"} aria-hidden="true" />
+              <span className={"sf-donation-toggle-copy"}>
                 <strong>{t('Donate anonymously', 'বেনামে দান করুন')}</strong>
                 <small>
                   {t(
-                    'Your name and message will not be recorded. Email and phone are still required by the payment gateway.',
-                    'আপনার নাম ও বার্তা সংরক্ষণ করা হবে না। পেমেন্ট গেটওয়ের জন্য ইমেইল ও ফোন প্রয়োজন।',
+                    'Your name, email, phone and message are not requested or stored for an anonymous donation.',
+                    'বেনামী দানের ক্ষেত্রে আপনার নাম, ইমেইল, ফোন বা বার্তা চাওয়া বা সংরক্ষণ করা হবে না।',
                   )}
                 </small>
               </span>
             </label>
 
-            <div className={s.fields}>
+            {!anonymous ? <div className={"sf-donation-fields"}>
                 {/* Name */}
-                {!anonymous && <label className={`${s.field} ${s.fullRow}`}>
+                <label className={`${"sf-donation-field"} ${"sf-donation-full-row"}`}>
                   <span>{ui[lang].name}</span>
                   <input
                     type="text"
@@ -637,14 +654,14 @@ export default function DonationForm() {
                     aria-describedby={fieldErrors.name ? 'don-name-error' : undefined}
                   />
                   {fieldErrors.name && (
-                    <small id="don-name-error" className={s.fieldError} role="alert">
+                    <small id="don-name-error" className={"sf-donation-field-error"} role="alert">
                       {fieldErrors.name}
                     </small>
                   )}
-                </label>}
+                </label>
 
                 {/* Email */}
-                <label className={s.field}>
+                <label className={"sf-donation-field"}>
                   <span>{ui[lang].email}</span>
                   <input
                     type="email"
@@ -659,23 +676,17 @@ export default function DonationForm() {
                     aria-describedby={fieldErrors.email ? 'don-email-error' : undefined}
                   />
                   {fieldErrors.email && (
-                    <small id="don-email-error" className={s.fieldError} role="alert">
+                    <small id="don-email-error" className={"sf-donation-field-error"} role="alert">
                       {fieldErrors.email}
                     </small>
                   )}
                 </label>
 
                 {/* Phone — a div (not a label) so the country dropdown button isn't hijacked */}
-                <div className={s.field}>
+                <div className={"sf-donation-field"}>
                   <label htmlFor="don-phone">{ui[lang].phone}</label>
 
-                  <div
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: 'minmax(136px, 0.5fr) minmax(0, 1.5fr)',
-                      gap: '8px',
-                    }}
-                  >
+                  <div className="sf-donation-phone-row">
                     <CountryCodeSelect
                       options={COUNTRY_CODES}
                       value={countryIso}
@@ -706,44 +717,50 @@ export default function DonationForm() {
                   </div>
 
                   {fieldErrors.phone && (
-                    <small id="don-phone-error" className={s.fieldError} role="alert">
+                    <small id="don-phone-error" className={"sf-donation-field-error"} role="alert">
                       {fieldErrors.phone}
                     </small>
                   )}
                 </div>
 
                 {/* Message */}
-                {!anonymous && <label className={`${s.field} ${s.fullRow}`}>
+                <label className={`${"sf-donation-field"} ${"sf-donation-full-row"}`}>
                   <span>{ui[lang].message}</span>
                   <input
                     type="text"
                     value={message}
                     onChange={(e) => setMessage(e.target.value)}
                   />
-                </label>}
-              </div>
+                </label>
+              </div> : <p className="sf-donation-anonymous-note" role="note">
+                <ShieldCheck size={15} aria-hidden="true" />
+                <span>{t(
+                  'No personal information is needed. SSLCOMMERZ receives the Foundation’s general contact details for the payment session; your donor contact details are not stored.',
+                  'কোনো ব্যক্তিগত তথ্যের প্রয়োজন নেই। পেমেন্ট সেশনের জন্য SSLCOMMERZ ফাউন্ডেশনের সাধারণ যোগাযোগের তথ্য পাবে; আপনার ব্যক্তিগত যোগাযোগের তথ্য সংরক্ষণ করা হবে না।',
+                )}</span>
+              </p>}
           </section>
         </div>
 
         {/* Donation summary */}
-        <aside className={s.summary} aria-label={t('Donation summary', 'দানের সারাংশ')}>
-          <div className={s.sumTop}>
+        <aside className={"sf-donation-summary"} aria-label={t('Donation summary', 'দানের সারাংশ')}>
+          <div className={"sf-donation-sum-top"}>
             <span>{t('Donation summary', 'দানের সারাংশ')}</span>
             <ShieldCheck size={17} />
           </div>
 
-          <div className={s.sumLabel}>{t('You are donating', 'আপনি দান করছেন')}</div>
+          <div className={"sf-donation-sum-label"}>{t('You are donating', 'আপনি দান করছেন')}</div>
 
-          <div className={s.total} aria-live="polite">
+          <div className={"sf-donation-total"} aria-live="polite">
             ৳ {fmt(shownTotal)}
           </div>
 
-          <div className={s.sumRow}>
+          <div className={"sf-donation-sum-row"}>
             <span>{t('Payment', 'পেমেন্ট')}</span>
             <strong>{lang === 'en' ? selected.en : selected.bn}</strong>
           </div>
 
-          <div className={s.sumRow}>
+          <div className={"sf-donation-sum-row"}>
             <span>{t('Donor', 'দাতা')}</span>
             <strong>
               {anonymous
@@ -752,7 +769,7 @@ export default function DonationForm() {
             </strong>
           </div>
 
-          <div className={s.sumSecure}>
+          <div className={"sf-donation-sum-secure"}>
             <LockKeyhole size={15} />
             <span>{t('Encrypted gateway checkout', 'এনক্রিপ্টেড গেটওয়ে চেকআউট')}</span>
           </div>
@@ -760,19 +777,19 @@ export default function DonationForm() {
       </div>
 
       {error && (
-        <div className={s.error} role="alert">
+        <div className={"sf-donation-error"} role="alert">
           <AlertCircle size={16} />
           <span>{error}</span>
         </div>
       )}
 
-      <div className={s.submitRow}>
-        <div className={s.submitCopy}>
+      <div className={"sf-donation-submit-row"}>
+        <div className={"sf-donation-submit-copy"}>
           <ShieldCheck size={17} />
           <span>{t('Protected by SSLCOMMERZ', 'SSLCOMMERZ দ্বারা সুরক্ষিত')}</span>
         </div>
 
-        <button className={s.submit} type="submit" disabled={loading || customTooLow} aria-busy={loading}>
+        <button className={"sf-donation-submit"} type="submit" disabled={loading || customTooLow} aria-busy={loading}>
           {loading ? <LogoLoader size="sm" inline label="" /> : <CreditCard size={18} />}
 
           <span>
@@ -785,7 +802,7 @@ export default function DonationForm() {
         </button>
       </div>
 
-      <p className={s.disclaimer}>
+      <p className={"sf-donation-disclaimer"}>
         <MessageCircle size={13} />
         <span>
           {t(

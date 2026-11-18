@@ -1,21 +1,23 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
-import { ChevronDown, ChevronUp, RefreshCw, Search } from 'lucide-react'
-import { toast } from 'sonner'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams } from 'next/navigation'
-import { SectionToolbar, PageLoading, AdminErrorState } from '../../_components/AdminCommon'
+import { toast } from 'sonner'
+import type { ExternalValue, JsonObject } from '@/types/json'
+import { Badge } from '@/components/ui/badge'
+import { NativeSelect } from '@/components/ui/native-select'
+import { PageLoading, AdminErrorState } from '../../_components/AdminCommon'
+import { AdminDataContainer, AdminTable, AdminToolbar, type AdminTableColumn } from '@/components/admin/cms'
 import { REPORTS, getReportRows, type ReportKey } from '@/lib/api/reports'
 import { setSubmissionStatus } from '@/lib/api/dashboard'
 
-type RecordValue = Record<string, unknown>
-type SortState = { key: string; direction: 'asc' | 'desc' }
+type RecordValue = JsonObject
 
 const CONFIG = { visitors: REPORTS.visitors, submissions: REPORTS.submissions, donations: REPORTS.donations } as const
+const SUBMISSION_STATUSES = ['new', 'read', 'resolved', 'archived']
+const PREFERRED_COLUMNS = ['id', 'name', 'email', 'type', 'transactionId', 'amount', 'status', 'createdAt', 'updatedAt', 'lastSeenAt']
 
-function textValue(value: unknown): string {
+function textValue(value: ExternalValue): string {
   if (value === null || value === undefined) return ''
   if (typeof value === 'boolean') return value ? 'Yes' : 'No'
   if (Array.isArray(value)) return value.map(textValue).join(', ')
@@ -23,109 +25,139 @@ function textValue(value: unknown): string {
   return String(value)
 }
 
-function displayValue(value: unknown) {
+function displayValue(value: ExternalValue, key = '') {
   const text = textValue(value)
   if (!text) return '—'
-  if (/At$|Date$|created/i.test(text) && /^\d{4}-\d{2}-\d{2}/.test(text)) {
+  // Date formatting is based on the column name, not the cell contents.
+  if (/(?:At|Date|created|updated|lastSeen)/i.test(key) && /^\d{4}-\d{2}-\d{2}/.test(text)) {
     const date = new Date(text)
-    if (!Number.isNaN(date.getTime())) return date.toLocaleString('en-BD')
+    if (!Number.isNaN(date.getTime())) return date.toLocaleString('en-BD', { timeZone: 'Asia/Dhaka' })
   }
   return text
 }
 
 export default function ReportPage() {
   const params = useParams<{ report: string }>()
-  const config = CONFIG[params.report as keyof typeof CONFIG]  // unknown keys fall through to the error state
+  const config = CONFIG[params.report as keyof typeof CONFIG] // unknown keys fall through to the error state
   const [items, setItems] = useState<RecordValue[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
-  const [sort, setSort] = useState<SortState>({ key: 'createdAt', direction: 'desc' })
 
-  async function load() {
-    if (!config) return
+  const load = useCallback(() => {
+    if (!config) return Promise.resolve()
     setLoading(true)
     setError('')
-    try {
-      setItems(await getReportRows(params.report as ReportKey))
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Unable to load report.')
-    } finally {
-      setLoading(false)
-    }
-  }
+    return getReportRows(params.report as ReportKey)
+      .then((rows) => setItems(rows))
+      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'Unable to load report.'))
+      .finally(() => setLoading(false))
+  }, [config, params.report])
 
-  useEffect(() => { void load() }, [params.report])
+  useEffect(() => {
+    const task = Promise.resolve().then(() => load())
+    return () => { void task }
+  }, [load])
+
+  const updateStatus = useCallback((id: number, status: string) => {
+    return setSubmissionStatus(id, status)
+      .then(() => {
+        setItems((current) => current.map((item) => Number(item.id) === id ? { ...item, status } : item))
+        toast.success('Request updated.')
+      })
+      .catch((cause: unknown) => toast.error(cause instanceof Error ? cause.message : 'Unable to update request.'))
+  }, [])
 
   const columns = useMemo(() => {
     const keys: string[] = []
     for (const item of items.slice(0, 100)) {
       for (const key of Object.keys(item)) if (!keys.includes(key)) keys.push(key)
     }
-    const preferred = ['id', 'name', 'email', 'type', 'transactionId', 'amount', 'status', 'createdAt', 'updatedAt', 'lastSeenAt']
-    return [...preferred.filter((key) => keys.includes(key)), ...keys.filter((key) => !preferred.includes(key))]
+    return [...PREFERRED_COLUMNS.filter((key) => keys.includes(key)), ...keys.filter((key) => !PREFERRED_COLUMNS.includes(key))]
   }, [items])
 
   const statuses = useMemo(() => Array.from(new Set(items.map((item) => textValue(item.status)).filter(Boolean))).sort(), [items])
 
+  // Filtering only. AdminTable owns column sorting; rows arrive newest-first so the
+  // default view matches the old "createdAt desc" behaviour until a header is clicked.
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase()
-    const next = items.filter((item) => {
+    const matches = items.filter((item) => {
       if (statusFilter !== 'all' && textValue(item.status) !== statusFilter) return false
       return !query || Object.values(item).some((value) => textValue(value).toLowerCase().includes(query))
     })
-    const key = sort.key
-    return next.sort((a, b) => {
-      const av = textValue(a[key]).toLowerCase()
-      const bv = textValue(b[key]).toLowerCase()
-      const an = Number(av)
-      const bn = Number(bv)
-      const comparison = Number.isFinite(an) && Number.isFinite(bn) && av !== '' && bv !== '' ? an - bn : av.localeCompare(bv, undefined, { numeric: true, sensitivity: 'base' })
-      return sort.direction === 'asc' ? comparison : -comparison
-    })
-  }, [items, search, sort, statusFilter])
+    return matches.sort((a, b) => textValue(b.createdAt).localeCompare(textValue(a.createdAt)))
+  }, [items, search, statusFilter])
+
+  const tableColumns = useMemo<AdminTableColumn<RecordValue>[]>(() => columns.map((key) => ({
+    key,
+    label: key,
+    // Readable text for both sorting and CSV export (booleans, arrays, objects).
+    accessor: (item) => textValue(item[key]),
+    render: (item) => {
+      if (key === 'status' && params.report === 'submissions') {
+        return (
+          <NativeSelect
+            className="h-9 text-xs font-semibold"
+            aria-label="Request status"
+            value={textValue(item[key])}
+            onChange={(event) => void updateStatus(Number(item.id), event.target.value)}
+          >
+            {SUBMISSION_STATUSES.map((status) => <option key={status} value={status}>{status}</option>)}
+          </NativeSelect>
+        )
+      }
+      if (key === 'status') return <Badge variant="outline">{displayValue(item[key], key)}</Badge>
+      return <span className="admin-report-cell-value min-w-0 break-words">{displayValue(item[key], key)}</span>
+    },
+  })), [columns, params.report, updateStatus])
 
   if (!config) {
     return <AdminErrorState message="Unknown report." />
   }
 
-  function toggleSort(key: string) {
-    setSort((current) => current.key === key ? { key, direction: current.direction === 'asc' ? 'desc' : 'asc' } : { key, direction: 'asc' })
-  }
-
-  async function updateStatus(id: number, status: string) {
-    try { await setSubmissionStatus(id, status) } catch (cause) { return toast.error(cause instanceof Error ? cause.message : 'Unable to update request.') }
-    setItems((current) => current.map((item) => Number(item.id) === id ? { ...item, status } : item))
-    toast.success('Request updated.')
-  }
-
-  return <div className="admin-report-page">
-    <SectionToolbar
-      title={config.title}
-      description={config.description}
-      search={search}
-      onSearch={setSearch}
-      searchPlaceholder={`Search ${config.title.toLowerCase()}…`}
-      count={filtered.length}
-      onRefresh={() => void load()}
-      refreshing={loading}
-      filters={<select className="ui-select admin-filter-select" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="all">All statuses</option>{statuses.map((status) => <option key={status} value={status}>{status}</option>)}</select>}
-    />
-
-    {loading && !items.length ? <PageLoading rows={4} /> : error ? <AdminErrorState message={error} onRetry={() => void load()} /> : (
-      <section className="admin-data-card">
-        <div className="admin-table-scroll">
-          <table className="admin-table">
-            <thead><tr>{columns.map((key) => <th key={key}><button type="button" className="admin-sort-button" onClick={() => toggleSort(key)}>{key}{sort.key === key && (sort.direction === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />)}</button></th>)}</tr></thead>
-            <tbody>
-              {filtered.map((item, rowIndex) => <tr key={String(item.id ?? `${rowIndex}`)}>{columns.map((key) => <td key={key} title={textValue(item[key])}>{key === 'status' && params.report === 'submissions' ? <select className="ui-select dashboard-status" value={textValue(item[key])} onChange={(event) => void updateStatus(Number(item.id), event.target.value)}>{['new', 'read', 'resolved', 'archived'].map((status) => <option key={status} value={status}>{status}</option>)}</select> : key === 'status' ? <Badge variant="outline">{displayValue(item[key])}</Badge> : displayValue(item[key])}</td>)}</tr>)}
-              {!filtered.length && <tr><td colSpan={Math.max(1, columns.length)} className="admin-empty-cell"><Search size={16} /> No records match your filters.</td></tr>}
-            </tbody>
-          </table>
-        </div>
-        <div className="admin-report-footer"><span>{filtered.length.toLocaleString()} shown</span><Button variant="outline" size="sm" onClick={() => void load()}><RefreshCw size={13} /> Refresh</Button></div>
-      </section>
-    )}
-  </div>
+  return (
+    <AdminDataContainer
+      label={`${config.title} records`}
+      headerContent={
+        <AdminToolbar
+          title={config.title}
+          description="Click a column heading to sort, select rows to export them, or export the whole filtered view."
+          count={filtered.length}
+          search={search}
+          onSearch={setSearch}
+          searchPlaceholder={`Search ${config.title.toLowerCase()}…`}
+          filters={
+            <NativeSelect aria-label="Filter by status" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+              <option value="all">All statuses</option>
+              {statuses.map((status) => <option key={status} value={status}>{status}</option>)}
+            </NativeSelect>
+          }
+          className="static border-b-0 bg-transparent p-0 backdrop-blur-none"
+        />
+      }
+      bodyScroll="hidden"
+    >
+      {loading && !items.length ? (
+        <div className="p-4"><PageLoading rows={4} /></div>
+      ) : error ? (
+        <div className="p-4"><AdminErrorState message={error} onRetry={() => void load()} /></div>
+      ) : (
+        <AdminTable
+          rows={filtered}
+          columns={tableColumns}
+          getRowId={(item, index) => String(item.id ?? index)}
+          caption={`${config.title} report`}
+          emptyMessage="No records match your filters."
+          loading={loading}
+          selectable
+          exportable
+          selectedExportable
+          fileName={`${params.report}-report.csv`}
+          footerSummary={`${filtered.length.toLocaleString()} visible of ${items.length.toLocaleString()} total records · Updated from the connected CMS data provider`}
+        />
+      )}
+    </AdminDataContainer>
+  )
 }

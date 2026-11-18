@@ -67,10 +67,6 @@ async function sha256File(filePath) {
   return hash.digest('hex');
 }
 
-function timestamp() {
-  return new Date().toISOString().replace(/[:.]/g, '-');
-}
-
 async function main() {
   loadEnvFile('.env.local');
   loadEnvFile('.env');
@@ -96,7 +92,7 @@ async function main() {
 
   const prefix = (process.env.GOOGLE_DRIVE_BACKUP_PREFIX || 'srizony-foundation-full-backup').trim();
   if (!/^[A-Za-z0-9][A-Za-z0-9._-]{2,80}$/.test(prefix)) throw new Error('GOOGLE_DRIVE_BACKUP_PREFIX contains unsupported characters.');
-  const retentionDays = Number(process.env.BACKUP_DRIVE_RETENTION_DAYS ?? '35');
+  const retentionDays = Number(process.env.BACKUP_DRIVE_RETENTION_DAYS ?? '0');
   if (!Number.isInteger(retentionDays) || retentionDays < 0 || retentionDays > 3650) throw new Error('BACKUP_DRIVE_RETENTION_DAYS must be an integer between 0 and 3650.');
 
   assertDriveConfigured();
@@ -111,7 +107,8 @@ async function main() {
     throw new Error(`pg_dump major version mismatch: expected ${expectedMajor}, installed ${installedMajor || 'unknown'} (${pgDumpVersion}).`);
   }
 
-  const stamp = timestamp();
+  const backupStartedAt = new Date();
+  const stamp = backupStartedAt.toISOString().replace(/[:.]/g, '-');
   const archiveName = `${prefix}-${stamp}.tar.gz`;
   const workDir = await mkdtemp(path.join(tmpdir(), 'srizony-drive-backup-'));
   const archivePath = path.join(tmpdir(), archiveName);
@@ -121,12 +118,17 @@ async function main() {
     await mkdir(path.join(workDir, 'storage'), { recursive: true, mode: 0o700 });
     const databaseDump = path.join(workDir, 'database.dump');
     console.log(`Creating PostgreSQL custom-format archive with ${pgDumpVersion}…`);
-    await run('pg_dump', ['--format=custom', '--no-owner', '--no-privileges', '--file', databaseDump], { env: { PGDATABASE: databaseUrl } });
+    const databaseDumpStartedAt = new Date().toISOString();
+    await run('pg_dump', ['--format=custom', '--no-owner', '--no-privileges', '--file', databaseDump, '--dbname', databaseUrl]);
+    const databaseDumpCompletedAt = new Date().toISOString();
     if ((await stat(databaseDump)).size <= 0) throw new Error('pg_dump produced an empty database archive.');
     const databaseSha256 = await sha256File(databaseDump);
     await writeFile(path.join(workDir, 'database.dump.sha256'), `${databaseSha256}  database.dump\n`, { mode: 0o600 });
 
+    let objectStorageCopyStartedAt = null;
+    let objectStorageCopyCompletedAt = null;
     if (includeStorage) {
+      objectStorageCopyStartedAt = new Date().toISOString();
       const awsConfig = path.join(workDir, 'aws-config');
       await writeFile(awsConfig, `[default]\nregion = ${process.env.AWS_REGION}\ns3 =\n    addressing_style = path\n`, { mode: 0o600 });
       process.env.AWS_CONFIG_FILE = awsConfig;
@@ -139,18 +141,33 @@ async function main() {
       await run('aws', ['--endpoint-url', process.env.AWS_ENDPOINT_URL_S3, 's3', 'sync', `s3://${privateBucket}/`, `${privatePath}/`, '--only-show-errors']);
       console.log(`Copying public object-storage bucket: ${publicBucket}…`);
       await run('aws', ['--endpoint-url', process.env.AWS_ENDPOINT_URL_S3, 's3', 'sync', `s3://${publicBucket}/`, `${publicPath}/`, '--only-show-errors']);
+      objectStorageCopyCompletedAt = new Date().toISOString();
       await rm(awsConfig, { force: true });
     }
 
+    const runtimeConfig = {
+      environment: process.env.NODE_ENV || 'production',
+      timezone: 'Asia/Dhaka',
+      siteUrl: process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_APP_URL || null,
+      privateStorageBucket: privateBucket,
+      publicStorageBucket: publicBucket,
+      // Never serialize credentials, connection strings, tokens, or private keys.
+    };
+    await writeFile(path.join(workDir, 'runtime-config.json'), `${JSON.stringify(runtimeConfig, null, 2)}\n`, { mode: 0o600 });
     const manifest = {
       format: 'srizony-foundation-full-backup',
       version: 1,
-      backupUtc: new Date().toISOString(),
+      backupUtc: backupStartedAt.toISOString(),
+      backupStartedAt: backupStartedAt.toISOString(),
+      databaseSnapshot: { startedAt: databaseDumpStartedAt, completedAt: databaseDumpCompletedAt },
+      backupTimezone: 'Asia/Dhaka',
+      gitCommit: process.env.GITHUB_SHA || null,
       database: { file: 'database.dump', format: 'pg_dump-custom', pgDumpVersion, sha256: databaseSha256 },
+      configuration: { source: 'PostgreSQL CMS configuration and application runtime-config.json', runtimeConfigFile: 'runtime-config.json', secretsIncluded: false },
       objectStorage: includeStorage
-        ? { included: true, privateBucket, publicBucket }
+        ? { included: true, privateBucket, publicBucket, copyStartedAt: objectStorageCopyStartedAt, copyCompletedAt: objectStorageCopyCompletedAt }
         : { included: false },
-      restoreNotes: 'Restore database.dump with pg_restore into a staging database. Restore storage bucket folders to matching private/public object-storage buckets when included.',
+      restoreNotes: 'Restore is destructive. The CMS-triggered workflow creates a fresh pre-restore archive, restores database.dump with pg_restore, and synchronizes both object-storage buckets to this snapshot.',
     };
     await writeFile(path.join(workDir, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`, { mode: 0o600 });
     await run('tar', ['-czf', archivePath, '-C', workDir, '.']);
@@ -158,7 +175,7 @@ async function main() {
 
     const archiveStats = await stat(archivePath);
     console.log(`Uploading ${archiveName} (${(archiveStats.size / (1024 * 1024)).toFixed(1)} MiB) to Google Drive…`);
-    const remote = await uploadDriveBackup(archivePath, { name: archiveName, prefix, timestamp: stamp });
+    const remote = await uploadDriveBackup(archivePath, { name: archiveName, prefix, timestamp: stamp, backupUtc: backupStartedAt.toISOString() });
     console.log(`Verified Google Drive backup: ${remote.name} (${remote.size} bytes, ${remote.md5Checksum || 'Drive MD5 unavailable'})`);
     console.log(`SHA-256: ${remote.sha256}`);
     console.log(`Drive file ID: ${remote.id}`);

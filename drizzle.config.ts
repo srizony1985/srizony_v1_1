@@ -1,8 +1,10 @@
-import { config } from 'dotenv';
+import { createRequire } from 'node:module'
+import { defineConfig } from 'drizzle-kit'
 
-config({ path: '.env.local' });
-config({ path: '.env' });
-import { defineConfig } from "drizzle-kit";
+
+const require = createRequire(`${process.cwd()}/drizzle.config.ts`)
+const { loadEnvConfig } = require('@next/env') as typeof import('@next/env')
+loadEnvConfig(process.cwd())
 
 export default defineConfig({
   schema: "./lib/db/schema.ts",

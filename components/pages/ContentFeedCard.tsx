@@ -1,6 +1,6 @@
 'use client'
 
-import Link from 'next/link'
+import AppLink from '@/components/ui/AppLink'
 import type { ReactNode } from 'react'
 import { ArrowRight, BriefcaseBusiness, CalendarDays, FileText, MapPin, Paperclip, Users } from 'lucide-react'
 import { Card, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
@@ -42,9 +42,9 @@ function FeedLink({ href, className, delay, children }: {
   children: ReactNode
 }) {
   return <Reveal delay={delay} className="sf-feed-grid-item">
-    <Link href={href} className={`clickable-card sf-feed-card ${className}`}>
+    <AppLink href={href} className={`clickable-card sf-feed-card ${className}`}>
       {children}
-    </Link>
+    </AppLink>
   </Reveal>
 }
 
@@ -78,7 +78,7 @@ export default function ContentFeedCard({ item, lang, index = 0 }: Props) {
           {item.projectStatus && <span className="pill">{statusLabel(item.projectStatus, lang)}</span>}
           {!item.projectStatus && date && <time>{date}</time>}
         </div>}
-        <span className="sf-feed-card-more">{copy(lang, 'View project', 'প্রকল্প দেখুন')} <ArrowRight size={14} aria-hidden="true" /></span>
+        <span className="sf-feed-card-cta">{copy(lang, 'View project', 'প্রকল্প দেখুন')} <ArrowRight size={14} aria-hidden="true" /></span>
       </div>
     </FeedLink>
   }
@@ -120,7 +120,7 @@ export default function ContentFeedCard({ item, lang, index = 0 }: Props) {
             <div className="sf-job-feed-meta">
               {item.deadline ? <span className="sf-job-feed-deadline"><CalendarDays size={14} aria-hidden="true" /> <span>{copy(lang, 'Apply by', 'আবেদনের শেষ তারিখ')} <strong>{formatDate(item.deadline, lang)}</strong></span></span> : <span className="sf-job-feed-open"><span aria-hidden="true" />{copy(lang, 'Applications open', 'আবেদন চলছে')}</span>}
             </div>
-            <span className="ui-button ui-button-default ui-button-sm sf-job-feed-action">{copy(lang, 'View position', 'পদের বিবরণ')} <ArrowRight size={14} aria-hidden="true" /></span>
+            <span className="sf-feed-card-cta sf-feed-card-cta--button sf-job-feed-action">{copy(lang, 'View position', 'পদের বিবরণ')} <ArrowRight size={14} aria-hidden="true" /></span>
           </CardFooter>
         </div>
       </Card>
@@ -135,6 +135,6 @@ export default function ContentFeedCard({ item, lang, index = 0 }: Props) {
       {summary && <p className="sf-feed-summary sf-clamp-2">{summary}</p>}
     </div>
     {date && <time className="sf-feed-date">{date}</time>}
-    <span className="sf-feed-card-more">{copy(lang, 'Read more', 'আরও পড়ুন')} <ArrowRight size={14} aria-hidden="true" /></span>
+    <span className="sf-feed-card-cta">{copy(lang, 'Read more', 'আরও পড়ুন')} <ArrowRight size={14} aria-hidden="true" /></span>
   </FeedLink>
 }

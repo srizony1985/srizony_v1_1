@@ -1,11 +1,11 @@
 import { adminRequest } from './http'
-import type { Section } from '@/types/entityType'
+import type { CmsTypography, Section } from '@/types/entityType'
 
 export type MenuType = 'page' | 'external' | 'folder'
 export type SectionButtonType = 'none' | 'primary' | 'secondary' | 'both'
-export type NavNode = { id: number; parentId?: number | null; labelEn: string; labelBn: string; slug: string; isLandingPage?: boolean; renderedComponents: Section['type'][]; menuType: MenuType; visible: boolean; sectionCount: number; sectionContentType: Section['type']; sectionButtonType: SectionButtonType; children: NavNode[] }
+export type NavNode = { id: number; parentId?: number | null; labelEn: string; labelBn: string; slug: string; isLandingPage?: boolean; renderedComponents: Section['type'][]; menuType: MenuType; visible: boolean; sectionCount: number; sectionContentType: Section['type']; sectionButtonType: SectionButtonType; typography?: CmsTypography; children: NavNode[] }
 export type NavGroup = { id: number; key: string; labelEn: string; labelBn: string; landingId: number; items: NavNode[] }
-export type MenuInput = { labelEn: string; labelBn: string; slug: string; renderedComponents: Section['type'][]; menuType: MenuType; sectionCount: number; sectionContentType: Section['type']; sectionButtonType: SectionButtonType }
+export type MenuInput = { labelEn: string; labelBn: string; slug: string; renderedComponents: Section['type'][]; menuType: MenuType; sectionCount: number; sectionContentType: Section['type']; sectionButtonType: SectionButtonType; typography?: CmsTypography }
 export type MoveNode = { id: number; children?: MoveNode[] }
 
 export const getNavigation = async () => (await adminRequest<{ groups: NavGroup[] }>('/api/admin/navigation', {}, 'Unable to load navigation.')).groups

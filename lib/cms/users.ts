@@ -1,12 +1,13 @@
 import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto'
 import { sql } from 'drizzle-orm'
-import { db, withDbRetry } from '@/lib/db'
+import { db, isTransientDatabaseError, withDbRetry } from '@/lib/db'
 import { configuredAdminUsers } from '@/lib/adminUsers'
 import type { AdminRole } from '@/lib/adminAuth'
 import { ensureCmsSchema } from './ensureSchema'
+import { readDriveTableSnapshot } from '@/lib/google/drive-snapshot'
 
-type Row = Record<string, any>
-export type CmsUser = { id: number | null; email: string; role: AdminRole; status: 'active' | 'disabled'; source: 'environment' | 'database'; lastLoginAt?: string | null; createdAt?: string | null }
+type Row = Record<string, unknown>
+export type CmsUser = { id: number | null; email: string; role: AdminRole; status: 'active' | 'disabled'; source: 'environment' | 'database' | 'google-drive-snapshot'; lastLoginAt?: string | null; createdAt?: string | null }
 export class UserError extends Error { constructor(message: string, public status = 400) { super(message) } }
 export const ROLES: AdminRole[] = ['admin', 'editor', 'analyst']
 const database = () => { if (!db) throw new UserError('DATABASE_URL is not configured', 503); return db }
@@ -27,15 +28,39 @@ function checkPassword(password: string) {
   if (password.length < 10 || !/[A-Za-z]/.test(password) || !/\d/.test(password)) throw new UserError('Password must be at least 10 characters and include a letter and a number.')
 }
 const iso = (v: unknown) => (v ? (v instanceof Date ? v.toISOString() : String(v)) : null)
-const toUser = (r: Row): CmsUser => ({ id: Number(r.id), email: r.email, role: r.role, status: r.status, source: 'database', lastLoginAt: iso(r.last_login_at), createdAt: iso(r.created_at) })
+const textField = (row: Row, key: string) => typeof row[key] === 'string' ? row[key] as string : ''
+const toUser = (row: Row, source: 'database' | 'google-drive-snapshot' = 'database'): CmsUser => {
+  const role = textField(row, 'role')
+  const status = textField(row, 'status')
+  const numericId = Number(row.id)
+  return {
+    id: Number.isSafeInteger(numericId) && numericId > 0 ? numericId : null,
+    email: textField(row, 'email').toLowerCase(),
+    role: ROLES.includes(role as AdminRole) ? role as AdminRole : 'editor',
+    status: status === 'disabled' ? 'disabled' : 'active',
+    source,
+    lastLoginAt: iso(row.last_login_at),
+    createdAt: iso(row.created_at),
+  }
+}
 
 export async function listUsers(): Promise<CmsUser[]> {
   let env: CmsUser[] = []
   try { env = configuredAdminUsers().map((u) => ({ id: null, email: u.email.toLowerCase(), role: u.role || 'admin', status: 'active', source: 'environment' })) } catch { /* invalid env config is reported at login */ }
-  if (!db) return env
-  await ensureCmsSchema()
-  const rows = (await run(sql`SELECT * FROM cms_users ORDER BY created_at DESC`)).rows as Row[]
-  return [...env, ...rows.map(toUser)]
+  if (!db) {
+    const snapshot = await readDriveTableSnapshot('cms_users')
+    return [...env, ...(snapshot ?? []).map((row) => toUser(row as Row, 'google-drive-snapshot')).sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))]
+  }
+  try {
+    await ensureCmsSchema()
+    const rows = (await run(sql`SELECT * FROM cms_users ORDER BY created_at DESC`)).rows as Row[]
+    return [...env, ...rows.map((row) => toUser(row))]
+  } catch (error) {
+    if (!isTransientDatabaseError(error)) throw error
+    const snapshot = await readDriveTableSnapshot('cms_users')
+    if (!snapshot) throw error
+    return [...env, ...snapshot.map((row) => toUser(row as Row, 'google-drive-snapshot')).sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))]
+  }
 }
 
 export async function createUser(input: { email: string; password: string; role: AdminRole }, actor: string) {
@@ -52,11 +77,15 @@ export async function updateUser(id: number, patch: { role?: AdminRole; status?:
   await ensureCmsSchema()
   const current = (await run(sql`SELECT * FROM cms_users WHERE id = ${id} LIMIT 1`)).rows[0] as Row | undefined
   if (!current) throw new UserError('User not found.', 404)
-  if (current.email === actorEmail.toLowerCase() && (patch.status === 'disabled' || (patch.role && patch.role !== 'admin'))) throw new UserError('You cannot disable or demote your own account.')
+  const currentEmail = textField(current, 'email')
+  const currentRole = textField(current, 'role')
+  const currentStatus = textField(current, 'status') === 'disabled' ? 'disabled' : 'active'
+  const currentPasswordHash = textField(current, 'password_hash')
+  if (currentEmail === actorEmail.toLowerCase() && (patch.status === 'disabled' || (patch.role && patch.role !== 'admin'))) throw new UserError('You cannot disable or demote your own account.')
   if (patch.role && !ROLES.includes(patch.role)) throw new UserError('Unsupported role.')
   if (patch.password) checkPassword(patch.password)
-  const r = await run(sql`UPDATE cms_users SET role = ${patch.role ?? current.role}, status = ${patch.status ?? current.status},
-    password_hash = ${patch.password ? hashPassword(patch.password) : current.password_hash},
+  const r = await run(sql`UPDATE cms_users SET role = ${patch.role ?? currentRole}, status = ${patch.status ?? currentStatus},
+    password_hash = ${patch.password ? hashPassword(patch.password) : currentPasswordHash},
     session_version = COALESCE(session_version, 1) + CASE WHEN ${Boolean(patch.password || patch.role || patch.status)} THEN 1 ELSE 0 END,
     updated_at = now() WHERE id = ${id} RETURNING *`)
   return toUser(r.rows[0] as Row)
@@ -75,7 +104,8 @@ export async function authenticateDatabaseUser(email: string, password: string):
   if (!db) return null
   await ensureCmsSchema()
   const row = (await run(sql`SELECT * FROM cms_users WHERE email = ${email.toLowerCase()} LIMIT 1`)).rows[0] as Row | undefined
-  if (!row || row.status !== 'active' || !verifyPassword(password, row.password_hash)) return null
+  const role = textField(row ?? {}, 'role')
+  if (!row || textField(row, 'status') !== 'active' || !verifyPassword(password, textField(row, 'password_hash'))) return null
   await run(sql`UPDATE cms_users SET last_login_at = now() WHERE id = ${Number(row.id)}`)
-  return { email: row.email, role: row.role, sessionVersion: Number(row.session_version ?? 1) }
+  return { email: textField(row, 'email'), role: ROLES.includes(role as AdminRole) ? role as AdminRole : 'editor', sessionVersion: Number(row.session_version ?? 1) }
 }

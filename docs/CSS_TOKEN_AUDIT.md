@@ -1,25 +1,20 @@
-# CSS Token Audit and Corrections
+# CSS Token and Single-Stylesheet Audit
 
-## Why this change was made
+## Stylesheet contract
 
-The current project has a shared semantic theme (`--sf-*`) and a separate admin palette. Some CSS referenced convenience aliases (`--sf-display`, `--sf-body`, `--sf-radius`, `--sf-container`) that were present in `site-components.css` but not in the core `globals.css` token contract. A shared base layer now declares safe aliases, allowing Resources, Management Staff, location map and legacy sections to retain design tokens even if styles are refactored or loaded differently.
+`app/globals.css` is the only stylesheet in the project. Public, admin, page-specific and former CSS-Module rules are consolidated there in their original cascade order. `tailwindcss` is imported exactly once at the top of this file. Component CSS-Module selectors were migrated to stable, namespaced global class names.
 
-## Changes applied
+## Theme contract
 
-- Added core aliases for display/body font, radius, container width, strong border, and theme-radius fallback to `app/globals.css`.
-- Added local default preview variables to the public theme preview and scoped admin preview defaults to the admin palette, while preserving per-preview overrides.
-- Changed public icon/link foreground declarations from `--sf-primary` to the semantic `--sf-link` token. In dark mode `--sf-primary` is the deep navy brand fill, so using it as small text/icon foreground on dark cards has weak contrast; `--sf-link` resolves to a contrast-friendly brand tint in dark mode and the primary color in light mode.
-- Added regression contracts to `tests/functional-contract.test.ts` for the alias tokens, admin preview defaults and theme-aware link/icon usage.
+Public UI styling is derived from semantic `--sf-*` design tokens. The authenticated admin uses the local shadcn/ui token bridge in `app/globals.css`, scoped by `.admin-theme-root`; no separate `--admin-*` token namespace or admin stylesheet is used. Feedback states use semantic success, warning, danger and info token families. Admin JSX should compose `components/ui` primitives and Tailwind utilities.
 
-## Files touched
+## JSX policy
 
-- `app/globals.css`
-- `app/site-components.css`
-- `app/site-polish.css`
-- `app/css_extra/*.module.css`
-- `app/admin/Admin.css`
-- `tests/functional-contract.test.ts`
+- Do not add Tailwind utility classes for component presentation to JSX. Use semantic classes defined in `app/globals.css`.
+- Do not add fixed inline colour, background, border, typography, spacing or layout declarations.
+- Keep runtime data values (map positions, collection columns, animation delay, selected theme values) as custom properties only.
+- Keep `role="alert"`, `role="status"`, and Sonner feedback accessible and themed through semantic feedback tokens.
 
-## Verification scope
+## Verification
 
-Static checks should confirm the expected aliases and semantic usage in source. Full visual verification still requires running the app in a browser in both light and dark modes, at desktop/tablet/mobile widths. Also run `npm run test:functional`, `npm run lint` and `npm run build` after installing dependencies.
+Run `npm run lint`, `npx tsc --noEmit`, `npm run test:functional`, and `npm run build`. Static source checks verify that only `app/globals.css` remains and no component imports secondary stylesheets or CSS Modules. Visual review is still required in both appearance modes and at desktop, tablet and mobile widths.

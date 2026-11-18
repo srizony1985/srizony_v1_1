@@ -1,15 +1,13 @@
 'use client'
 
-import s from '@/app/css_extra/CountryCodeSelect.module.css'
-
 import {
   useEffect,
   useId,
   useRef,
   useState,
-  type CSSProperties,
-  type KeyboardEvent,
+    type KeyboardEvent,
 } from 'react'
+import type { CSSVariableProperties } from '@/types/css'
 import { createPortal } from 'react-dom'
 import { Check, ChevronDown } from 'lucide-react'
 
@@ -176,17 +174,17 @@ export default function CountryCodeSelect({ options, value, onChange, ariaLabel,
     }
   }
 
-  const panelStyle: CSSProperties = {
-    left: pos.left,
-    width: pos.width,
-    top: pos.top,
-    bottom: pos.bottom,
+  const panelStyle: CSSVariableProperties = {
+    '--sf-country-left': `${pos.left}px`,
+    '--sf-country-width': `${pos.width}px`,
+    ...(pos.top !== undefined ? { '--sf-country-top': `${pos.top}px` } : {}),
+    ...(pos.bottom !== undefined ? { '--sf-country-bottom': `${pos.bottom}px` } : {}),
   }
 
   const panel = (
     <div
       ref={panelRef}
-      className={`${s.panel} ${pos.flip ? s.panelTop : ''} ${open ? s.panelOpen : ''}`}
+      className={`${"sf-country-panel"} ${pos.flip ? "sf-country-panel-top" : ''} ${open ? "sf-country-panel-open" : ''}`}
       style={panelStyle}
       aria-hidden={!open}
     >
@@ -196,8 +194,8 @@ export default function CountryCodeSelect({ options, value, onChange, ariaLabel,
         id={listId}
         role="listbox"
         aria-label={ariaLabel}
-        className={s.list}
-        style={{ maxHeight: pos.maxH }}
+        className={"sf-country-list"}
+        style={{ '--sf-country-max-height': `${pos.maxH}px` } as CSSVariableProperties}
         tabIndex={-1}
       >
         {options.map((o, i) => {
@@ -208,7 +206,7 @@ export default function CountryCodeSelect({ options, value, onChange, ariaLabel,
               role="option"
               aria-selected={isSelected}
               title={o.label}
-              className={`${s.option} ${i === active ? s.optionActive : ''} ${isSelected ? s.optionSelected : ''}`}
+              className={`${"sf-country-option"} ${i === active ? "sf-country-option-active" : ''} ${isSelected ? "sf-country-option-selected" : ''}`}
               onPointerMove={(e) => {
                 // hover highlight is for mouse/pen only; on touch a drag means "scroll"
                 if (e.pointerType === 'touch') return
@@ -219,10 +217,10 @@ export default function CountryCodeSelect({ options, value, onChange, ariaLabel,
               }}
               onClick={() => choose(i)}
             >
-              <span className={s.iso}>{o.country}</span>
-              <span className={s.name}>{o.label.replace(/\s*\(.*\)$/, '')}</span>
-              <span className={s.dial}>{o.code}</span>
-              {isSelected && <Check size={14} className={s.check} />}
+              <span className={"sf-country-iso"}>{o.country}</span>
+              <span className={"sf-country-name"}>{o.label.replace(/\s*\(.*\)$/, '')}</span>
+              <span className={"sf-country-dial"}>{o.code}</span>
+              {isSelected && <Check size={14} className={"sf-country-check"} />}
             </li>
           )
         })}
@@ -231,11 +229,11 @@ export default function CountryCodeSelect({ options, value, onChange, ariaLabel,
   )
 
   return (
-    <div className={s.root}>
+    <div className={"sf-country-root"}>
       <button
         ref={triggerRef}
         type="button"
-        className={`${s.trigger} ${invalid ? s.invalid : ''}`}
+        className={`${"sf-country-trigger"} ${invalid ? "sf-country-invalid" : ''}`}
         aria-label={ariaLabel}
         aria-haspopup="listbox"
         aria-expanded={open}
@@ -243,8 +241,8 @@ export default function CountryCodeSelect({ options, value, onChange, ariaLabel,
         onClick={() => (open ? setOpen(false) : openList())}
         onKeyDown={onKeyDown}
       >
-        <span className={s.value}>({selected.country}) {selected.code}</span>
-        <ChevronDown size={16} className={`${s.chevron} ${open ? s.chevronOpen : ''}`} />
+        <span className={"sf-country-value"}>({selected.country}) {selected.code}</span>
+        <ChevronDown size={16} className={`${"sf-country-chevron"} ${open ? "sf-country-chevron-open" : ''}`} />
       </button>
 
       {mounted ? createPortal(panel, document.body) : null}
