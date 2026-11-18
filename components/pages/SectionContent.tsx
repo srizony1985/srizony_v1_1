@@ -206,8 +206,8 @@ export default function SectionContent({ section, page }: { section: Section; pa
       return <section className="sf-block"><SectionHeading heading={section.heading} lead={section.body} lang={lang} /><DonationForm /></section>
 
     case 'contentFeed': {
-      const feedComponent = section.components?.[0] ?? 'project'
-      const fixedTwoColumnFeed = feedComponent === 'notice' || feedComponent === 'job'
+      const feedComponent = section.components?.[0] ?? ''
+      const fixedTwoColumnFeed = feedComponent
       const desktopColumns = fixedTwoColumnFeed ? 2 : section.columns ?? 3
       const tabletColumns = fixedTwoColumnFeed ? 2 : Math.min(section.columns ?? 3, 2)
       const feedLayoutClass = fixedTwoColumnFeed ? '' : collection ? `sf-grid--cms-${collection.layout}` : ''

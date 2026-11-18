@@ -65,7 +65,7 @@ const GROUPS: readonly AdminNavGroup[] = [
 
 function routeParts(href: string) {
   try {
-    const url = new URL(href, 'https://srizony.local')
+    const url = new URL(href, 'https://srizonyfoundation.org.bd')
     return { pathname: url.pathname, params: url.searchParams }
   } catch {
     return { pathname: href, params: new URLSearchParams() }

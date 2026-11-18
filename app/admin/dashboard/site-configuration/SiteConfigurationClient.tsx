@@ -41,7 +41,7 @@ function Section({ icon, title, description, children }: { icon: ReactNode; titl
   return (
     <section className="grid min-w-0 gap-4">
       <div className="grid gap-1 border-b border-border pb-3">
-        <h3 className="m-0 flex items-center gap-2 text-sm font-semibold text-foreground">{icon}{title}</h3>
+        <h3 className="m-0 flex items-center gap-2 text-sm font-semibold text-primary">{icon}{title}</h3>
         <p className="m-0 text-xs text-muted-foreground">{description}</p>
       </div>
       {children}

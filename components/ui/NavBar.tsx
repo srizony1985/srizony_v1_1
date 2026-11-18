@@ -15,6 +15,7 @@ import type { NavItem } from '@/types/entityType'
 import type { PortfolioText } from '@/types/portfolio'
 import { cn } from '@/lib/utils'
 import { toCmsTypographyStyle } from '@/lib/cms/typography'
+import { Button } from './button'
 
 /** Shared responsive navigation for desktop, tablet, and mobile layouts. */
 
@@ -239,7 +240,7 @@ export default function NavBar() {
                     aria-expanded={expanded}
                     onClick={() => setOpenGroup((current) => current === key ? null : key)}
                   >
-                    <span className="sf-nav-label" style={toCmsTypographyStyle(item.typography) as CSSProperties}>{item.label[lang]}</span>
+                    <span className="sf-nav" style={toCmsTypographyStyle(item.typography) as CSSProperties}>{item.label[lang]}</span>
                     <ChevronDown size={14} className={expanded ? 'is-rot' : ''} aria-hidden="true" />
                   </button>
                   {/* Keep the panel mounted so hover and explicit React open state can animate it. */}
@@ -256,15 +257,17 @@ export default function NavBar() {
 
           <div className="sf-navbar-cta">
             {/* Language toggle: flag only */}
-            <button
+            <Button
               type="button"
-              className="sf-language-toggle sf-ctrl"
+              size="icon"
+              variant={lang === "en" ? "default" : "secondary"}
+              className="font-extrabold border-2 shadow-lg"
               onClick={() => setLang(lang === 'en' ? 'bn' : 'en')}
               aria-label={lang === 'en' ? 'বাংলায় দেখুন' : 'Switch to English'}
               title={lang === 'en' ? 'বাংলা' : 'English'}
             >
               { lang === 'en' ? "BN" : "EN" }
-            </button>
+            </Button>
 
             {/* Minimal, accessible dark-mode switch: icon only, no visible border or label. */}
             <button

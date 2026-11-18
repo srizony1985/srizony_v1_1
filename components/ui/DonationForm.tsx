@@ -31,6 +31,7 @@ import LogoLoader from '@/components/ui/LogoLoader'
 import CountryCodeSelect, { type CountryCode } from '@/components/ui/CountryCodeSelect'
 import { PaymentMethod } from '@/types/entityType'
 import { initiateDonation } from '@/lib/api/public'
+import { Button } from './button'
 
 const amounts = ['500', '1000', '2500', '5000']
 const MIN_AMOUNT = 10
@@ -412,7 +413,7 @@ export default function DonationForm() {
         <div className={"sf-donation-result-icon"} style={{ '--sf-feedback-tone': cfg.tone } as CSSProperties}>
           <Icon size={42} />
         </div>
-        <h3>{cfg.title}</h3>
+        <p>{cfg.title}</p>
         <p>{cfg.text}</p>
         <button type="button" className={"sf-donation-result-btn"} onClick={resetStatus}>
           <RotateCcw size={16} />
@@ -472,8 +473,9 @@ export default function DonationForm() {
 
             <div className={"sf-donation-amounts"} role="group" aria-labelledby="don-amount">
               {amounts.map((x) => (
-                <button
+                <Button
                   type="button"
+                  variant="outline"
                   key={x}
                   className={`${"sf-donation-chip"} ${amount === x ? "sf-donation-chip-on" : ''}`}
                   aria-pressed={amount === x}
@@ -484,10 +486,10 @@ export default function DonationForm() {
                 >
                   <span className={"sf-donation-cur"}>৳</span>
                   <span>{fmt(group(x))}</span>
-                </button>
+                </Button>
               ))}
 
-              <button
+              <Button
                 type="button"
                 className={`${"sf-donation-chip"} ${amount === 'custom' ? "sf-donation-chip-on" : ''}`}
                 aria-pressed={amount === 'custom'}
@@ -495,7 +497,7 @@ export default function DonationForm() {
               >
                 <span aria-hidden="true">+</span>
                 <span>{ui[lang].custom}</span>
-              </button>
+              </Button>
             </div>
 
             <div

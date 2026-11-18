@@ -52,7 +52,7 @@ function Section({ icon, title, description, children }: { icon?: ReactNode; tit
   return (
     <section className="grid min-w-0 gap-4">
       <div className="grid gap-1 border-b border-border pb-3">
-        <h3 className="m-0 flex items-center gap-2 text-sm font-semibold text-foreground">{icon}{title}</h3>
+        <h3 className="m-0 flex items-center gap-2 text-sm font-semibold text-primary">{icon}{title}</h3>
         <p className="m-0 text-xs text-muted-foreground">{description}</p>
       </div>
       {children}
@@ -66,7 +66,7 @@ function Callout({ tone, icon, children }: { tone: 'warning' | 'error' | 'succes
       role={tone === 'error' ? 'alert' : 'status'}
       className={cn(
         'flex items-start gap-2 rounded-lg border px-3 py-2.5 text-sm',
-        tone === 'warning' && 'border-warning/30 bg-warning/10 text-foreground',
+        tone === 'warning' && 'border-warning/30 bg-warning/10 text-primary',
         tone === 'error' && 'border-destructive/30 bg-destructive/10 text-destructive',
         tone === 'success' && 'border-success/30 bg-success/10 text-success',
       )}
@@ -321,7 +321,7 @@ export default function CmsPipelinePage() {
                     <Link
                       key={link.href}
                       href={link.href}
-                      className="flex min-h-11 items-center rounded-lg border border-border bg-card px-3 py-2 text-sm font-semibold text-foreground no-underline hover:border-primary hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      className="flex min-h-11 items-center rounded-lg border border-border bg-card px-3 py-2 text-sm font-semibold text-primary no-underline hover:border-primary hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
                       {link.label}
                     </Link>

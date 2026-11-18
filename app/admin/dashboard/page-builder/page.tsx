@@ -1055,7 +1055,7 @@ export default function PageBuilderPage() {
                 <CardDescription>Manage the page title, search snippets, social preview, and crawler directives for this route.</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="cms-form-grid [display:grid] [grid-template-columns:repeat(2,minmax(0,1fr))] [gap:10px] max-[760px]:[grid-template-columns:1fr] [gap:8px] max-[720px]:[grid-template-columns:1fr] [grid-template-columns:repeat(2,_minmax(0,_1fr))] [gap:14px] max-[700px]:[grid-template-columns:1fr]">
+                <div className="cms-form-grid [display:grid] [grid-template-columns:repeat(2,minmax(0,1fr))] [gap:10px] max-[760px]:[grid-template-columns:1fr] [gap:8px] max-[720px]:[grid-template-columns:1fr] [gap:14px] max-[700px]:[grid-template-columns:1fr]">
                   <div className="cms-span-2 [grid-column:span_2] max-[700px]:[grid-column:auto]"><BilingualInputs label="Page title" value={draft.title} onChange={(title) => updateTop('title', title)} /></div>
                   <div className="cms-span-2 [grid-column:span_2] max-[700px]:[grid-column:auto]"><BilingualInputs label="Page subtitle / metadata summary" value={draft.subtitle ?? blankBi()} onChange={(subtitle) => updateTop('subtitle', subtitle)} multiline /></div>
                   <div className="cms-span-2 [grid-column:span_2] max-[700px]:[grid-column:auto]"><MediaField label={slug === '/' ? 'Social preview image (Open Graph)' : 'Hero / social preview image'} value={draft.heroImage ?? ''} onChange={(value) => updateTop('heroImage', value || undefined)} alt={draft.title.en} helper={slug === '/' ? 'Sets the homepage link-preview image. Edit the visible homepage carousel images in the Landing Page Hero section below.' : 'Upload an approved image or paste an existing HTTPS / CMS media URL.'} /></div>
@@ -1113,7 +1113,7 @@ export default function PageBuilderPage() {
                 <CardDescription>Control the page layout, reusable template, publication state, and other page-level display settings.</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="cms-form-grid [display:grid] [grid-template-columns:repeat(2,minmax(0,1fr))] [gap:10px] max-[760px]:[grid-template-columns:1fr] [gap:8px] max-[720px]:[grid-template-columns:1fr] [grid-template-columns:repeat(2,_minmax(0,_1fr))] [gap:14px] max-[700px]:[grid-template-columns:1fr]">
+                <div className="cms-form-grid [display:grid] grid-cols-2 max-[760px]:[grid-template-columns:1fr] gap-2 max-[720px]:[grid-template-columns:1fr] gap-3.5 max-[700px]:[grid-template-columns:1fr]">
                   <label className={PAGE_FIELD_CLASS}>
                     <span>Page layout</span>
                     <NativeSelect value={draft.layout ?? 'standard'} onChange={(e) => updateTop('layout', e.target.value as PageData['layout'])}>
@@ -1123,7 +1123,7 @@ export default function PageBuilderPage() {
                   <label className={PAGE_FIELD_CLASS}>
                     <span>Page template</span>
                     <NativeSelect value={draft.pageView ?? 'default'} onChange={(e) => updateTop('pageView', e.target.value as NonNullable<PageData['pageView']>)}>
-                      <option value="default">Standard CMS sections</option><option value="staff-directory">Staff directory</option><option value="resource-library">Resource library</option>
+                      <option value="default">Standard sections</option><option value="staff-directory">Staff directory</option><option value="resource-library">Resource library</option>
                     </NativeSelect>
                     <small className="admin-small-note">Selects a reusable component composition; the page URL does not determine its template.</small>
                   </label>
@@ -1256,7 +1256,33 @@ export default function PageBuilderPage() {
                   }}
                 />
               </div>
-            )) : <div className="admin-empty-state p-5.5 [color:var(--muted-foreground)] [text-align:center] [font-size:0.75rem] [min-height:110px] [display:grid] [place-items:center] [border:1px_dashed_var(--border)] [border-radius:var(--radius,_var(--radius))] [background:var(--background)]">This page has no sections. Add a section to build the page.</div>}
+            )) : 
+            <SectionToolbar
+              actions={
+                <div className="flex flex-col w-full">
+                  <div className="grid grid-cols-4 gap-4">
+                    <Select height="36px" optionDisplay="dropdown" aria-label="Page section type" value={newSectionType} onChange={(e) => setNewSectionType(e.target.value as Section['type'])}>
+                      {SECTION_TYPES.map((type) => 
+                      <option key={type} value={type}>
+                        {type}
+                      </option>)}
+                    </Select>
+                    <Button variant="outline" onClick={addPageSection}>
+                      <Plus size={14} /> Add section
+                    </Button>
+                    <Select height="36px" optionDisplay="dropdown" aria-label="Reusable landing composition" value={newLandingComponent} onChange={(e) => setNewLandingComponent(e.target.value as LandingComponentKey)}>
+                      {LANDING_COMPONENT_OPTIONS.map((option) => 
+                      <option key={option.key} value={option.key}>
+                        {option.label}
+                      </option>)}
+                    </Select>
+                    <Button variant="outline" onClick={() => addLandingSection(newLandingComponent)}>
+                      <Plus size={14} /> Add landing UI
+                    </Button>
+                  </div>
+                </div>
+              }
+            />}
           </div>
           </section>
           {saveError && <div className="cms-save-error [display:grid] [gap:4px] [margin-top:14px] [padding:12px_14px] [border:1px_solid_color-mix(in_srgb,var(--destructive)_28%,var(--border))] [border-left:4px_solid_var(--destructive)] [border-radius:var(--radius,_var(--radius))] [background:color-mix(in_srgb,var(--destructive)_6%,var(--card))] [color:var(--foreground)] [&_strong]:[font-size:0.875rem] [&_span]:[font-size:0.875rem] [&_span]:[overflow-wrap:anywhere] [&_small]:[font-size:0.75rem] [&_small]:[color:var(--muted-foreground)]" role="alert"><strong>Changes were not saved.</strong><span>{saveError}</span><small>Your edits are still in this form. You can correct the issue and retry without losing the draft.</small></div>}

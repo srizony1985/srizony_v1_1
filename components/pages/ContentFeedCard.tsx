@@ -120,7 +120,7 @@ export default function ContentFeedCard({ item, lang, index = 0 }: Props) {
             <div className="sf-job-feed-meta">
               {item.deadline ? <span className="sf-job-feed-deadline"><CalendarDays size={14} aria-hidden="true" /> <span>{copy(lang, 'Apply by', 'আবেদনের শেষ তারিখ')} <strong>{formatDate(item.deadline, lang)}</strong></span></span> : <span className="sf-job-feed-open"><span aria-hidden="true" />{copy(lang, 'Applications open', 'আবেদন চলছে')}</span>}
             </div>
-            <span className="sf-feed-card-cta sf-feed-card-cta--button sf-job-feed-action">{copy(lang, 'View position', 'পদের বিবরণ')} <ArrowRight size={14} aria-hidden="true" /></span>
+            <span className="sf-feed-link flex items-center font-extrabold">{copy(lang, 'View position', 'পদের বিবরণ')} <ArrowRight size={14} aria-hidden="true" /></span>
           </CardFooter>
         </div>
       </Card>

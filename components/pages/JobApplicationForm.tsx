@@ -2,12 +2,12 @@
 
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
-import { AlertCircle, CheckCircle2, FileText, LoaderCircle, UploadCloud } from 'lucide-react'
+import { AlertCircle, CheckCircle2, LoaderCircle, UploadCloud } from 'lucide-react'
 import { useSite } from '@/components/containers/SiteProvider'
 import { applyForJob, getPublicJobApplicationForm, uploadJobResume } from '@/lib/api/public'
 import { messageOf } from '@/lib/api/http'
-import { MAX_RESUME_BYTES } from '@/lib/jobApplicationValidation'
 import { DEFAULT_JOB_APPLICATION_FORM, type JobApplicationCustomField, type JobApplicationFormConfig } from '@/lib/jobApplicationForm'
+import { fieldDomId, validateField, validateForm, validateResume } from '@/lib/jobFieldValidation'
 
 type FormValues = Record<string, string | boolean>
 type SavedDraft = { values?: FormValues; customFieldValues?: FormValues; name?: string; email?: string; phone?: string; coverLetter?: string }
@@ -39,6 +39,7 @@ export default function JobApplicationForm({ jobSlug, jobRouteParent }: { jobSlu
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
+  const [touched, setTouched] = useState<Record<string, boolean>>({})
   const [successRef, setSuccessRef] = useState('')
   const [successEmailDelivery, setSuccessEmailDelivery] = useState<'sent' | 'queued' | 'already-sent' | 'not-configured' | 'queue-error'>('queued')
   const [applicantEmail, setApplicantEmail] = useState('')
@@ -84,6 +85,9 @@ export default function JobApplicationForm({ jobSlug, jobRouteParent }: { jobSlu
   function updateValue(field: JobApplicationCustomField, value: string | boolean) {
     setValues((current) => ({ ...current, [field.id]: value }))
     setFieldErrors((current) => {
+      // Re-validate live once the user has already visited the field; otherwise just clear stale errors.
+      const message = touched[field.id] || current[field.id] ? validateField(field, value, bn) : null
+      if (message) return { ...current, [field.id]: message }
       if (!current[field.id]) return current
       const next = { ...current }
       delete next[field.id]
@@ -91,25 +95,40 @@ export default function JobApplicationForm({ jobSlug, jobRouteParent }: { jobSlu
     })
   }
 
+  function blurField(field: JobApplicationCustomField) {
+    setTouched((current) => ({ ...current, [field.id]: true }))
+    const message = validateField(field, values[field.id], bn)
+    setFieldErrors((current) => {
+      if (!message) {
+        if (!current[field.id]) return current
+        const next = { ...current }
+        delete next[field.id]
+        return next
+      }
+      return { ...current, [field.id]: message }
+    })
+  }
+
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setError('')
-    setFieldErrors({})
     setSuccessRef('')
-    if (resumeField?.required && !file) {
-      setFieldErrors({ [resumeField.id]: bn ? 'জীবনবৃত্তান্ত সংযুক্ত করুন।' : `${resumeField.labelEn} is required.` })
+
+    const errors = validateForm(formConfig.fields, values, file, bn)
+    if (Object.keys(errors).length) {
+      setFieldErrors(errors)
+      setTouched(Object.fromEntries(formConfig.fields.map((f) => [f.id, true])))
+      const first = formConfig.fields.find((f) => errors[f.id])
+      if (first) {
+        const el = document.getElementById(first.type === 'resume' ? `job-resume-${jobSlug}` : fieldDomId(jobSlug, first.id))
+        el?.focus()
+      }
       return
     }
+    setFieldErrors({})
+
     if (file && (!resumeField || resumeField.type !== 'resume')) {
       setError(bn ? 'এই ফর্মে জীবনবৃত্তান্ত আপলোডের ফিল্ড নেই।' : 'This form does not currently accept a resume upload.')
-      return
-    }
-    if (file && (file.type !== 'application/pdf' || !file.name.toLowerCase().endsWith('.pdf'))) {
-      setError(bn ? 'শুধু PDF ফাইল গ্রহণ করা হয়।' : 'Only PDF files are accepted.')
-      return
-    }
-    if (file && (file.size <= 0 || file.size > MAX_RESUME_BYTES)) {
-      setError(bn ? 'PDF ফাইলের আকার ৪ MB বা কম হতে হবে।' : 'The PDF must be 4 MB or smaller.')
       return
     }
 
@@ -133,13 +152,14 @@ export default function JobApplicationForm({ jobSlug, jobRouteParent }: { jobSlu
           .filter((field) => field.type !== 'resume')
           .map((field) => {
             const raw = values[field.id]
-            if (field.type === 'number') return [field.id, raw === '' || raw === undefined ? '' : Number(raw)] as [string, string | number | boolean]
-            return [field.id, raw ?? (field.type === 'checkbox' ? false : '')] as [string, string | number | boolean]
+            const clean = typeof raw === 'string' ? raw.trim() : raw
+            if (field.type === 'number') return [field.id, clean === '' || clean === undefined ? '' : Number(clean)] as [string, string | number | boolean]
+            return [field.id, clean ?? (field.type === 'checkbox' ? false : '')] as [string, string | number | boolean]
           })
           .filter(([, value]) => value !== '')
         const customFields = Object.fromEntries(customFieldEntries)
         const emailField = formConfig.fields.find((field) => field.systemField === 'email')
-        setApplicantEmail(emailField ? String(values[emailField.id] || '') : '')
+        setApplicantEmail(emailField ? String(values[emailField.id] || '').trim() : '')
         return applyForJob({
           jobSlug,
           jobRouteParent,
@@ -159,6 +179,7 @@ export default function JobApplicationForm({ jobSlug, jobRouteParent }: { jobSlu
         setSuccessEmailDelivery(response.data.emailDelivery || 'queued')
         try { sessionStorage.removeItem(draftKey) } catch { /* Storage is optional. */ }
         setValues({})
+        setTouched({})
         setFile(null)
         setResumeToken('')
         setHoneypot('')
@@ -182,7 +203,7 @@ export default function JobApplicationForm({ jobSlug, jobRouteParent }: { jobSlu
       {description && <p className="sf-body">{description}</p>}
     </div>
 
-    {!successRef && <p className="sf-job-draft-status" role="status">{bn ? 'আপনার খসড়া এই সেশনে স্বয়ংক্রিয়ভাবে সংরক্ষিত হচ্ছে।' : 'Your draft is automatically saved in this browser session.'}</p>}
+    {!successRef && <p className="sf-job-draft-status" role="status">{bn ? 'আপনার খসড়া এই সেশনে স্বয়ংক্রিয়ভাবে সংরক্ষিত হচ্ছে।' : 'Your draft is automatically saved in this browser session.'}</p>}
     {successRef ? <div className="sf-job-application-success" role="status" aria-live="polite">
       <CheckCircle2 size={24} aria-hidden="true" />
       <div><h3>{bn ? 'আপনার আবেদন সফলভাবে জমা হয়েছে' : 'Application successfully submitted'}</h3>
@@ -193,7 +214,7 @@ export default function JobApplicationForm({ jobSlug, jobRouteParent }: { jobSlu
         <p>{bn ? 'রেফারেন্স নম্বর:' : 'Application reference:'} <strong>{successRef}</strong></p>
       </div>
       <button className="sf-btn sf-btn--secondary" type="button" onClick={() => { setSuccessRef(''); setApplicantEmail('') }}>{bn ? 'আরেকটি আবেদন' : 'Submit another application'}</button>
-    </div> : <form className="sf-job-application-form" onSubmit={(event) => void submit(event)}>
+    </div> : <form className="sf-job-application-form" noValidate onSubmit={(event) => void submit(event)}>
       {formConfig.fields.map((field) => {
         const value = values[field.id]
         const label = bn && field.labelBn ? field.labelBn : field.labelEn
@@ -201,28 +222,72 @@ export default function JobApplicationForm({ jobSlug, jobRouteParent }: { jobSlu
         const selectPlaceholder = bn && field.selectPlaceholderBn ? field.selectPlaceholderBn : field.selectPlaceholderEn
         const wide = field.type === 'textarea' || field.type === 'resume'
         const fieldError = fieldErrors[field.id]
+
         if (field.type === 'resume') {
+          const resumeInputId = `job-resume-${jobSlug}`
           return <div key={field.id} className={`sf-job-field sf-job-field--wide ${fieldError ? 'has-error' : ''}`}>
             <span className="sf-job-label">{label} {field.required && <b>*</b>}</span>
-            <label className="sf-job-file" htmlFor={`job-resume-${jobSlug}`}>
+            <label className="sf-job-file" htmlFor={resumeInputId}>
               <UploadCloud size={21} aria-hidden="true" />
               <span><strong>{file ? file.name : (placeholder || label)}</strong>{file && <small>{(file.size / 1024).toFixed(0)} KB</small>}</span>
-              <input id={`job-resume-${jobSlug}`} type="file" accept="application/pdf,.pdf" required={field.required} onChange={(event) => { setError(''); setFieldErrors((current) => { const next = { ...current }; delete next[field.id]; return next }); setFile(event.target.files?.[0] || null); setResumeToken('') }} />
+              <input
+                id={resumeInputId}
+                type="file"
+                accept="application/pdf,.pdf"
+                aria-invalid={Boolean(fieldError)}
+                aria-required={field.required}
+                aria-describedby={fieldError ? `${resumeInputId}-error` : undefined}
+                onChange={(event) => {
+                  const next = event.target.files?.[0] || null
+                  const message = validateResume(field, next, bn)
+                  setError('')
+                  setFile(next)
+                  setResumeToken('')
+                  setFieldErrors((current) => {
+                    const copy = { ...current }
+                    if (message) copy[field.id] = message
+                    else delete copy[field.id]
+                    return copy
+                  })
+                }}
+              />
             </label>
-            {fieldError && <small className="sf-job-help" role="alert">{fieldError}</small>}
+            {fieldError && <small id={`${resumeInputId}-error`} className="sf-job-help" role="alert">{fieldError}</small>}
           </div>
         }
-        return <label key={field.id} className={`sf-job-field ${wide ? 'sf-job-field--wide' : ''} ${fieldError ? 'has-error' : ''}`}>
+
+        const domId = fieldDomId(jobSlug, field.id)
+        const a11y = {
+          id: domId,
+          'aria-invalid': Boolean(fieldError),
+          'aria-required': field.required,
+          'aria-describedby': fieldError ? `${domId}-error` : undefined,
+          onBlur: () => blurField(field),
+        }
+
+        return <label key={field.id} className={`sf-job-field ${wide ? 'sf-job-field--wide' : ''} ${fieldError ? 'has-error' : ''}`} htmlFor={domId}>
           <span>{label} {field.required && <b>*</b>}</span>
           {field.type === 'textarea'
-            ? <textarea rows={4} required={field.required} minLength={field.minLength} maxLength={field.maxLength} value={String(value ?? '')} placeholder={placeholder} onChange={(event) => updateValue(field, event.target.value)} />
+            ? <textarea {...a11y} rows={4} maxLength={field.maxLength} value={String(value ?? '')} placeholder={placeholder} onChange={(event) => updateValue(field, event.target.value)} />
             : field.type === 'select'
-              ? <select className="ui-select" required={field.required} value={String(value ?? '')} onChange={(event) => updateValue(field, event.target.value)}><option value="">{selectPlaceholder || ''}</option>{(field.options || []).map((option) => <option key={option} value={option}>{option}</option>)}</select>
+              ? <select {...a11y} className="ui-select" value={String(value ?? '')} onChange={(event) => updateValue(field, event.target.value)}>
+                  <option value="">{selectPlaceholder || ''}</option>
+                  {(field.options || []).map((option) => <option key={option} value={option}>{option}</option>)}
+                </select>
               : field.type === 'checkbox'
-                ? <input type="checkbox" required={field.required} checked={Boolean(value)} onChange={(event) => updateValue(field, event.target.checked)} />
-                : <input type={field.type} required={field.required} minLength={field.type === 'number' ? undefined : field.minLength} maxLength={field.type === 'number' ? undefined : field.maxLength} min={field.type === 'number' ? field.min : undefined} max={field.type === 'number' ? field.max : undefined} value={String(value ?? '')} placeholder={placeholder} onChange={(event) => updateValue(field, event.target.value)} />}
+                ? <input {...a11y} type="checkbox" checked={Boolean(value)} onChange={(event) => updateValue(field, event.target.checked)} />
+                : <input
+                    {...a11y}
+                    type={field.type}
+                    maxLength={field.type === 'number' || field.type === 'date' ? undefined : field.maxLength}
+                    min={field.type === 'number' ? field.min : undefined}
+                    max={field.type === 'number' ? field.max : undefined}
+                    value={String(value ?? '')}
+                    placeholder={placeholder}
+                    onChange={(event) => updateValue(field, event.target.value)}
+                  />}
           {field.maxLength && field.type !== 'number' && <small className="sf-job-help">{String(value ?? '').length}/{field.maxLength}</small>}
-          {fieldError && <small className="sf-job-help" role="alert">{fieldError}</small>}
+          {fieldError && <small id={`${domId}-error`} className="sf-job-help" role="alert">{fieldError}</small>}
         </label>
       })}
       <label className="sf-job-honeypot" aria-hidden="true" tabIndex={-1}>Website<input tabIndex={-1} autoComplete="off" value={honeypot} onChange={(event) => setHoneypot(event.target.value)} /></label>

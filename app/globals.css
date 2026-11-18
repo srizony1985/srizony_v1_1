@@ -4335,8 +4335,9 @@ legend.legend + *{ clear: both; }
 .sf-donation-chip:hover{ background: var(--sf-soft); border-color: color-mix(in srgb, var(--sf-primary) 45%, var(--sf-border)); transform: translateY(-2px); }
 .sf-donation-chip:active{ transform: scale(0.97); }
 .sf-donation-chip-on,.sf-donation-chip-on:hover{
-  background: var(--sf-accent);
+  background: var(--sf-primary);
   color: var(--sf-on-primary);
+  font-weight: bolder;
   border-color: var(--sf-link);
   box-shadow: 0 8px 20px color-mix(in srgb, var(--sf-primary) 32%, transparent);
   animation: sf-donation-pop 0.28s ease;
@@ -4717,13 +4718,13 @@ legend.legend + *{ clear: both; }
 
 /* Light-mode donation controls: preserve contrast even when site typography tokens change. */
 html[data-mode="light"] .sf-main .sf-donation-step-num,html[data-mode="light"] .sf-main .sf-donation-chip-on,html[data-mode="light"] .sf-main .sf-donation-chip-on:hover,html[data-mode="light"] .sf-main .sf-donation-submit{
-  background-color: var(--sf-link);
-  color: var(--sf-on-primary);
+  background-color: var(--sf-primary-strong);
+  color: var(--sf-on-link);
   border-color: var(--sf-link);
 }
 html[data-mode="light"] .sf-main .sf-donation-chip:not(.sf-donation-chip-on){
-  background-color: var(--sf-card);
-  color: var(--sf-ink);
+  background-color: var(--sf-on-card);
+  color: var(--sf-link);
   border-color: var(--sf-border-strong, var(--sf-border));
 }
 html[data-mode="light"] .sf-main .sf-donation-submit-row{
@@ -6193,22 +6194,26 @@ html[data-mode="light"] .sf-main .sf-banner--plain .sf-crumbs li, html[data-mode
   opacity: 1;}
 html[data-mode="light"] .sf-main .sf-banner--plain .sf-crumbs li > a {color: var(--sf-link, var(--sf-primary));
   font-weight: 700;}
-html[data-mode="light"] .sf-main .sf-donation-chip-on, html[data-mode="light"] .sf-main .sf-donation-chip-on:hover {background: var(--sf-primary);
-  color: var(--sf-on-primary);
+html[data-mode="light"] .sf-main .sf-donation-chip-on, html[data-mode="light"] .sf-main .sf-donation-chip-on:hover {
+  background: var(--sf-on-primary);
+  color: var(--sf-primary);
   border: 2px solid var(--sf-primary);
   outline: 2px solid color-mix(in srgb, var(--sf-primary) 28%, transparent);
   outline-offset: 2px;
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sf-on-primary) 24%, transparent),
-    0 7px 18px color-mix(in srgb, var(--sf-primary) 26%, transparent);}
-html[data-mode="light"] .sf-main .sf-donation-submit {background: var(--sf-primary);
-  color: var(--sf-on-primary);
+    0 7px 18px color-mix(in srgb, var(--sf-primary) 40%, transparent);}
+html[data-mode="light"] .sf-main .sf-donation-submit {
+  background: var(--sf-on-primary);
+  color: var(--sf-primary);
   border: 1px solid var(--sf-primary);
   box-shadow: 0 8px 20px color-mix(in srgb, var(--sf-primary) 28%, transparent);
   font-weight: 850;}
-html[data-mode="light"] .sf-main .sf-donation-submit:hover:not(:disabled) {background: var(--sf-primary-strong, var(--sf-primary));
-  color: var(--sf-on-primary);
+html[data-mode="light"] .sf-main .sf-donation-submit:hover:not(:disabled) {
+  background: var(--sf-on-primary-strong, var(--sf-on-primary));
+  color: var(--sf-primary);
   border-color: var(--sf-primary-strong, var(--sf-primary));}
-html[data-mode="light"] .sf-main :is(.sf-donation-chip-on, .sf-donation-submit):focus-visible {outline: 3px solid var(--sf-focus);
+html[data-mode="light"] .sf-main :is(.sf-donation-chip-on, .sf-donation-submit):focus-visible {
+  outline: 3px solid var(--sf-focus);
   outline-offset: 3px;}
 .sf-donation-anonymous-note {display: flex;
   align-items: flex-start;
