@@ -12,6 +12,7 @@ import { CONTENT_COLLECTION_ROUTES } from './components'
 import { ensureCmsSchema } from './ensureSchema'
 import { canonicalizeCmsRoute, getContentRouteParent, LEGACY_ROUTE_ALIASES } from '@/lib/cms/routes'
 import { parseRenderedComponents, RENDERED_COMPONENT_TYPES } from './rendered-components'
+import { supportsLocationMap } from './locationMap'
 export { RENDERED_COMPONENT_TYPES } from './rendered-components'
 
 type Row = Record<string, unknown>
@@ -145,7 +146,7 @@ function defaultSection(type: Section['type'], titleEn: string, titleBn: string,
   section.sectionId = `section-${slug.replace(/[^a-z0-9]+/gi, '-')}-${index + 1}`
   const defaultContentComponent = type === 'stats' ? 'stat' : type === 'reports' ? 'report' : type === 'noticeList' ? 'notice' : type === 'carousel' ? 'news' : 'project'
   const defaultLayout = type === 'carousel' ? 'carousel' : type === 'gallery' ? 'masonry' : type === 'cards' || type === 'contentFeed' || type === 'stats' ? 'grid' : 'list'
-  section.contentCollection = { enabled: !['contact', 'diagram', 'video'].includes(type), component: defaultContentComponent, maxItems: type === 'cta' || type === 'donation' ? 1 : 12, layout: defaultLayout, columns: 3, gap: 24, viewportItems: 3 }
+  section.contentCollection = { enabled: !['contact', 'diagram', 'video'].includes(type), component: defaultContentComponent, maxItems: type === 'cta' || type === 'donation' ? 1 : 12, layout: defaultLayout, columns: 3, gap: 24, viewportItems: 3, ...(type === 'contentFeed' ? { showSearch: true, showCategoryFilter: true, showYearFilter: true } : {}) }
   section.buttonConfig = buttonType === 'none' ? { visible: false, mode: 'primary', label: { en: 'Learn more', bn: 'আরও জানুন' }, href: '/contact', action: 'route' } : {
     visible: true, mode: buttonType === 'both' ? 'both' : buttonType, label: { en: 'Learn more', bn: 'আরও জানুন' }, secondaryLabel: { en: 'Contact us', bn: 'যোগাযোগ করুন' }, href: '/contact', secondaryHref: '/contact', action: 'route',
   }
@@ -362,7 +363,7 @@ function menuPage(slug: string, labelEn: string, labelBn: string, base?: Partial
     const buttonDefaults = defaultSection(section.type, labelEn, labelBn, slug, buttonType, index).buttonConfig
     if (settings?.applyButtonSetting || section.buttonConfig == null) section.buttonConfig = buttonDefaults
   })
-  return { subtitle: { en: '', bn: '' }, ...base, slug, title: { en: labelEn, bn: labelBn }, sections, status: 'published' } as PageData
+  return { subtitle: { en: '', bn: '' }, ...base, slug, showContactMap: supportsLocationMap(slug) && base?.showContactMap === true, title: { en: labelEn, bn: labelBn }, sections, status: 'published' } as PageData
 }
 
 async function loadPage(slug: string) {

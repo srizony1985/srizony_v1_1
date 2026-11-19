@@ -69,6 +69,10 @@ export type ContentCollectionConfig = {
   columns: 2 | 3 | 4
   gap: number
   viewportItems: number
+  /** Visitor-facing controls for database content feeds. Omitted flags inherit visible defaults. */
+  showSearch?: boolean
+  showCategoryFilter?: boolean
+  showYearFilter?: boolean
 }
 export type CmsTypography = { fontFamily?: 'inherit' | 'system' | 'arial' | 'georgia' | 'times' | 'inter' | 'roboto' | 'noto-sans-bengali'; fontWeight?: 300 | 400 | 500 | 600 | 700 | 800 | 900; fontSize?: number; color?: string; letterSpacing?: number; lineHeight?: number; dark?: Omit<CmsTypography, 'dark'> }
 export type PageSection = Section & { visible?: boolean; buttonConfig?: SectionButtonConfig; homeComponent?: LandingComponentKey; sectionId?: string; contentCollection?: ContentCollectionConfig; typography?: CmsTypography }
@@ -155,7 +159,7 @@ export type ThemeDefinition = {
   darkHeaderInk: string
   darkFooterBg: string
   darkFooterInk: string
-  typography: { body: string; display: string; tracking: string; radius: string; baseSize?: number; bodyWeight?: number; headingWeight?: number; headingScale?: number; lineHeight?: number; letterSpacing?: number; navFontSize?: number; navFontWeight?: number; bodyColor?: string; headingColor?: string; navColor?: string; scopes?: { header?: Record<string, string | number>; content?: Record<string, string | number>; footer?: Record<string, string | number>; cms?: Record<string, string | number> } }
+  typography: { body: string; display: string; tracking: string; radius: string; baseSize?: number; bodyWeight?: number; headingWeight?: number; headingScale?: number; lineHeight?: number; letterSpacing?: number; navFontSize?: number; navFontWeight?: number; bodyScale?: number; h1Scale?: number; h2Scale?: number; h3Scale?: number; leadScale?: number; eyebrowScale?: number; buttonScale?: number; buttonWeight?: number; breadcrumbScale?: number; cardTitleScale?: number; cardBodyScale?: number; metaScale?: number; labelScale?: number; brandScale?: number; footerHeadingScale?: number; footerLinkScale?: number; bodyColor?: string; headingColor?: string; navColor?: string; scopes?: { header?: Record<string, string | number>; content?: Record<string, string | number>; footer?: Record<string, string | number>; cms?: Record<string, string | number> } }
 }
 export type UIContent = { en: Record<string,string>; bn: Record<string,string> }
 export type ContactInfo = { email: string; primaryPhone: string; phones: string[]; address: Bilingual; maps: { headOffice: string }; socials: { linkedin: string }; footprint: { name: Bilingual; address: Bilingual; mapQuery: string; kind?: 'site' | 'branch' | 'footprint' }[] }

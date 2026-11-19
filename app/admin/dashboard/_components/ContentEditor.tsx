@@ -10,6 +10,7 @@ import { Eye, EyeOff, PencilIcon, Save, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { createContent, deleteContent, isSlugTaken, setContentVisibility, updateContent } from '@/lib/api/siteContent'
 import { getPageBuilderIndex, type PageIndexItem } from '@/lib/api/pageBuilder'
 import { MediaField } from './MediaField'
@@ -18,7 +19,7 @@ import { buildContentRoute } from '@/lib/cms/routes'
 import { useRegisterAdminActions } from './AdminActionContext'
 import CmsTypographyEditor from '@/components/admin/CmsTypographyEditor'
 import { normalizeCmsTypography } from '@/lib/cms/typography'
-import { AdminDataContainer, AdminToolbarAction } from '@/components/admin/cms'
+import { AdminDataContainer, AdminToolbar, AdminToolbarAction } from '@/components/admin/cms'
 import { SectionToolbar } from './AdminCommon'
 
 type SlugState = 'idle' | 'checking' | 'ok' | 'taken' | 'invalid'
@@ -302,7 +303,7 @@ export function ContentEditor({ component, record, onSaved, onDeleted, onClose, 
       footer={
         <div>
           {saveError && 
-          <div className="cms-save-error grid gap-1 mt-3.5 p-[12px_14px] [border:1px_solid_color-mix(in_srgb,var(--destructive)_28%,var(--border))] [border-left:4px_solid_var(--destructive)] rounded-(--radius,var(--radius)) [background:color-mix(in_srgb,var(--destructive)_6%,var(--card))] text-primary [&_strong]:text-[0.875rem] [&_span]:text-[0.875rem] [&_span]:[overflow-wrap:anywhere] [&_small]:[font-size:0.75rem] [&_small]:[color:var(--muted-foreground)]" role="alert">
+          <div className="cms-save-error grid gap-1 mt-3.5 [padding:12px_14px] [border:1px_solid_color-mix(in_srgb,var(--destructive)_28%,var(--border))] [border-left:4px_solid_var(--destructive)] [border-radius:var(--radius,_var(--radius))] [background:color-mix(in_srgb,var(--destructive)_6%,var(--card))] [color:var(--foreground)] [&_strong]:[font-size:0.875rem] [&_span]:[font-size:0.875rem] [&_span]:[overflow-wrap:anywhere] [&_small]:[font-size:0.75rem] [&_small]:[color:var(--muted-foreground)]" role="alert">
             <strong>Changes were not saved.</strong>
             <span>{saveError}</span><small>Your edits are still in this form. Correct the highlighted field or retry after resolving the issue.</small>
           </div>}
@@ -313,10 +314,10 @@ export function ContentEditor({ component, record, onSaved, onDeleted, onClose, 
           </div>}
         </div>
       }    
-      height = 'min(60dvh, 760px)'
+      height = 'min(70dvh, 760px)'
       minHeight = '280px'
     >
-    <div className="p-2 cms-form-card [&_.cms-field_input:disabled]:[color:var(--foreground)] [&_.cms-field_input:disabled]:[background:var(--muted)] [&_.cms-field_input:disabled]:[border-color:var(--border)] [&_.cms-field_textarea:disabled]:[color:var(--foreground)] [&_.cms-field_textarea:disabled]:[background:var(--muted)] [&_.cms-field_textarea:disabled]:[border-color:var(--border)] [&_.cms-field_select:disabled]:[color:var(--foreground)] [&_.cms-field_select:disabled]:[background:var(--muted)] [&_.cms-field_select:disabled]:[border-color:var(--border)] [&_.cms-field>span]:[line-height:1.35] [&_.cms-field>span]:[overflow-wrap:anywhere]">
+    <div className="cms-form-card [&_.cms-field_input:disabled]:[color:var(--foreground)] [&_.cms-field_input:disabled]:[background:var(--muted)] [&_.cms-field_input:disabled]:[border-color:var(--border)] [&_.cms-field_textarea:disabled]:[color:var(--foreground)] [&_.cms-field_textarea:disabled]:[background:var(--muted)] [&_.cms-field_textarea:disabled]:[border-color:var(--border)] [&_.cms-field_select:disabled]:[color:var(--foreground)] [&_.cms-field_select:disabled]:[background:var(--muted)] [&_.cms-field_select:disabled]:[border-color:var(--border)] [&_.cms-field>span]:[line-height:1.35] [&_.cms-field>span]:[overflow-wrap:anywhere]">
       <div>
         <div className="cms-form-grid [display:grid] [grid-template-columns:repeat(2,minmax(0,1fr))] [gap:10px] max-[760px]:[grid-template-columns:1fr] [gap:8px] max-[720px]:[grid-template-columns:1fr] [grid-template-columns:repeat(2,_minmax(0,_1fr))] [gap:14px] max-[700px]:[grid-template-columns:1fr]">
           <label className="cms-field [display:flex] [flex-direction:column] [gap:6px] [font-size:0.875rem] [&_>_span]:[font-weight:600] [&_b]:[color:var(--destructive)] [&_input:disabled]:[opacity:1] [&_input:disabled]:[background:color-mix(in_srgb,_var(--card)_94%,_var(--muted-foreground))] [&_input:disabled]:[cursor:default] [&_textarea:disabled]:[opacity:1] [&_textarea:disabled]:[background:color-mix(in_srgb,_var(--card)_94%,_var(--muted-foreground))] [&_textarea:disabled]:[cursor:default] [&_select:disabled]:[opacity:1] [&_select:disabled]:[background:color-mix(in_srgb,_var(--card)_94%,_var(--muted-foreground))] [&_select:disabled]:[cursor:default] cms-span-2 [grid-column:span_2] max-[700px]:[grid-column:auto]" htmlFor="f-slug"><span>Slug <b>*</b></span>
@@ -346,13 +347,13 @@ export function ContentEditor({ component, record, onSaved, onDeleted, onClose, 
         </div>
       </div>
       {confirmDelete && 
-      <div className="fixed inset-0 z-1000 isolate grid place-items-center bg-primary/25 backdrop-blur-lg p-4" role="alertdialog" aria-modal="true">
-        <div className="cms-modal-card [position:relative] z-1 [width:min(560px,_100%)] [max-height:90vh] [overflow:auto] [background:var(--surface,_var(--card))] [color:var(--text-primary,_var(--foreground))] [border-radius:var(--radius,_var(--radius))] [padding:22px] [box-shadow:var(--shadow-lg,_var(--shadow-md))] [&_h2]:[margin:0_0_6px]">
+      <div className="cms-modal [position:fixed] [inset:0] [z-index:160] [isolation:isolate] [display:grid] [place-items:center] [background:var(--overlay)] [padding:16px] [z-index:var(--sf-z-modal)]" role="alertdialog" aria-modal="true">
+        <div className="cms-modal-card [position:relative] [z-index:1] [width:min(560px,_100%)] [max-height:90vh] [overflow:auto] [background:var(--surface,_var(--card))] [color:var(--text-primary,_var(--foreground))] [border-radius:var(--radius,_var(--radius))] [padding:22px] [box-shadow:var(--shadow-lg,_var(--shadow-md))] [&_h2]:[margin:0_0_6px]">
           <h2>Delete “{title}”?</h2>
           <p>The data will be lost forever and cannot be recovered. {component === 'job' ? 'All applications received for this job will be deleted too.' : 'Consider hiding it instead if you may need it again.'}</p>
           <div className="cms-modal-actions [display:flex] [justify-content:flex-end] [gap:8px] [margin-top:18px]">
             <Button variant="outline" onClick={() => setConfirmDelete(false)} disabled={busy}>Keep it</Button>
-            <Button className="cms-danger [background:var(--destructive)]! ![color:var(--primary-foreground)] ![border-color:var(--destructive)]" onClick={() => void remove()} disabled={busy}>{busy ? 'Deleting…' : 'Delete permanently'}</Button>
+            <Button className="cms-danger ![background:var(--destructive)] ![color:var(--primary-foreground)] ![border-color:var(--destructive)]" onClick={() => void remove()} disabled={busy}>{busy ? 'Deleting…' : 'Delete permanently'}</Button>
           </div>
         </div>
       </div>}

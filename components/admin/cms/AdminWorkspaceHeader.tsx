@@ -6,7 +6,6 @@ import { ProviderHealth } from "@/lib/api/adminWorkspace"
 import { cn } from "@/lib/utils"
 import { PanelLeftOpen, PanelLeftClose, Menu, Database, ShieldCheck, Sun, Moon, RefreshCw, Save } from "lucide-react"
 import { useState } from "react"
-import CmsWelcomeWizard from "./CmsWelcomeWizard"
 
 export function AdminWorkspaceHeader({
   current,
@@ -71,14 +70,6 @@ export function AdminWorkspaceHeader({
         </div>
       </div>
 
-      <div>
-        <Button
-          variant="outline"
-        >
-          <CmsWelcomeWizard/>
-        </Button>
-      </div>
-      
       {/* Right: status + actions stay together; the entire group moves to a second row on narrow headers. */}
       <div
         className="admin-workspace-header-actions flex min-w-0 shrink-0 flex-nowrap items-center justify-end gap-1 @lg/header:gap-2"

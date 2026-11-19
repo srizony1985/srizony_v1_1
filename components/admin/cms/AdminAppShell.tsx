@@ -93,7 +93,7 @@ export function AdminViewportGrid({
 }
 
 /** Provider attribution/status is a fixed footer, never part of route scrolling. */
-export function AdminProviderFooter({ children, providerHealth }: { children: ReactNode; providerHealth?: ProviderHealth }) {
+export function AdminProviderFooter({ children, providerHealth }: { children?: ReactNode; providerHealth?: ProviderHealth }) {
   const providerLabel = providerHealth?.mode === 'neon-primary'
     ? 'Neon PostgreSQL · Primary'
     : providerHealth?.mode === 'google-drive-read-only'
@@ -112,7 +112,7 @@ export function AdminProviderFooter({ children, providerHealth }: { children: Re
         />
         <span className="truncate">{providerLabel}</span>
       </div>
-      <div className="flex min-w-0 flex-wrap items-center justify-end gap-x-3 gap-y-1">{children}</div>
+      <div className="flex min-w-0 flex-wrap items-center justify-end gap-x-3 gap-y-1"><span>Website CMS · Recruitment Application</span><span>Developed by Scarlet Labs</span>{children}</div>
     </footer>
   )
 }

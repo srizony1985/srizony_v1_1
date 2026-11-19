@@ -73,6 +73,7 @@ type Editor = {
   menuType: MenuType
   sectionCount: number
   sectionContentType: Section['type']
+  initialSectionGroup: '' | 'contentFeed' | 'other'
   sectionButtonType: SectionButtonType
   typography?: CmsTypography
 }
@@ -268,6 +269,7 @@ export default function NavigationPage() {
       menuType: 'page',
       sectionCount: 1,
       sectionContentType: 'richText',
+      initialSectionGroup: '',
       sectionButtonType: 'none',
       typography: undefined,
     }
@@ -291,6 +293,7 @@ export default function NavigationPage() {
       menuType: node.menuType || 'page',
       sectionCount: node.sectionCount || 1,
       sectionContentType: node.sectionContentType || 'richText',
+      initialSectionGroup: (node.sectionContentType || 'richText') === 'contentFeed' ? 'contentFeed' : 'other',
       sectionButtonType: node.sectionButtonType || 'none',
       typography: node.typography,
     }
@@ -348,8 +351,10 @@ export default function NavigationPage() {
       slug: editor.menuType === 'folder' ? '' : editor.slug.trim(),
       renderedComponents: editor.menuType === 'page' ? editor.renderedComponents : [],
       menuType: editor.menuType,
-      sectionCount: editor.sectionCount,
-      sectionContentType: editor.sectionContentType,
+      sectionCount: Math.max(1, editor.sectionCount || 1),
+      sectionContentType: editor.initialSectionGroup === 'contentFeed'
+        ? 'contentFeed'
+        : editor.initialSectionGroup === 'other' ? editor.sectionContentType : 'richText',
       sectionButtonType: editor.sectionButtonType,
       typography: editor.typography,
     }
@@ -791,6 +796,32 @@ export default function NavigationPage() {
                 <p className="admin-small-note">
                   Folders have no URL. They are used only as expandable navigation headings.
                 </p>
+              )}
+              {editor.menuType === 'page' && editor.mode === 'create' && (
+                <div className="grid min-w-0 gap-2 rounded-lg border border-border bg-muted/30 p-3 sm:col-span-2">
+                  <Label htmlFor="m-initial-section-group">Default page section</Label>
+                  <NativeSelect
+                    id="m-initial-section-group"
+                    value={editor.initialSectionGroup}
+                    onChange={(event) => setEditor({ ...editor, initialSectionGroup: event.target.value as Editor['initialSectionGroup'] })}
+                  >
+                    <option value="">No preference — use Rich text (default)</option>
+                    <option value="contentFeed">Content feed — database-backed content cards</option>
+                    <option value="other">Other section type</option>
+                  </NativeSelect>
+                  {editor.initialSectionGroup === 'other' && (
+                    <label className="grid gap-1.5">
+                      <span className="text-sm font-semibold">Choose section type</span>
+                      <NativeSelect
+                        value={editor.sectionContentType === 'contentFeed' ? 'richText' : editor.sectionContentType}
+                        onChange={(event) => setEditor({ ...editor, sectionContentType: event.target.value as Section['type'] })}
+                      >
+                        {RENDERED_COMPONENTS.filter((type) => type !== 'contentFeed').map((type) => <option key={type} value={type}>{type}</option>)}
+                      </NativeSelect>
+                    </label>
+                  )}
+                  <small className="admin-small-note">Every new page is created with one editable section. Leaving this choice unchanged creates a Rich text section.</small>
+                </div>
               )}
             </div>
 

@@ -214,7 +214,7 @@ async function ensureCollectionSection(routeParent: string, component: ContentCo
       sections[existingCollectionIndex] = {
         ...current,
         components: [component],
-        contentCollection: { enabled: true, component, maxItems: 12, layout: 'grid', columns: Number(current.columns) || 3, gap: 24, viewportItems: 3 },
+        contentCollection: { enabled: true, component, maxItems: 12, layout: 'grid', columns: Number(current.columns) || 3, gap: 24, viewportItems: 3, showSearch: true, showCategoryFilter: true, showYearFilter: true },
       }
       const upgraded = { ...raw, sections }
       await runCms(sql`UPDATE pages SET render_cache = ${JSON.stringify(upgraded)}::jsonb, updated_at = now() WHERE slug = ${destinationPage}`)
@@ -238,7 +238,7 @@ async function ensureCollectionSection(routeParent: string, component: ContentCo
   const feedSection = {
     type: 'contentFeed', visible: previous?.visible !== false, heading: previous?.heading || labels[component],
     components: [component], items: [], columns: Number(previous?.columns) || 3,
-    contentCollection: { enabled: true, component, maxItems: 12, layout: 'grid', columns: Number(previous?.columns) || 3, gap: 24, viewportItems: 3 },
+    contentCollection: { enabled: true, component, maxItems: 12, layout: 'grid', columns: Number(previous?.columns) || 3, gap: 24, viewportItems: 3, showSearch: true, showCategoryFilter: true, showYearFilter: true },
     ...(previous?.buttonConfig ? { buttonConfig: previous.buttonConfig } : {}),
   }
   if (existingCareerSlot >= 0) sections[existingCareerSlot] = feedSection

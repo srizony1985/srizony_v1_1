@@ -65,7 +65,7 @@ const GROUPS: readonly AdminNavGroup[] = [
 
 function routeParts(href: string) {
   try {
-    const url = new URL(href, 'https://srizonyfoundation.org.bd')
+    const url = new URL(href, 'https://srizony.local')
     return { pathname: url.pathname, params: url.searchParams }
   } catch {
     return { pathname: href, params: new URLSearchParams() }
@@ -366,10 +366,7 @@ function ShellContent({ userEmail, children }: { userEmail?: string; children: R
           {children}
         </AdminViewportGrid>
 
-        <AdminProviderFooter providerHealth={providerHealth}>
-          <span>Website CMS</span>
-          <span>Srizony Foundation · Content management</span>
-        </AdminProviderFooter>
+        <AdminProviderFooter providerHealth={providerHealth} />
       </div>
     </AdminAppShell>
   )

@@ -9,6 +9,7 @@ import { ChevronRight, Home as HomeIcon } from 'lucide-react'
 import type { Bilingual, NavItem, PageData, Section } from '@/types/entityType'
 import type { FeedItem } from '@/lib/cms/components'
 import { toCmsTypographyStyle } from '@/lib/cms/typography'
+import { shouldRenderLocationMap } from '@/lib/cms/locationMap'
 import SafeImage from '@/components/ui/SafeImage'
 import { useSite } from '@/components/containers/SiteProvider'
 import SectionRenderer from '@/components/pages/SectionRenderer'
@@ -86,7 +87,7 @@ function findTrail(items: NavItem[], path: string): NavItem[] | null {
 
 export default function PageTemplate({ page, canonicalPath, children }: { page: PageData; canonicalPath: string; children?: ReactNode }) {
   const { lang, site } = useSite()
-  const showContactMap = page.showContactMap === true
+  const showContactMap = shouldRenderLocationMap(page)
   const primaryNav = site?.global.primaryNav ?? []
   const ui = site?.global.ui
 
@@ -94,7 +95,7 @@ export default function PageTemplate({ page, canonicalPath, children }: { page: 
   const canShowContentImage = !isContentDetail || page.cmsMediaManaged === true
   const heroImage = isContentDetail && !canShowContentImage ? undefined : page.heroImage
   const sections = useMemo(() => {
-    const visible = page.sections.filter((section) => (section as { visible?: boolean }).visible !== false)
+    const visible = page.sections.filter((section) => section.homeComponent === 'locations' ? (section as { visible?: boolean }).visible === true : (section as { visible?: boolean }).visible !== false)
     // Page sections are rendered from the persisted CMS document. Never synthesize
     // missing images or section copy from bundled landing-page data.
     const prepared = isContentDetail && !canShowContentImage

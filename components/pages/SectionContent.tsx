@@ -19,6 +19,7 @@ import VideoPlayer from '@/components/pages/VideoPlayer'
 import PublicContentFeed from '@/components/pages/PublicContentFeed'
 import type { IconName, PageData, PageSection, Section } from '@/types/entityType'
 import { localizeDigits } from '@/lib/utils'
+import { shouldRenderLocationMap } from '@/lib/cms/locationMap'
 
 const ICONS: Record<IconName | 'sprout' | 'store', typeof Heart> = { heart: Heart, leaf: Leaf, book: BookOpen, scale: Scale, users: Users, sun: Sun, droplets: Droplets, briefcase: Briefcase, coins: Coins, building: Building2, megaphone: Megaphone, shield: ShieldCheck, play: Play, arrow: ArrowRight, check: CheckCircle2, sprout: Sprout, store: Store }
 const dial = (phone: string) => `tel:${phone.replace(/[^\d+]/g, '')}`
@@ -28,7 +29,7 @@ export default function SectionContent({ section, page }: { section: Section; pa
   const { lang, site } = useSite()
   const readMore = site?.global.ui[lang]?.readMore ?? (lang === 'en' ? 'Read more' : 'আরও পড়ুন')
   const t = (en: string, bn: string) => lang === 'en' ? en : bn
-  const isContactPage = page?.showContactMap === true
+  const isContactPage = shouldRenderLocationMap(page)
   const collection = (section as PageSection).contentCollection?.enabled ? (section as PageSection).contentCollection : undefined
   const collectionGap = collection ? `${collection.gap}px` : undefined
   const collectionVisibleCount = collection?.viewportItems ?? collection?.columns ?? 3
@@ -227,6 +228,9 @@ export default function SectionContent({ section, page }: { section: Section; pa
           cardWidth={collectionCardWidth ?? 'var(--sf-collection-card-width)'}
           layoutClass={feedLayoutClass}
           emptyText={t('Nothing to show yet.', 'এখনও কিছু নেই।')}
+          showSearch={collection?.showSearch !== false}
+          showCategoryFilter={collection?.showCategoryFilter !== false}
+          showYearFilter={collection?.showYearFilter !== false}
         />
       </section>
     }

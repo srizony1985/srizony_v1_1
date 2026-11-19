@@ -110,13 +110,13 @@ test('every final physical migration table has a typed Drizzle table declaration
 
 test('migration journal entries are sequential and every registered SQL file exists', async () => {
   const journal = JSON.parse(await readFile(new URL('../drizzle/meta/_journal.json', import.meta.url), 'utf8'))
-  assert.equal(journal.entries.length, 29)
+  assert.equal(journal.entries.length, 30)
   for (let index = 0; index < journal.entries.length; index++) {
     const entry = journal.entries[index]
     assert.equal(entry.idx, index)
     await readFile(new URL(`../drizzle/${entry.tag}.sql`, import.meta.url), 'utf8')
   }
-  assert.equal(journal.entries.at(-1).tag, '0028_refresh_drive_backup_triggers')
+  assert.equal(journal.entries.at(-1).tag, '0029_location_map_opt_in')
   const triggerRepair = await readFile(new URL('../drizzle/0028_refresh_drive_backup_triggers.sql', import.meta.url), 'utf8')
   assert.match(triggerRepair, /refresh_drive_backup_triggers\(\)/)
 })

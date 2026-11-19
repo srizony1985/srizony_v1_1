@@ -13,6 +13,7 @@ import { CONTENT_COLLECTION_ROUTES, type ContentComponent } from '@/lib/cms/comp
 import { canonicalizeCmsRoute, LEGACY_ROUTE_ALIASES } from '@/lib/cms/routes'
 import { getPublishedFeed, getPublishedFieldNews, getPublishedContentDetailPage } from '@/lib/cms/content'
 import { validatePageComponentLayers } from '@/lib/cms/component-policy'
+import { supportsLocationMap } from '@/lib/cms/locationMap'
 import { parseRenderedComponents } from '@/lib/cms/rendered-components'
 import { ensureNavigationTypographySchema } from '@/lib/cms/ensureSchema'
 import { normalizeCmsTypography } from '@/lib/cms/typography'
@@ -395,6 +396,9 @@ async function savePage(database: NonNullable<typeof db>, slug: string, value: E
       columns: [2, 3, 4].includes(Number(storedCollection?.columns)) ? Number(storedCollection?.columns) : Number(section.columns) && [2, 3, 4].includes(Number(section.columns)) ? Number(section.columns) : 3,
       gap: Math.max(0, Math.min(64, Number.isFinite(Number(storedCollection?.gap)) ? Number(storedCollection?.gap) : 24)),
       viewportItems: Math.max(1, Math.min(12, Number(storedCollection?.viewportItems) || 3)),
+      showSearch: storedCollection?.showSearch !== false,
+      showCategoryFilter: storedCollection?.showCategoryFilter !== false,
+      showYearFilter: storedCollection?.showYearFilter !== false,
     } : undefined
     return {
       ...section,
@@ -406,7 +410,7 @@ async function savePage(database: NonNullable<typeof db>, slug: string, value: E
       ...(slug === '/projects' && isCanonicalProjectsCollection ? { items: [] } : {}),
     }
   }) : data.sections
-  const storedValue = { ...rawValue, ...(normalizedSections ? { sections: normalizedSections } : {}), slug, status, sortOrder }
+  const storedValue = { ...rawValue, ...(normalizedSections ? { sections: normalizedSections } : {}), slug, showContactMap: supportsLocationMap(slug) && data.showContactMap === true, status, sortOrder }
   if (expectedUpdatedAt) {
     const current = await withDbRetry(() => database.execute(sql`SELECT updated_at FROM pages WHERE slug = ${slug} LIMIT 1`))
     const currentUpdatedAt = current.rows[0] && String((current.rows[0] as JsonObject).updated_at || '')

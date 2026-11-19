@@ -25,6 +25,22 @@ export type ThemeTypographyPreferences = {
   letterSpacing: number
   navFontSize: number
   navFontWeight: number
+  bodyScale: number
+  h1Scale: number
+  h2Scale: number
+  h3Scale: number
+  leadScale: number
+  eyebrowScale: number
+  buttonScale: number
+  buttonWeight: number
+  breadcrumbScale: number
+  cardTitleScale: number
+  cardBodyScale: number
+  metaScale: number
+  labelScale: number
+  brandScale: number
+  footerHeadingScale: number
+  footerLinkScale: number
   bodyColor: string
   headingColor: string
   navColor: string
@@ -54,7 +70,11 @@ export type ThemeTypographyCollection = Record<string, ThemeTypographyPreference
 export const DEFAULT_THEME_TYPOGRAPHY: ThemeTypographyPreferences = {
   bodyFont: 'inter', displayFont: 'poppins', baseSize: 16, bodyWeight: 400,
   headingWeight: 700, headingScale: 1, lineHeight: 1.65, letterSpacing: -0.02,
-  navFontSize: 15, navFontWeight: 600, bodyColor: '', headingColor: '', navColor: '',
+  navFontSize: 15, navFontWeight: 600,
+  bodyScale: 1, h1Scale: 1, h2Scale: 1, h3Scale: 1, leadScale: 1, eyebrowScale: 1,
+  buttonScale: 1, buttonWeight: 600, breadcrumbScale: 1, cardTitleScale: 1, cardBodyScale: 1,
+  metaScale: 1, labelScale: 1, brandScale: 1, footerHeadingScale: 1, footerLinkScale: 1,
+  bodyColor: '', headingColor: '', navColor: '',
   adminSidebarSize: 12, adminToolbarSize: 13, adminTableSize: 12, adminControlSize: 13,
   adminHeaderSize: 13, adminDataHeadingSize: 16, adminFooterSize: 11,
 }
@@ -98,6 +118,22 @@ export function normalizeThemeTypographyPreferences(value: ExternalValue): Theme
     letterSpacing: boundedNumber(source.letterSpacing, DEFAULT_THEME_TYPOGRAPHY.letterSpacing, -0.06, 0.1, 3),
     navFontSize: boundedNumber(source.navFontSize, DEFAULT_THEME_TYPOGRAPHY.navFontSize, 12, 20, 1),
     navFontWeight: boundedNumber(source.navFontWeight, DEFAULT_THEME_TYPOGRAPHY.navFontWeight, 400, 800, 0),
+    bodyScale: boundedNumber(source.bodyScale, 1, 0.75, 1.5, 2),
+    h1Scale: boundedNumber(source.h1Scale, 1, 0.75, 1.5, 2),
+    h2Scale: boundedNumber(source.h2Scale, 1, 0.75, 1.5, 2),
+    h3Scale: boundedNumber(source.h3Scale, 1, 0.75, 1.5, 2),
+    leadScale: boundedNumber(source.leadScale, 1, 0.75, 1.5, 2),
+    eyebrowScale: boundedNumber(source.eyebrowScale, 1, 0.75, 1.5, 2),
+    buttonScale: boundedNumber(source.buttonScale, 1, 0.75, 1.5, 2),
+    buttonWeight: boundedNumber(source.buttonWeight, 600, 400, 800, 0),
+    breadcrumbScale: boundedNumber(source.breadcrumbScale, 1, 0.75, 1.5, 2),
+    cardTitleScale: boundedNumber(source.cardTitleScale, 1, 0.75, 1.5, 2),
+    cardBodyScale: boundedNumber(source.cardBodyScale, 1, 0.75, 1.5, 2),
+    metaScale: boundedNumber(source.metaScale, 1, 0.75, 1.5, 2),
+    labelScale: boundedNumber(source.labelScale, 1, 0.75, 1.5, 2),
+    brandScale: boundedNumber(source.brandScale, 1, 0.75, 1.5, 2),
+    footerHeadingScale: boundedNumber(source.footerHeadingScale, 1, 0.75, 1.5, 2),
+    footerLinkScale: boundedNumber(source.footerLinkScale, 1, 0.75, 1.5, 2),
     adminSidebarSize: boundedNumber(source.adminSidebarSize, DEFAULT_THEME_TYPOGRAPHY.adminSidebarSize, 10, 16, 1),
     adminToolbarSize: boundedNumber(source.adminToolbarSize, DEFAULT_THEME_TYPOGRAPHY.adminToolbarSize, 11, 17, 1),
     adminTableSize: boundedNumber(source.adminTableSize, DEFAULT_THEME_TYPOGRAPHY.adminTableSize, 10, 16, 1),
@@ -130,6 +166,10 @@ export function normalizeThemeTypographyOverrides(value: ExternalValue): ThemeTy
   const numericRanges: Partial<Record<keyof ThemeTypographyPreferences, [number, number]>> = {
     baseSize: [13, 20], bodyWeight: [300, 700], headingWeight: [500, 900], headingScale: [0.85, 1.25],
     lineHeight: [1.2, 2], letterSpacing: [-0.06, 0.1], navFontSize: [12, 20], navFontWeight: [400, 800],
+    bodyScale: [0.75, 1.5], h1Scale: [0.75, 1.5], h2Scale: [0.75, 1.5], h3Scale: [0.75, 1.5],
+    leadScale: [0.75, 1.5], eyebrowScale: [0.75, 1.5], buttonScale: [0.75, 1.5], buttonWeight: [400, 800],
+    breadcrumbScale: [0.75, 1.5], cardTitleScale: [0.75, 1.5], cardBodyScale: [0.75, 1.5], metaScale: [0.75, 1.5],
+    labelScale: [0.75, 1.5], brandScale: [0.75, 1.5], footerHeadingScale: [0.75, 1.5], footerLinkScale: [0.75, 1.5],
     adminSidebarSize: [10, 16], adminToolbarSize: [11, 17], adminTableSize: [10, 16], adminControlSize: [11, 17],
     adminHeaderSize: [11, 18], adminDataHeadingSize: [12, 22], adminFooterSize: [9, 14],
   }
@@ -181,6 +221,11 @@ function toThemeTypography(preferences: ThemeTypographyPreferences) {
     baseSize: preferences.baseSize, bodyWeight: preferences.bodyWeight, headingWeight: preferences.headingWeight,
     headingScale: preferences.headingScale, lineHeight: preferences.lineHeight, letterSpacing: preferences.letterSpacing,
     navFontSize: preferences.navFontSize, navFontWeight: preferences.navFontWeight,
+    bodyScale: preferences.bodyScale, h1Scale: preferences.h1Scale, h2Scale: preferences.h2Scale, h3Scale: preferences.h3Scale,
+    leadScale: preferences.leadScale, eyebrowScale: preferences.eyebrowScale, buttonScale: preferences.buttonScale, buttonWeight: preferences.buttonWeight,
+    breadcrumbScale: preferences.breadcrumbScale, cardTitleScale: preferences.cardTitleScale, cardBodyScale: preferences.cardBodyScale,
+    metaScale: preferences.metaScale, labelScale: preferences.labelScale, brandScale: preferences.brandScale,
+    footerHeadingScale: preferences.footerHeadingScale, footerLinkScale: preferences.footerLinkScale,
     adminSidebarSize: preferences.adminSidebarSize, adminToolbarSize: preferences.adminToolbarSize,
     adminTableSize: preferences.adminTableSize, adminControlSize: preferences.adminControlSize,
     adminHeaderSize: preferences.adminHeaderSize, adminDataHeadingSize: preferences.adminDataHeadingSize, adminFooterSize: preferences.adminFooterSize,

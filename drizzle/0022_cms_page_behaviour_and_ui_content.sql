@@ -9,7 +9,7 @@ SET render_cache = COALESCE(p.render_cache, '{}'::jsonb)
       WHEN NOT (COALESCE(p.render_cache, '{}'::jsonb) ? 'pageView') AND p.slug = '/resources' THEN 'resource-library'
       ELSE NULL END,
     'showContactMap', CASE
-      WHEN NOT (COALESCE(p.render_cache, '{}'::jsonb) ? 'showContactMap') AND p.slug = '/contact' THEN true
+      WHEN NOT (COALESCE(p.render_cache, '{}'::jsonb) ? 'showContactMap') AND p.slug = '/contact' THEN false
       ELSE NULL END,
     'cardStyle', CASE
       WHEN NOT (COALESCE(p.render_cache, '{}'::jsonb) ? 'cardStyle') AND p.slug = '/social-development' THEN 'social'

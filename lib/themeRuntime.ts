@@ -42,6 +42,9 @@ export type RuntimeThemePalette = JsonObject & {
     letterSpacing?: number
     navFontSize?: number
     navFontWeight?: number
+    bodyScale?: number; h1Scale?: number; h2Scale?: number; h3Scale?: number; leadScale?: number; eyebrowScale?: number
+    buttonScale?: number; buttonWeight?: number; breadcrumbScale?: number; cardTitleScale?: number; cardBodyScale?: number
+    metaScale?: number; labelScale?: number; brandScale?: number; footerHeadingScale?: number; footerLinkScale?: number
     bodyColor?: string
     headingColor?: string
     navColor?: string
@@ -189,7 +192,7 @@ export function buildThemeCssVariables(
   const footerTypography = { ...typography, ...(scopedTypography.footer || {}) }
   const cmsTypography = { ...typography, ...(scopedTypography.cms || {}) }
   const scopedFont = (scope: typeof headerTypography, key: 'body' | 'display', fallback: string) => typeof scope[key] === 'string' ? scope[key] as string : fallback
-  const scopedNumber = (scope: typeof headerTypography, key: 'baseSize' | 'bodyWeight' | 'headingWeight' | 'headingScale' | 'lineHeight' | 'letterSpacing' | 'navFontSize' | 'navFontWeight', fallback: number) => typeof scope[key] === 'number' && Number.isFinite(scope[key]) ? scope[key] as number : fallback
+  const scopedNumber = (scope: typeof headerTypography, key: 'baseSize' | 'bodyWeight' | 'headingWeight' | 'headingScale' | 'lineHeight' | 'letterSpacing' | 'navFontSize' | 'navFontWeight' | 'bodyScale' | 'h1Scale' | 'h2Scale' | 'h3Scale' | 'leadScale' | 'eyebrowScale' | 'buttonScale' | 'buttonWeight' | 'breadcrumbScale' | 'cardTitleScale' | 'cardBodyScale' | 'metaScale' | 'labelScale' | 'brandScale' | 'footerHeadingScale' | 'footerLinkScale', fallback: number) => typeof scope[key] === 'number' && Number.isFinite(scope[key]) ? scope[key] as number : fallback
   const scopedColor = (scope: typeof headerTypography, key: 'bodyColor' | 'headingColor' | 'navColor', fallback: string) => typeof scope[key] === 'string' && HEX.test(scope[key] as string) ? scope[key] as string : fallback
   const baseSize = Math.max(13, Math.min(20, Number(typography.baseSize) || 16))
   const bodyWeight = Math.max(300, Math.min(700, Number(typography.bodyWeight) || 400))
@@ -203,6 +206,28 @@ export function buildThemeCssVariables(
   const navFontSize = Math.max(12, Math.min(20, Number(typography.navFontSize) || 15))
   const navFontWeight = Math.max(400, Math.min(800, Number(typography.navFontWeight) || 600))
   const shapeRadius = shape === 'soft' ? '10px' : shape === 'square' ? '2px' : themeRadius
+  const componentTypeVars = (scope: typeof headerTypography, prefix: string) => {
+    const base = prefix ? `--sf-${prefix}-type` : '--sf-type'
+    const scale = (key: 'bodyScale' | 'h1Scale' | 'h2Scale' | 'h3Scale' | 'leadScale' | 'eyebrowScale' | 'buttonScale' | 'breadcrumbScale' | 'cardTitleScale' | 'cardBodyScale' | 'metaScale' | 'labelScale' | 'brandScale' | 'footerHeadingScale' | 'footerLinkScale', fallback = 1) => scopedNumber(scope, key, fallback)
+    return {
+      [`${base}-body-scale`]: String(scale('bodyScale')),
+      [`${base}-h1-scale`]: String(scale('h1Scale')),
+      [`${base}-h2-scale`]: String(scale('h2Scale')),
+      [`${base}-h3-scale`]: String(scale('h3Scale')),
+      [`${base}-lead-scale`]: String(scale('leadScale')),
+      [`${base}-eyebrow-scale`]: String(scale('eyebrowScale')),
+      [`${base}-button-scale`]: String(scale('buttonScale')),
+      [`${base}-button-weight`]: String(scopedNumber(scope, 'buttonWeight', 600)),
+      [`${base}-breadcrumb-scale`]: String(scale('breadcrumbScale')),
+      [`${base}-card-title-scale`]: String(scale('cardTitleScale')),
+      [`${base}-card-body-scale`]: String(scale('cardBodyScale')),
+      [`${base}-meta-scale`]: String(scale('metaScale')),
+      [`${base}-label-scale`]: String(scale('labelScale')),
+      [`${base}-brand-scale`]: String(scale('brandScale')),
+      [`${base}-footer-heading-scale`]: String(scale('footerHeadingScale')),
+      [`${base}-footer-link-scale`]: String(scale('footerLinkScale')),
+    }
+  }
 
   return {
     '--sf-primary': primary,
@@ -261,6 +286,7 @@ export function buildThemeCssVariables(
     '--sf-font-display': typography.display || "var(--font-display),'Noto Sans Bengali','Hind Siliguri',system-ui,sans-serif",
     '--sf-fs-md': `${baseSize}px`,
     '--sf-fs-body': `${baseSize}px`,
+    ...componentTypeVars(typography, ''),
     '--sf-fs-lead': `${Math.round(baseSize * 1.125)}px`,
     '--sf-fs-h1': `calc(clamp(2.125rem, 5vw, 3.75rem) * ${headingScale})`,
     '--sf-fs-h2': `calc(clamp(1.75rem, 3.2vw, 2.5rem) * ${headingScale})`,
@@ -275,6 +301,7 @@ export function buildThemeCssVariables(
     '--sf-typo-body-color': ensureThemeContrast(hex(typography.bodyColor, ink), [surface, surfaceAlt], 4.5),
     '--sf-typo-heading-color': ensureThemeContrast(hex(typography.headingColor, ink), [surface, surfaceAlt], 7),
     '--sf-typo-nav-color': ensureThemeContrast(hex(typography.navColor, headerInk), [headerBg], 4.5),
+    ...componentTypeVars(headerTypography, 'header'),
     '--sf-header-font-body': scopedFont(headerTypography, 'body', typography.body || "var(--font-body),'Noto Sans Bengali','Hind Siliguri',system-ui,sans-serif"),
     '--sf-header-font-display': scopedFont(headerTypography, 'display', typography.display || "var(--font-display),'Noto Sans Bengali','Hind Siliguri',system-ui,sans-serif"),
     '--sf-header-font-size': `${scopedNumber(headerTypography, 'baseSize', baseSize)}px`,
@@ -288,6 +315,7 @@ export function buildThemeCssVariables(
     '--sf-header-body-color': ensureThemeContrast(scopedColor(headerTypography, 'bodyColor', headerInk), [headerBg], 4.5),
     '--sf-header-heading-color': ensureThemeContrast(scopedColor(headerTypography, 'headingColor', headerInk), [headerBg], 7),
     '--sf-header-nav-color': ensureThemeContrast(scopedColor(headerTypography, 'navColor', headerInk), [headerBg], 4.5),
+    ...componentTypeVars(contentTypography, 'content'),
     '--sf-content-font-body': scopedFont(contentTypography, 'body', typography.body || "var(--font-body),'Noto Sans Bengali','Hind Siliguri',system-ui,sans-serif"),
     '--sf-content-font-display': scopedFont(contentTypography, 'display', typography.display || "var(--font-display),'Noto Sans Bengali','Hind Siliguri',system-ui,sans-serif"),
     '--sf-content-font-size': `${scopedNumber(contentTypography, 'baseSize', baseSize)}px`,
@@ -298,6 +326,7 @@ export function buildThemeCssVariables(
     '--sf-content-tracking': `${scopedNumber(contentTypography, 'letterSpacing', letterSpacing)}em`,
     '--sf-content-body-color': ensureThemeContrast(scopedColor(contentTypography, 'bodyColor', hex(typography.bodyColor, ink)), [surface, surfaceAlt], 4.5),
     '--sf-content-heading-color': ensureThemeContrast(scopedColor(contentTypography, 'headingColor', hex(typography.headingColor, ink)), [surface, surfaceAlt], 7),
+    ...componentTypeVars(footerTypography, 'footer'),
     '--sf-footer-font-body': scopedFont(footerTypography, 'body', typography.body || "var(--font-body),'Noto Sans Bengali','Hind Siliguri',system-ui,sans-serif"),
     '--sf-footer-font-display': scopedFont(footerTypography, 'display', typography.display || "var(--font-display),'Noto Sans Bengali','Hind Siliguri',system-ui,sans-serif"),
     '--sf-footer-font-size': `${scopedNumber(footerTypography, 'baseSize', baseSize)}px`,
@@ -308,6 +337,7 @@ export function buildThemeCssVariables(
     '--sf-footer-tracking': `${scopedNumber(footerTypography, 'letterSpacing', letterSpacing)}em`,
     '--sf-footer-body-color': ensureThemeContrast(scopedColor(footerTypography, 'bodyColor', footerInk), [footerBg], 4.5),
     '--sf-footer-heading-color': ensureThemeContrast(scopedColor(footerTypography, 'headingColor', footerInk), [footerBg], 7),
+    ...componentTypeVars(cmsTypography, 'cms'),
     '--sf-cms-font-body': scopedFont(cmsTypography, 'body', typography.body || "var(--font-body),'Noto Sans Bengali','Hind Siliguri',system-ui,sans-serif"),
     '--sf-cms-font-display': scopedFont(cmsTypography, 'display', typography.display || "var(--font-display),'Noto Sans Bengali','Hind Siliguri',system-ui,sans-serif"),
     '--sf-cms-font-size': `${scopedNumber(cmsTypography, 'baseSize', baseSize)}px`,
