@@ -588,7 +588,25 @@ function SectionCollectionEditor({ section, pageSlug, isProjectsCatalogSection =
       .catch((cause: unknown) => toast.error(cause instanceof Error ? cause.message : 'Unable to load this section collection.'))
       .finally(() => setLoading(false))
   }, [config.enabled, config.component])
-  useEffect(() => { void refresh() }, [refresh])
+  useEffect(() => {
+    if (!config.enabled) return
+
+    let cancelled = false
+    listContent(config.component)
+      .then((all) => {
+        if (!cancelled) setItems(all)
+      })
+      .catch((cause: unknown) => {
+        if (!cancelled) toast.error(cause instanceof Error ? cause.message : 'Unable to load this section collection.')
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [config.enabled, config.component])
   const setConfig = (patch: Partial<typeof config>) => {
     const nextConfig = { ...config, ...patch }
     if (section.type === 'contentFeed') {
