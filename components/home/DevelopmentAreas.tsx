@@ -6,6 +6,7 @@ import Container from '@/components/containers/Container'
 import ProjectCard, { type ProjectArea } from '@/components/home/ProjectCard'
 import Reveal from '@/components/containers/Reveal'
 import SectionActions from '@/components/ui/SectionActions'
+import { AREAS, AREAS_INTRO } from '@/data/homeContent'
 
 const normalizeHeading = (value?: string) => (value ?? '').trim().toLocaleLowerCase().replace(/[\s_-]+/g, ' ')
 type CardsSection = Extract<PageData['sections'][number], { type: 'cards' }>
@@ -17,8 +18,13 @@ function resolveAreas(page: PageData): { intro: { eyebrow: { en: string; bn: str
   )
   if (section?.visible === false) return null
   if (!section) return null
-  const items = Array.isArray(section.items) ? section.items : []
-  if (!items.length || !section.heading || !section.eyebrow) return { intro: { eyebrow: section.eyebrow ?? { en: '', bn: '' }, title: section.heading ?? { en: '', bn: '' } }, areas: [], section }
+  const starterAreas: CardsSection['items'] = AREAS.map((area) => ({ title: area.title, body: area.body, href: area.href, icon: area.icon, illustration: area.icon, ...(area.chips ? { chips: area.chips } : {}) }))
+  const items: CardsSection['items'] = Array.isArray(section.items)
+    ? (section.items.length || section.dataSource === 'manual' ? section.items : starterAreas)
+    : starterAreas
+  const eyebrow = section.eyebrow ?? AREAS_INTRO.eyebrow
+  const heading = section.heading ?? AREAS_INTRO.title
+  if (!items.length) return { intro: { eyebrow, title: heading }, areas: [], section }
 
   const validIcons = new Set<ProjectArea['icon']>(['heart', 'book', 'users', 'coins', 'sprout', 'store'])
   const areas = items.map((item) => {
@@ -37,7 +43,7 @@ function resolveAreas(page: PageData): { intro: { eyebrow: { en: string; bn: str
     }
   })
   return {
-    intro: { eyebrow: section.eyebrow, title: section.heading },
+    intro: { eyebrow, title: heading },
     areas,
     section,
   }
@@ -45,7 +51,7 @@ function resolveAreas(page: PageData): { intro: { eyebrow: { en: string; bn: str
 
 export default function DevelopmentAreas({ lang, page }: { lang: Lang; page: PageData }) {
   const resolved = resolveAreas(page)
-  if (!resolved || !resolved.section?.heading || !resolved.section.eyebrow) return null
+  if (!resolved) return null
   const { intro, areas, section } = resolved
   return (
     <section className="sf-section sf-areas" aria-labelledby="sf-areas-title">

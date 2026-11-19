@@ -95,7 +95,7 @@ export default function PageTemplate({ page, canonicalPath, children }: { page: 
   const canShowContentImage = !isContentDetail || page.cmsMediaManaged === true
   const heroImage = isContentDetail && !canShowContentImage ? undefined : page.heroImage
   const sections = useMemo(() => {
-    const visible = page.sections.filter((section) => section.homeComponent === 'locations' ? (section as { visible?: boolean }).visible === true : (section as { visible?: boolean }).visible !== false)
+    const visible = page.sections.filter((section) => (section as { visible?: boolean }).visible !== false)
     // Page sections are rendered from the persisted CMS document. Never synthesize
     // missing images or section copy from bundled landing-page data.
     const prepared = isContentDetail && !canShowContentImage

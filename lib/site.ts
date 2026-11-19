@@ -91,10 +91,24 @@ export function resolvePagePath(path: string) {
 }
 
 // During `next build` a production database may not have been seeded yet.
-// Keep the build deterministic by using the bundled content only for build-time
-// static generation. Runtime requests still require the CMS database unless
-// CMS_STATIC_FALLBACK=true is explicitly enabled.
-function isProductionBuild() { return process.env.NEXT_PHASE === 'phase-production-build' }
+// Bundled content is therefore allowed at build time, but never as a runtime
+// production substitute: public production requests must read the CMS database.
+function isProductionBuild() {
+  return process.env.NEXT_PHASE === 'phase-production-build'
+}
+
+function isStaticFallbackEnabled() {
+  if (isProductionBuild()) return true
+  if (process.env.NODE_ENV === 'production') return false
+  return process.env.CMS_STATIC_FALLBACK === 'true'
+}
+
+if (process.env.NODE_ENV === 'production' && process.env.CMS_STATIC_FALLBACK === 'true' && !isProductionBuild()) {
+  console.error('[cms] CMS_STATIC_FALLBACK=true is ignored in production. Remove this environment variable so live CMS data remains authoritative.')
+}
+if (process.env.NODE_ENV === 'development' && process.env.CMS_STATIC_FALLBACK === 'true') {
+  console.warn('[cms] CMS_STATIC_FALLBACK=true is active in development. Public pages will use bundled content instead of saved database page sections. Set CMS_STATIC_FALLBACK=false to test the live CMS.')
+}
 
 
 function jsonb(value: unknown) { return sql`${JSON.stringify(value ?? null)}::jsonb` }
@@ -241,7 +255,7 @@ async function getCmsNavigationUncached(): Promise<{ primaryNav: NavItem[]; navG
   if (!database) {
     const fallbackRows = await readNavigationFromDrive()
     if (!fallbackRows) {
-      if (process.env.CMS_STATIC_FALLBACK === 'true') return filterNavigation(systemData.navGroups, systemData.primaryNav)
+      if (isStaticFallbackEnabled()) return filterNavigation(systemData.navGroups, systemData.primaryNav)
       throw new Error('Neither Neon nor a recent Google Drive navigation snapshot is available.')
     }
     rows = fallbackRows
@@ -316,7 +330,7 @@ async function getCmsNavigation() {
 export async function getPublicNavigationSnapshot() {
   const [navigation, globalDocument] = await Promise.all([
     getCmsNavigation(),
-    process.env.CMS_STATIC_FALLBACK === 'true' || isProductionBuild()
+    isStaticFallbackEnabled()
       ? Promise.resolve(null)
       : cachedPublicGlobalDocument(),
   ])
@@ -369,7 +383,7 @@ async function savePage(database: NonNullable<typeof db>, slug: string, value: E
     const component = allContentTypes.includes(String(selectedComponent)) ? String(selectedComponent) : 'project'
     const headingRecord = asExternalRecord(section.heading) ?? {}
     const sectionHeading = `${readString(headingRecord.en)} ${readString(headingRecord.bn)}`.trim().toLowerCase()
-    const isCanonicalProjectsCollection = slug === '/projects' && (
+    const isCanonicalProjectsCollection = slug === '/projects' && section.dataSource !== 'manual' && (
       index === projectsSectionIndex
       || section.collectionKind === 'projects'
       || storedCollection?.component === 'project'
@@ -388,6 +402,11 @@ async function savePage(database: NonNullable<typeof db>, slug: string, value: E
     // A contentFeed is intrinsically a collection. Older CMS pages that predate
     // contentCollection are upgraded to an enabled collection using their saved type.
     const shouldNormalizeCollection = Boolean(storedCollection) || section.type === 'contentFeed' || isCanonicalProjectsCollection
+    const selectedRecordIds = Array.isArray(storedCollection?.selectedRecordIds)
+      ? Array.from(new Set(storedCollection.selectedRecordIds
+          .map((id) => Number(id))
+          .filter((id) => Number.isSafeInteger(id) && id > 0)))
+      : undefined
     const contentCollection = shouldNormalizeCollection ? {
       enabled: isCanonicalProjectsCollection ? true : section.type === 'contentFeed' ? storedCollection?.enabled !== false : storedCollection?.enabled === true,
       component: isCanonicalProjectsCollection ? 'project' : component,
@@ -396,6 +415,7 @@ async function savePage(database: NonNullable<typeof db>, slug: string, value: E
       columns: [2, 3, 4].includes(Number(storedCollection?.columns)) ? Number(storedCollection?.columns) : Number(section.columns) && [2, 3, 4].includes(Number(section.columns)) ? Number(section.columns) : 3,
       gap: Math.max(0, Math.min(64, Number.isFinite(Number(storedCollection?.gap)) ? Number(storedCollection?.gap) : 24)),
       viewportItems: Math.max(1, Math.min(12, Number(storedCollection?.viewportItems) || 3)),
+      ...(selectedRecordIds !== undefined ? { selectedRecordIds } : {}),
       showSearch: storedCollection?.showSearch !== false,
       showCategoryFilter: storedCollection?.showCategoryFilter !== false,
       showYearFilter: storedCollection?.showYearFilter !== false,
@@ -681,7 +701,7 @@ function applyPortfolioToPage(page: PageData, global: Pick<PublicGlobal, 'portfo
   if (slug === '/about-us' && hasPortfolioCopy(portfolio.about)) {
     let applied = false
     sections = sections.map((section) => {
-      if (!applied && section.type === 'richText') {
+      if (!applied && section.type === 'richText' && section.dataSource === 'portfolio-about' && Array.isArray(section.body)) {
         applied = true
         const biParagraphs: Array<{ en: string; bn: string }> = []
         const enParts = about.en.split(/\n\s*\n/).map((part: string) => part.trim()).filter(Boolean)
@@ -697,47 +717,33 @@ function applyPortfolioToPage(page: PageData, global: Pick<PublicGlobal, 'portfo
   if (mvvItems.length > 0) {
     let replacedMvv = false
     sections = sections.map((section) => {
-      if (!replacedMvv && isMvvSection(section)) {
+      if (!replacedMvv && isMvvSection(section) && section.dataSource === 'published-feed') {
         replacedMvv = true
         return withMvv(section)
       }
       return section
     })
-    // Portfolio fields may populate an existing Mission/Vision section, but they
-    // must not recreate a homepage section removed in Page Builder. On regular
-    // organizational pages, retain the convenience of adding the portfolio block.
-    if (!replacedMvv && mvvItems.length && (slug === '/about-us' || slug === '/mission-vision' || slug === '/mission-and-vision')) {
-      const section = withMvv({ type: 'cards', heading: mvvHeading, columns: 3, items: [] })
-      const afterIntro = sections.findIndex((item) => item.type === 'richText')
-      sections.splice(afterIntro >= 0 ? afterIntro + 1 : 0, 0, section)
-    }
-    // Empty or partially configured portfolio fields do not suppress the homepage
-    // section; the Page Builder visibility switch remains the explicit hide control.
-  }
-
-  if ((slug === '/mission-vision' || slug === '/mission-and-vision') && mvvItems.length && !sections.some(isMvvSection)) {
-    sections = [{ type: 'cards', heading: mvvHeading, columns: 3, items: mvvItems }, ...sections.filter((section) => section.type !== 'cards')]
+    // Missing sections are intentionally not recreated from Portfolio data.
   }
 
   if (slug === '/governing-body' && Array.isArray(portfolio.governingBody) && portfolio.governingBody.length) {
     const items = portfolioPeopleItems(portfolio.governingBody)
-    sections = sections.map((section) => section.type === 'cards' && /governing body|member/i.test(section.heading?.en || '') ? { ...section, items } : section)
+    sections = sections.map((section) => section.type === 'cards' && section.dataSource === 'published-feed' && /governing body|member/i.test(section.heading?.en || '') ? { ...section, items } : section)
   }
   if (slug === '/executive-committee' && Array.isArray(portfolio.executiveCommittee) && portfolio.executiveCommittee.length) {
     const items = portfolioPeopleItems(portfolio.executiveCommittee)
-    const matching = sections.findIndex((section) => section.type === 'cards')
+    const matching = sections.findIndex((section) => section.type === 'cards' && section.dataSource === 'published-feed')
     if (matching >= 0 && sections[matching].type === 'cards') sections[matching] = { ...sections[matching], heading: { en: 'Executive Committee Members', bn: 'নির্বাহী কমিটির সদস্যবৃন্দ' }, items }
-    else sections.push({ type: 'cards', heading: { en: 'Executive Committee Members', bn: 'নির্বাহী কমিটির সদস্যবৃন্দ' }, columns: 3, items })
   }
   if (slug === '/senior-management' && Array.isArray(portfolio.seniorManagement) && portfolio.seniorManagement.length) {
     const items = portfolioPeopleItems(portfolio.seniorManagement)
     const matching = sections.findIndex((section) => section.type === 'cards')
-    if (matching >= 0 && sections[matching].type === 'cards') sections[matching] = { ...sections[matching], items }
+    if (matching >= 0 && sections[matching].type === 'cards' && sections[matching].dataSource === 'published-feed') sections[matching] = { ...sections[matching], items }
   }
   if (['/teams', '/team', '/our-team', '/our-people'].includes(slug) && Array.isArray(portfolio.teams) && portfolio.teams.length) {
     const items = portfolioPeopleItems(portfolio.teams)
     const matching = sections.findIndex((section) => section.type === 'cards')
-    if (matching >= 0 && sections[matching].type === 'cards') sections[matching] = { ...sections[matching], items }
+    if (matching >= 0 && sections[matching].type === 'cards' && sections[matching].dataSource === 'published-feed') sections[matching] = { ...sections[matching], items }
   }
 
   // Shared contact data is the source of truth for every rendered contact section.
@@ -870,10 +876,11 @@ function isProjectsCollectionSection(section: PageData['sections'][number]) {
   const feedComponent = section.type === 'contentFeed' ? section.components[0] : undefined
   const collectionKind = section.type === 'carousel' ? section.collectionKind : undefined
   const dataSource = section.type === 'cards' || section.type === 'carousel' ? section.dataSource : undefined
+  if (dataSource === 'manual') return false
   return collectionKind === 'projects'
     || configuredComponent === 'project'
     || (section.type === 'contentFeed' && feedComponent === 'project')
-    || (dataSource !== 'manual' && /projects?|প্রকল্প/.test(heading)
+    || (/projects?|প্রকল্প/.test(heading)
       && ['cards', 'carousel', 'contentFeed', 'gallery'].includes(section.type))
 }
 
@@ -909,12 +916,9 @@ function hydrateProjectsEditorPage(page: PageData | null, entries: Awaited<Retur
     })) }
     return section
   }
+  // Hydrate only a collection section the editor has explicitly configured.
+  // A missing section is an intentional deletion, not a request to recreate it.
   if (sectionIndex >= 0) sections[sectionIndex] = hydrate(sections[sectionIndex])
-  else if (entries.length) sections.push({
-    type: 'contentFeed', visible: true, heading: { en: 'Projects', bn: 'প্রকল্পসমূহ' },
-    components: [...PROJECT_CONTENT_COMPONENTS], items: entries, columns: 3,
-    contentCollection: { enabled: true, component: 'project', maxItems: 100, layout: 'grid', columns: 3, gap: 24, viewportItems: 3 },
-  } as PageData['sections'][number])
   return { ...page, sections }
 }
 
@@ -922,7 +926,7 @@ async function getPublicSiteSnapshotUncached(path = '/'): Promise<PublicSiteSnap
   const canonicalSlug = resolvePagePath(path)
   // Public content never silently falls back to data.ts at runtime. Use the bundled
   // catalogue only during the build or when an operator explicitly enables preview mode.
-  const useStaticFallback = process.env.CMS_STATIC_FALLBACK === 'true' || isProductionBuild()
+  const useStaticFallback = isStaticFallbackEnabled()
   const cachedDocs = useStaticFallback ? {} : await cachedPublicDocuments(canonicalSlug)
   const docs = new Map<string, JsonValue>(Object.entries(cachedDocs))
   const globalOverride = normalizeGlobal(docs.get('site-global'))
@@ -997,13 +1001,13 @@ async function getPublicSiteSnapshotUncached(path = '/'): Promise<PublicSiteSnap
   if (cmsDetail.handled && !cmsDetail.page) return { global, page: null, canonicalSlug, notFound: true, updatedAt: null }
   let page = cmsDetail.handled ? cmsDetail.page : pageOverride ? ({ ...fallbackPage, ...pageOverride } as PageData) : fallbackPage
 
-  // Normalize homepage section identity once. HomePage accepts only registered landing compositions.
+  // Normalize homepage section identity once; standard Page Builder sections are rendered too.
   if (canonicalSlug === '/' && page) page = ensureLandingPageSections(page, !pageOverride)
 
   // Field-news cards are managed as CMS project items. The JSON page snapshot keeps the
   // section layout, while published CMS items supply its live cards at runtime.
-  const pageUsesNewsRail = Boolean(page?.sections.some((section) => section.type === 'carousel' && (section.homeComponent === 'news' || section.homeComponent === 'stories' || section.homeComponent === 'newsFeed')))
-  const pageUsesSuccessStoriesGallery = Boolean(page?.sections.some((section) => section.type === 'carousel' && section.homeComponent === 'successStories'))
+  const pageUsesNewsRail = Boolean(page?.sections.some((section) => section.type === 'carousel' && section.dataSource !== 'manual' && (section.homeComponent === 'news' || section.homeComponent === 'stories' || section.homeComponent === 'newsFeed')))
+  const pageUsesSuccessStoriesGallery = Boolean(page?.sections.some((section) => section.type === 'carousel' && section.dataSource !== 'manual' && section.homeComponent === 'successStories'))
   const needsFieldNews = pageUsesNewsRail
   if (!useStaticFallback && page && (needsFieldNews || pageUsesSuccessStoriesGallery)) {
     // Capture the narrowed page before entering callbacks: TypeScript does not
@@ -1027,10 +1031,10 @@ async function getPublicSiteSnapshotUncached(path = '/'): Promise<PublicSiteSnap
       ...currentPage,
       sections: currentPage.sections.map((section) => {
         const sectionHeading = (section.type === 'carousel' ? section.heading?.en : '')?.trim().toLowerCase()
-        const isLandingNewsRail = section.type === 'carousel' && (
+        const isLandingNewsRail = section.type === 'carousel' && section.dataSource !== 'manual' && (
           section.homeComponent === 'news' || section.homeComponent === 'stories' || section.homeComponent === 'newsFeed' || (canonicalSlug === '/' && ['news from the field', 'latest news'].includes(sectionHeading ?? ''))
         )
-        const isLandingSuccessGallery = section.type === 'carousel' && section.homeComponent === 'successStories'
+        const isLandingSuccessGallery = section.type === 'carousel' && section.dataSource !== 'manual' && section.homeComponent === 'successStories'
         const isFieldNews = section.type === 'carousel' && (isLandingNewsRail || (section.dataSource !== 'manual' && canonicalSlug === '/social-development'))
         if (isLandingSuccessGallery && section.type === 'carousel') {
           return {
@@ -1102,12 +1106,10 @@ async function getPublicSiteSnapshotUncached(path = '/'): Promise<PublicSiteSnap
             tag: config!.component === 'loan-product' ? { en: 'Loan product', bn: 'ঋণ পণ্য' } : undefined,
           }))
       const projectSectionIndex = canonicalSlug === '/projects' ? projectsCollectionSectionIndex(page.sections) : -1
-      let projectSectionMatched = false
       page = {
         ...page,
         sections: page.sections.map((section, sectionIndex) => {
           if (canonicalSlug === '/projects' && config!.component === 'project' && sectionIndex === projectSectionIndex) {
-            projectSectionMatched = true
             if (section.type === 'contentFeed') return { ...section, components: ['project'], items: collection }
             if (section.type === 'cards') return { ...section, items: cards }
             if (section.type === 'gallery') return { ...section, items: collection.filter((entry) => entry.image).map((entry) => ({ src: entry.image!, alt: entry.title, caption: entry.title })) }
@@ -1139,22 +1141,6 @@ async function getPublicSiteSnapshotUncached(path = '/'): Promise<PublicSiteSnap
           }
           return section
         }),
-      }
-      // If a legacy editor save removed the old carousel marker entirely, keep the
-      // published catalogue visible rather than leaving the page with an empty
-      // `items` array and no database-backed section.
-      if (canonicalSlug === '/projects' && collection.length && !projectSectionMatched) {
-        page = {
-          ...page,
-          sections: [...page.sections, {
-            type: 'contentFeed',
-            visible: true,
-            heading: { en: 'Projects', bn: 'প্রকল্পসমূহ' },
-            components: ['project'],
-            items: collection,
-            columns: 3,
-          } as PageData['sections'][number]],
-        }
       }
     }
   }
@@ -1193,22 +1179,23 @@ async function getPublicSiteSnapshotUncached(path = '/'): Promise<PublicSiteSnap
       ...entry,
       href: `/carrer-job/${entry.slug}`,
     }))
-    const existingJobFeed = page.sections.findIndex((section) => section.type === 'contentFeed' && section.components?.[0] === 'job')
+    const existingJobFeed = page.sections.findIndex((section) => section.type === 'contentFeed' && section.components?.[0] === 'job' && section.dataSource !== 'manual')
     if (existingJobFeed >= 0) {
       page = { ...page, sections: page.sections.map((section, index) => index === existingJobFeed && section.type === 'contentFeed' ? { ...section, components: ['job'], items: jobs } : section) }
     } else {
-      const opportunitiesIndex = page.sections.findIndex((section) => section.type === 'noticeList' && /open opportunities|current vacancies|career|job/i.test(section.heading?.en || ''))
+      const opportunitiesIndex = page.sections.findIndex((section) => section.type === 'noticeList'
+        && (section.dataSource === 'published-feed' || (section.contentCollection?.enabled === true && section.contentCollection.component === 'job'))
+        && /open opportunities|current vacancies|career|job/i.test(section.heading?.en || ''))
       if (opportunitiesIndex >= 0) {
         page = { ...page, sections: page.sections.map((section, index) => index === opportunitiesIndex ? ({
           type: 'contentFeed' as const,
           visible: section.visible,
           heading: section.type === 'noticeList' ? section.heading : { en: 'Current Vacancies', bn: 'চলমান চাকরির সুযোগ' },
           components: ['job'] as ['job'],
+          dataSource: 'published-feed' as const,
           items: jobs,
           buttonConfig: section.buttonConfig,
         }) : section) }
-      } else {
-        page = { ...page, sections: [...page.sections, { type: 'contentFeed', heading: { en: 'Current Vacancies', bn: 'চলমান চাকরির সুযোগ' }, components: ['job'], items: jobs, visible: true }] }
       }
     }
   }
@@ -1216,14 +1203,17 @@ async function getPublicSiteSnapshotUncached(path = '/'): Promise<PublicSiteSnap
   if (page && !isProductionBuild() && !useStaticFallback && page.sections.some((section) => section.contentCollection?.enabled === true)) {
     const hydrated = await Promise.all(page.sections.map(async (section) => {
       const config = section.contentCollection
-      if (!config?.enabled) return section
-      if (canonicalSlug === '/projects' && config.component === 'project') return section
+      if (!config?.enabled || section.dataSource === 'manual') return section
+      if (canonicalSlug === '/projects' && config.component === 'project' && !Array.isArray(config.selectedRecordIds)) return section
       const maxItems = Math.max(1, Math.min(100, Number(config.maxItems) || 12))
-      const entries = await getPublishedFeed(
-        [config.component],
-        maxItems,
-        canonicalSlug === '/projects' && config.component === 'project' ? undefined : canonicalSlug,
-      )
+      const selectedRecordIds = Array.isArray(config.selectedRecordIds) ? config.selectedRecordIds : undefined
+      const entries = selectedRecordIds !== undefined
+        ? await getPublishedFeed([config.component], maxItems, undefined, selectedRecordIds)
+        : await getPublishedFeed(
+            [config.component],
+            maxItems,
+            canonicalSlug === '/projects' && config.component === 'project' ? undefined : canonicalSlug,
+          )
       return hydrateSectionFromCollection(section, entries, config)
     }))
     page = { ...page, sections: hydrated }
@@ -1234,7 +1224,7 @@ async function getPublicSiteSnapshotUncached(path = '/'): Promise<PublicSiteSnap
     // snapshots working while preserving canonical News/Success Story detail links.
     page = { ...page, sections: await Promise.all(page.sections.map(async (section) => {
       if (section.type !== 'contentFeed') return section
-      if (section.contentCollection?.enabled === true) return section
+      if (section.dataSource === 'manual' || section.contentCollection?.enabled === true) return section
       const isCanonicalProjectsFeed = canonicalSlug === '/projects' && (
         section.components?.[0] === 'project' || section.contentCollection?.component === 'project'
       )
@@ -1364,7 +1354,7 @@ export async function getCmsEditorData(slug?: string) {
     source.sections = Array.isArray(override?.sections) ? override!.sections as PageData['sections'] : (fallback?.sections || [])
     override = ensureLandingPageSections(source, !rawOverride) as JsonObject
   }
-  if (canonicalSlug === '/projects' && db && !isProductionBuild() && process.env.CMS_STATIC_FALLBACK !== 'true') {
+  if (canonicalSlug === '/projects' && db && !isProductionBuild() && !isStaticFallbackEnabled()) {
     // Admin preview data is loaded from the same CMS catalogue as the public page.
     // Draft/hidden records remain visible in the Collection manager, while only
     // published records are inserted into the page's preview `items` array.
@@ -1514,7 +1504,7 @@ export async function getAllCmsContent(): Promise<{ global: PublicGlobal; overri
       }
     }
     const availablePages = new Map<string, CmsPageIndexEntry>()
-    const useStaticFallback = process.env.CMS_STATIC_FALLBACK === 'true' || isProductionBuild()
+    const useStaticFallback = isStaticFallbackEnabled()
     if (useStaticFallback) fallbackPages.forEach((page) => availablePages.set(page.slug, { slug: page.slug, title: page.title, subtitle: page.subtitle, status: 'published', sortOrder: page.sortOrder ?? 0 }))
     for (const raw of pageResult.rows as DatabaseRow[]) {
       if (String(raw.status || 'published') !== 'published') continue
@@ -1600,16 +1590,6 @@ function isLegacyLandingImpactSection(section: PageData['sections'][number]) {
   return section.type === 'cards' && section.variant === 'impact'
 }
 
-function hasLandingBilingualText(value: unknown): boolean {
-  if (!value || typeof value !== 'object') return false
-  const item = value as { en?: unknown; bn?: unknown }
-  return (typeof item.en === 'string' && Boolean(item.en.trim())) || (typeof item.bn === 'string' && Boolean(item.bn.trim()))
-}
-
-function hasLandingBody(value: unknown): boolean {
-  return Array.isArray(value) && value.some((item) => hasLandingBilingualText(item))
-}
-
 function insertManagedLandingFallback(
   currentSections: PageData['sections'],
   defaults: PageData['sections'],
@@ -1632,89 +1612,43 @@ function insertManagedLandingFallback(
 }
 
 /**
- * Normalize homepage compositions without overriding CMS layout decisions.
- * A bundled fallback page receives the default managed sections; once a CMS
- * override exists, its `sections` array is authoritative: absent means deleted,
- * while `visible: false` means retained but hidden. Never resurrect deleted sections.
+ * Normalize homepage component identities without overriding a saved CMS composition.
+ * Defaults are inserted only for the bundled page before its first CMS save. A saved
+ * `sections` array is authoritative: deleted sections stay deleted and empty arrays/bodies
+ * remain empty. The newsroom is not an exception.
  */
 function ensureLandingPageSections(page: PageData | null, addMissingManaged = true): PageData | null {
   if (!page || page.slug !== '/') return page
-  const currentSections = Array.isArray(page.sections) ? [...page.sections] : []
+
+  const sections = Array.isArray(page.sections) ? [...page.sections] : []
   const defaults = contentData.allPages['/']?.sections || []
-  const defaultFor = (type: PageData['sections'][number]['type'], heading: string) => defaults.find((section) => isManagedLandingSection(section, type, heading))
-  const legacyNews = currentSections.find((section): section is Extract<PageData['sections'][number], { type: 'carousel' }> =>
-    section.type === 'carousel' && section.homeComponent !== 'successStories' && (
-      section.homeComponent === 'news' || section.homeComponent === 'stories' || section.homeComponent === 'newsFeed' ||
-      ['news from the field', 'latest news', 'success story of srizony', 'success stories of srizony'].includes(normalizeLandingHeading(section.heading?.en))
-    ))
-  const newsFallback = defaults.find((section): section is Extract<PageData['sections'][number], { type: 'carousel' }> => isManagedLandingSection(section, 'carousel', 'news from the field'))
-  // Older saved homepages used one generic `stories` rail for both the newsroom and
-  // the Success Stories heading. Preserve its news feed, then add the new gallery
-  // as a distinct landing composition so existing sites adopt the split safely.
-  let promoteLegacyStoryRailToGallery = false
-  if (legacyNews) {
-    const hadLegacyStoriesKey = legacyNews.homeComponent === 'stories'
-    const hadStoryTitle = ['success story of srizony', 'success stories of srizony'].includes(normalizeLandingHeading(legacyNews.heading?.en))
-    promoteLegacyStoryRailToGallery = hadLegacyStoriesKey || hadStoryTitle
-    legacyNews.homeComponent = 'news'
-    legacyNews.collectionKind = 'news'
-    legacyNews.dataSource = 'published-news'
-    if (promoteLegacyStoryRailToGallery && newsFallback) {
-      legacyNews.eyebrow = newsFallback.eyebrow
-      legacyNews.heading = newsFallback.heading
-      legacyNews.body = newsFallback.body
-    }
-  }
+  const defaultFor = (type: PageData['sections'][number]['type'], heading: string) =>
+    defaults.find((section) => isManagedLandingSection(section, type, heading))
 
   for (const [component, type, heading] of LANDING_MANAGED_SECTION_KEYS) {
-    const currentIndex = currentSections.findIndex((section) => section.homeComponent === component
+    let index = sections.findIndex((section) => section.homeComponent === component
       || (component === 'impactCards' && isLegacyLandingImpactSection(section))
       || isManagedLandingSection(section, type, heading))
-    let current = currentIndex >= 0 ? currentSections[currentIndex] : undefined
-    const fallback = defaultFor(type, heading)
 
-    // Replace incompatible old section discriminators with their registered default,
-    // but carry over an explicit CMS hide flag and editor metadata.
-    if (current && current.type !== type && fallback) {
-      const replacement = {
-        ...fallback,
-        homeComponent: component,
-        ...(current.visible === false ? { visible: false } : {}),
-        ...(current.sectionId ? { sectionId: current.sectionId } : {}),
-        ...(current.typography ? { typography: current.typography } : {}),
-        ...(current.buttonConfig ? { buttonConfig: current.buttonConfig } : {}),
-      } as PageData['sections'][number]
-      currentSections[currentIndex] = replacement
-      current = replacement
+    // Older documents used `stories`/`newsFeed` for the newsroom. Normalize only
+    // a rail that still exists; never insert one when the editor removed it.
+    if (index < 0 && component === 'news') {
+      index = sections.findIndex((section) => section.type === 'carousel'
+        && ['stories', 'newsFeed'].includes(String(section.homeComponent || '')))
     }
 
-    if (current) {
+    if (index >= 0) {
+      const current = sections[index]
+      // A Page Builder type change is also an intentional edit. Do not replace it
+      // with a bundled component just because the old landing key remains.
+      if (current.type !== type) continue
       current.homeComponent = component
-      if (fallback && current.type === fallback.type) {
-        // Keep valid CMS-authored content. Fill only missing/empty essentials from
-        // the bundled baseline so older page snapshots render rather than vanish.
-        if (current.type === 'stats' && fallback.type === 'stats') {
-          if (!hasLandingBilingualText(current.eyebrow)) current.eyebrow = fallback.eyebrow
-          if (!hasLandingBilingualText(current.heading)) current.heading = fallback.heading
-          if (!current.items?.length) current.items = fallback.items
-        } else if (current.type === 'cards' && fallback.type === 'cards') {
-          if (!hasLandingBilingualText(current.eyebrow)) current.eyebrow = fallback.eyebrow
-          if (!hasLandingBilingualText(current.heading)) current.heading = fallback.heading
-          if (!current.items?.length) current.items = fallback.items
-          if (component === 'impactCards') current.variant = 'impact'
-          if (component === 'missionVisionValues' && !current.columns) current.columns = 3
-        } else if (current.type === 'richText' && fallback.type === 'richText') {
-          if (!hasLandingBilingualText(current.eyebrow)) current.eyebrow = fallback.eyebrow
-          if (!hasLandingBilingualText(current.heading)) current.heading = fallback.heading
-          if (!hasLandingBody(current.body)) current.body = fallback.body
-        }
-      }
-      if (current.type === 'carousel' && component === 'news') {
+      if (current.type === 'carousel' && component === 'news' && current.dataSource !== 'manual') {
         current.collectionKind = 'news'
         current.dataSource = 'published-news'
         current.presentation = 'scroller'
       }
-      if (current.type === 'carousel' && component === 'successStories') {
+      if (current.type === 'carousel' && component === 'successStories' && current.dataSource !== 'manual') {
         current.collectionKind = 'success-stories'
         current.dataSource = 'published-success-stories'
         current.presentation = 'collection'
@@ -1722,22 +1656,18 @@ function ensureLandingPageSections(page: PageData | null, addMissingManaged = tr
       continue
     }
 
-    // Only a page without a persisted CMS override receives bundled defaults.
-    // For other existing overrides, a missing section is an intentional deletion.
-    // The newsroom is the exception: old snapshots frequently omitted the homepage
-    // rail during the news/stories split, so restore it unless an editor hid it.
-    const shouldInsertDefault = Boolean(fallback && (addMissingManaged || component === 'news'))
-    if (fallback && addMissingManaged) {
-      insertManagedLandingFallback(currentSections, defaults, fallback, component)
-    } else if (fallback && component === 'news' && shouldInsertDefault) {
-      insertManagedLandingFallback(currentSections, defaults, fallback, component)
+    const fallback = defaultFor(type, heading)
+    if (addMissingManaged && fallback) {
+      insertManagedLandingFallback(sections, defaults, fallback, component)
     }
   }
-  if (addMissingManaged && !currentSections.some((section) => section.homeComponent === 'developmentAreas' || isLandingAreasSection(section))) {
+
+  if (addMissingManaged && !sections.some((section) => section.homeComponent === 'developmentAreas' || isLandingAreasSection(section))) {
     const fallback = defaults.find(isLandingAreasSection)
-    if (fallback) currentSections.push({ ...fallback, homeComponent: 'developmentAreas' })
+    if (fallback) sections.push({ ...fallback, homeComponent: 'developmentAreas' })
   }
-  return { ...page, slug: '/', sections: currentSections }
+
+  return { ...page, slug: '/', sections }
 }
 
 function makeContentCollectionPage(slug: string): PageData | null {

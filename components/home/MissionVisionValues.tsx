@@ -7,13 +7,17 @@ import CmsCardIllustration from '@/components/home/CmsCardIllustration'
 import type { IllustrationName } from '@/types/entityType'
 import SectionActions from '@/components/ui/SectionActions'
 import { plainSectionTitle } from '@/lib/sectionTitle'
+import { STORY, STORY_INTRO } from '@/data/homeContent'
 
 type MissionSection = Extract<PageData['sections'][number], { type: 'cards' }>
 const normalizeHeading = (value?: string) => (value ?? '').trim().toLocaleLowerCase().replace(/[\s_-]+/g, ' ')
 
 export default function MissionVisionValues({ lang, page }: { lang: Lang; page: PageData }) {
   const source = page.sections.find((item): item is MissionSection => item.type === 'cards' && (item.homeComponent === 'missionVisionValues' || normalizeHeading(item.heading?.en) === 'mission, vision & values'))
-  const sourceItems = Array.isArray(source?.items) ? source.items : []
+  const starterSteps: MissionSection['items'] = STORY.map((step) => ({ title: step.kicker, body: step.body, chips: step.chips, illustration: step.id }))
+  const sourceItems: MissionSection['items'] = Array.isArray(source?.items)
+    ? (source.items.length || source.dataSource === 'manual' ? source.items : starterSteps)
+    : starterSteps
   const steps = sourceItems.map((item, i) => ({
     id: item.illustration || 'area',
     stepKey: `cms-step-${i}`,
@@ -23,7 +27,7 @@ export default function MissionVisionValues({ lang, page }: { lang: Lang; page: 
     body: item.body ?? { en: '', bn: '' },
     chips: Array.isArray(item.chips) ? item.chips : item.tag ? [item.tag] : [],
   }))
-  const intro = { eyebrow: source?.eyebrow, title: source?.heading }
+  const intro = { eyebrow: source?.eyebrow ?? STORY_INTRO.eyebrow, title: source?.heading ?? STORY_INTRO.title }
   const wrapRef = useRef<HTMLElement | null>(null)
   const stageRef = useRef<HTMLDivElement | null>(null)
   const [index, setIndex] = useState(0)
@@ -95,7 +99,7 @@ export default function MissionVisionValues({ lang, page }: { lang: Lang; page: 
     window.scrollTo({ top, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })
   }, [])
 
-  if (!source || source.visible === false || !intro.title || !intro.eyebrow || !steps.length) return null
+  if (!source || source.visible === false || !steps.length) return null
 
   return (
     <section className="sf-story" ref={wrapRef} style={{ '--sf-story-step-count': count } as CSSProperties} aria-label={intro.title[lang]}>

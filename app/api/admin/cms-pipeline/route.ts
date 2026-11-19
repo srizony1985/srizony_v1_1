@@ -137,7 +137,7 @@ export async function GET() {
     ]
     return NextResponse.json({
       database: { provider: 'Neon PostgreSQL', connected: true },
-      fallback: { gateway: 'lib/cms/fallback-gateway.ts', runtimeMode: process.env.CMS_STATIC_FALLBACK === 'true' ? 'enabled' : 'disabled', identitySource: identityInDb ? 'database' : 'fallback' },
+      fallback: { gateway: 'lib/cms/fallback-gateway.ts', runtimeMode: process.env.NODE_ENV === 'production' ? 'disabled-in-production' : process.env.CMS_STATIC_FALLBACK === 'true' ? 'enabled' : 'disabled', identitySource: identityInDb ? 'database' : 'fallback' },
       identity,
       identityUpdatedAt: updatedAtRaw instanceof Date ? updatedAtRaw.toISOString() : updatedAtRaw ? String(updatedAtRaw) : null,
       domains,

@@ -456,8 +456,10 @@ function toFeed(row: Row): FeedItem {
 }
 
 /** Published items of the given components, newest first. Used by public pages (server side). */
-export async function getPublishedFeed(components: ContentComponent[], limit = 60, parentPath?: string): Promise<FeedItem[]> {
+export async function getPublishedFeed(components: ContentComponent[], limit = 60, parentPath?: string, recordIds?: number[]): Promise<FeedItem[]> {
   if (!components.length) return []
+  const selectedIds = recordIds?.filter((id) => Number.isSafeInteger(id) && id > 0)
+  if (recordIds !== undefined && !selectedIds?.length) return []
   const fixedContentParent = components.length === 1 ? FIXED_CONTENT_PARENT[components[0]] : undefined
   const detailParent = parentPath
     ? (fixedContentParent || (parentPath === DEFAULT_CONTENT_PARENT.news ? (FIXED_CONTENT_PARENT.news || '/news')
@@ -469,7 +471,8 @@ export async function getPublishedFeed(components: ContentComponent[], limit = 6
     if (!rows) return []
     const today = new Date().toISOString().slice(0, 10)
     return rows.filter((row) => row.status === 'published' && components.includes(String(row.component) as ContentComponent))
-      .filter((row) => !parentPath || String((row.attributes as JsonObject | undefined)?.routeParent || DEFAULT_CONTENT_PARENT[String(row.component) as ContentComponent] || '/') === detailParent)
+      .filter((row) => selectedIds === undefined || selectedIds.includes(Number(row.id)))
+      .filter((row) => selectedIds !== undefined || !parentPath || String((row.attributes as JsonObject | undefined)?.routeParent || DEFAULT_CONTENT_PARENT[String(row.component) as ContentComponent] || '/') === detailParent)
       .filter((row) => String(row.component) !== 'job' || !(row.attributes as JsonObject | undefined)?.deadline || String((row.attributes as JsonObject).deadline) >= today)
       .sort((a, b) => {
         const av = Number((a.attributes as JsonObject | undefined)?.displayOrder)
@@ -485,7 +488,8 @@ export async function getPublishedFeed(components: ContentComponent[], limit = 6
     const list = sql.join(components.map((c) => sql`${c}`), sql`, `)
     const r = await withDbRetry(() => database().execute(sql`
       SELECT * FROM cms_content_items WHERE status = 'published' AND component IN (${list})
-        ${parentPath ? sql`AND (
+        ${selectedIds !== undefined ? sql`AND id IN (${sql.join(selectedIds.map((id) => sql`${id}`), sql`, `)})` : sql``}
+        ${selectedIds === undefined && parentPath ? sql`AND (
           COALESCE(NULLIF(attributes->>'routeParent', ''), CASE component
           WHEN 'project' THEN '/projects' WHEN 'news' THEN '/news' WHEN 'enterprise' THEN '/enterprise-development'
           WHEN 'partner-agency' THEN '/about-us/partners-networks' WHEN 'health-service' THEN '/social-development/health-program'

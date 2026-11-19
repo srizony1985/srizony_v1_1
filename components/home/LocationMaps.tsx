@@ -10,6 +10,7 @@ import { MAP_H, MAP_W, OUTLINE_COORDS, OUTLINE_PATH, project } from '@/lib/bangl
 import { localizeDigits } from '@/lib/utils'
 import { getMapBoundaries } from '@/lib/api/mapBoundaries'
 import { plainSectionTitle } from '@/lib/sectionTitle'
+import { FOOTPRINT_INTRO } from '@/data/homeContent'
 import type { Lang, PageData } from '@/types/entityType'
 import { useSite } from '@/components/containers/SiteProvider'
 import LogoLoader from '@/components/ui/LogoLoader'
@@ -287,10 +288,10 @@ export default function LocationMaps({ page, variant = 'default' }: { page: Page
   const footprintCopy = page.sections.find((section): section is FootprintCopySection => section.type === 'richText' && (section.homeComponent === 'locations' || normalizeFootprintHeading(section.heading?.en) === 'our offices across bangladesh'))
   const footprintEyebrow = variant === 'contact'
     ? { en: 'Contact & locations', bn: 'যোগাযোগ ও অবস্থান' }
-    : footprintCopy?.eyebrow
+    : footprintCopy?.eyebrow ?? FOOTPRINT_INTRO.eyebrow
   const footprintTitle = variant === 'contact'
     ? { en: 'Find a Srizony office', bn: 'সৃজনীর অফিস খুঁজুন' }
-    : footprintCopy?.heading
+    : footprintCopy?.heading ?? FOOTPRINT_INTRO.title
   const footprintParagraphs = footprintCopy?.body?.filter((paragraph) => paragraph.en?.trim() || paragraph.bn?.trim()) ?? []
   // An explicitly saved empty body is a valid CMS choice; only use defaults when no
   // section document is present, not when the editor intentionally clears the copy.
@@ -766,7 +767,7 @@ export default function LocationMaps({ page, variant = 'default' }: { page: Page
     }
   }, [mode, active, districtFeatures.length, svgViewport, size.w, size.h])
 
-  if (variant !== 'contact' && (footprintCopy?.visible === false || !footprintEyebrow || !footprintTitle)) return null
+  if (variant !== 'contact' && footprintCopy?.visible === false) return null
   const sectionId = variant === 'contact' ? 'contact-locations' : 'national-footprint'
   const titleId = variant === 'contact' ? 'sf-contact-map-title' : 'sf-fp-title'
 

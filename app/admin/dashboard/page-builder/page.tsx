@@ -13,6 +13,7 @@ import { toast } from 'sonner'
 import { Button, buttonClassName } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
 import { MediaField } from '../_components/MediaField'
 import { deleteEditablePage, getEditablePage, getPageBuilderIndex, saveEditablePage, setEditablePageNavigationVisibility, type PageIndexItem } from '@/lib/api/pageBuilder'
@@ -28,13 +29,14 @@ import { AdminErrorState, AdminSectionTabs, PageLoading, SectionToolbar } from '
 import LandingCollectionCardsEditor from '../_components/LandingCollectionCardsEditor'
 import { ContentEditor } from '../_components/ContentEditor'
 import { listContent } from '@/lib/api/siteContent'
-import { COMPONENTS, FIXED_CONTENT_PARENT, type ContentComponent, type ContentRecord } from '@/lib/cms/components'
+import { COMPONENTS, DEFAULT_CONTENT_PARENT, FIXED_CONTENT_PARENT, type ContentComponent, type ContentRecord } from '@/lib/cms/components'
 import { normalizeMediaSrc } from '@/lib/mediaUrl'
 import { useAdminActions, useRegisterAdminActions } from '../_components/AdminActionContext'
 import { AdminDataContainer, AdminWorkspaceGrid } from '@/components/admin/cms'
 import Image from 'next/image'
 import Select from '@/components/ui/select'
 import { supportsLocationMap } from '@/lib/cms/locationMap'
+import { AREAS, AREAS_INTRO, COUNTERS, FOOTPRINT_INTRO, GROWTH_INTRO, STORY, STORY_INTRO } from '@/data/homeContent'
 
 const SECTION_TYPES: Section['type'][] = ['richText', 'stats', 'cards', 'gallery', 'timeline', 'diagram', 'table', 'video', 'cta', 'noticeList', 'contact', 'donation', 'carousel', 'contentFeed', 'reports']
 const COLLECTION_SECTION_TYPES = new Set<Section['type']>(['richText', 'stats', 'cards', 'gallery', 'timeline', 'table', 'cta', 'noticeList', 'donation', 'carousel', 'contentFeed', 'reports'])
@@ -61,10 +63,11 @@ function layoutsForSection(type: Section['type']): Array<'grid' | 'carousel' | '
 function isProjectsCollectionMarker(section: PageSection) {
   const candidate = section as PageSection & { collectionKind?: string; dataSource?: string; components?: string[]; heading?: Bilingual }
   const heading = `${candidate.heading?.en || ''} ${candidate.heading?.bn || ''}`.toLowerCase()
+  if (candidate.dataSource === 'manual') return false
   return candidate.collectionKind === 'projects'
     || candidate.contentCollection?.component === 'project'
     || (candidate.type === 'contentFeed' && candidate.components?.[0] === 'project')
-    || (candidate.dataSource !== 'manual' && /projects?|প্রকল্প/.test(heading)
+    || (/projects?|প্রকল্প/.test(heading)
       && ['cards', 'carousel', 'contentFeed', 'gallery'].includes(candidate.type))
 }
 
@@ -106,7 +109,7 @@ function blankSection(type: Section['type'], title: Bilingual = blankBi()): Page
   }
   section.visible = true
   section.sectionId = `section-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
-  section.contentCollection = { enabled: COLLECTION_SECTION_TYPES.has(type), component: defaultCollectionComponent(type), maxItems: type === 'cta' || type === 'donation' ? 1 : 12, layout: layoutsForSection(type)[0], columns: 3, gap: 24, viewportItems: 3, ...(type === 'contentFeed' ? { showSearch: true, showCategoryFilter: true, showYearFilter: true } : {}) }
+  section.contentCollection = { enabled: type === 'contentFeed', component: defaultCollectionComponent(type), maxItems: type === 'cta' || type === 'donation' ? 1 : 12, layout: layoutsForSection(type)[0], columns: 3, gap: 24, viewportItems: 3, ...(type === 'contentFeed' ? { selectedRecordIds: [], showSearch: true, showCategoryFilter: true, showYearFilter: true } : {}) }
   section.buttonConfig = defaultButton(type === 'cta')
   return section as PageSection
 }
@@ -276,19 +279,28 @@ function FriendlyListEditor({ section, onChange }: { section: PageSection; onCha
     : section.type === 'carousel' && section.homeComponent === 'hero'
       ? fields.filter((field) => field.key !== 'tag')
       : fields
+  // The first manual edit to a cards section changes ownership to Page Builder.
+  // This prevents Portfolio/catalogue data from repopulating cards the editor removes.
+  function commitItems(next: JsonObject[]) {
+    onChange({
+      ...section,
+      ...(section.type === 'cards' ? { dataSource: 'manual' as const } : {}),
+      items: next,
+    } as PageSection)
+  }
   function update(index: number, key: string, value: JsonValue) {
     const next = items.map((item, i) => i === index ? setPath(item, key, value) : item)
-    onChange({ ...section, items: next } as PageSection)
+    commitItems(next)
   }
   function add() {
     const next = [...items, blankFriendlyItem(activeFields)]
-    onChange({ ...section, items: next } as PageSection); setExpanded((current) => [...current, next.length - 1])
+    commitItems(next); setExpanded((current) => [...current, next.length - 1])
   }
   function move(index: number, delta: number) {
     const next = [...items]; const target = index + delta
     if (target < 0 || target >= next.length) return
     const [item] = next.splice(index, 1); next.splice(target, 0, item)
-    onChange({ ...section, items: next } as PageSection); setExpanded((current) => current.map((n) => n === index ? target : n === target ? index : n))
+    commitItems(next); setExpanded((current) => current.map((n) => n === index ? target : n === target ? index : n))
   }
   return <fieldset className={`${ARRAY_FIELDSET_CLASS} cms-friendly-list grid gap-2.5 mt-3.5`}><legend>{config.title}</legend>
     <p className="admin-small-note">Manage each item without JSON. Choose a reusable illustration preset or upload a custom image for each card/statistic; the selection is saved with this page in the database and reused by its renderer.</p>
@@ -309,7 +321,7 @@ function FriendlyListEditor({ section, onChange }: { section: PageSection; onCha
             </Button>
             <Button type="button" className={ICON_BUTTON_CLASS} onClick={() => move(index, -1)} disabled={index === 0} aria-label={`Move ${config.singular} up`}><ArrowUp size={14} /></Button>
             <Button type="button" className={ICON_BUTTON_CLASS} onClick={() => move(index, 1)} disabled={index === items.length - 1} aria-label={`Move ${config.singular} down`}><ArrowDown size={14} /></Button>
-            <Button type="button" className={ICON_BUTTON_CLASS} onClick={() => { if (!confirm(`Remove ${config.singular} ${index + 1}?`)) return; onChange({ ...section, items: items.filter((_, i) => i !== index) } as PageSection); setExpanded((current) => current.filter((n) => n !== index).map((n) => n > index ? n - 1 : n)) }} aria-label={`Remove ${config.singular}`}><Trash2 size={14} /></Button>
+            <Button type="button" className={ICON_BUTTON_CLASS} onClick={() => { if (!confirm(`Remove ${config.singular} ${index + 1}?`)) return; commitItems(items.filter((_, i) => i !== index)); setExpanded((current) => current.filter((n) => n !== index).map((n) => n > index ? n - 1 : n)) }} aria-label={`Remove ${config.singular}`}><Trash2 size={14} /></Button>
           </div>
           {isOpen && <div className={`${FORM_GRID_CLASS} cms-friendly-fields p-3 min-w-0 [&_.cms-media-control]:col-span-full [&_.pb-bilingual]:grid-cols-2 [&_.pb-bilingual_textarea]:min-w-0 [&_.pb-bilingual_input]:min-w-0 max-[700px]:[&_.pb-bilingual]:grid-cols-1`}>
             {activeFields.map((field) => field.kind === 'bilingualLines'
@@ -367,7 +379,13 @@ function SectionExtrasEditor({ section, onChange }: { section: PageSection; onCh
         <label className={FIELD_CLASS}><span>Card data source</span><NativeSelect value={section.dataSource ?? 'published-feed'} onChange={(e) => set('dataSource', e.target.value as 'manual' | 'published-feed')}><option value="published-feed">Synchronize from published Enterprise Site Content</option><option value="manual">Use the cards edited above</option></NativeSelect></label>
         <p className="admin-small-note">Manual mode preserves these titles, descriptions, images, illustration choices and routes. Published-feed mode synchronizes from Site Content → Enterprises.</p>
       </fieldset>}
-      {isMissionStory && <fieldset className={ARRAY_FIELDSET_CLASS}><legend>Scroll sequence options</legend><BilingualInputs label="Scroll hint" value={getBilingual((section as JsonObject).scrollHint) ?? { en: 'Keep scrolling', bn: 'স্ক্রল করুন' }} onChange={(scrollHint) => set('scrollHint', scrollHint)} /></fieldset>}
+      {isMissionStory && <>
+        <fieldset className={ARRAY_FIELDSET_CLASS}><legend>Mission, vision & values source</legend>
+          <label className={FIELD_CLASS}><span>Card data source</span><NativeSelect value={section.dataSource ?? 'manual'} onChange={(e) => set('dataSource', e.target.value as 'manual' | 'published-feed')}><option value="manual">Use the cards edited above</option><option value="published-feed">Synchronize from Portfolio settings</option></NativeSelect></label>
+          <p className="admin-small-note">Manual mode makes the Page Builder cards authoritative, including an empty card list. Portfolio mode synchronizes the section from the global Mission, Vision and Values fields.</p>
+        </fieldset>
+        <fieldset className={ARRAY_FIELDSET_CLASS}><legend>Scroll sequence options</legend><BilingualInputs label="Scroll hint" value={getBilingual((section as JsonObject).scrollHint) ?? { en: 'Keep scrolling', bn: 'স্ক্রল করুন' }} onChange={(scrollHint) => set('scrollHint', scrollHint)} /></fieldset>
+      </>}
     </>
   }
   if (section.type === 'gallery') return <fieldset className={ARRAY_FIELDSET_CLASS}><legend>Gallery layout</legend><label className={FIELD_CLASS}><span>Columns (desktop)</span><NativeSelect value={String(section.columns ?? 3)} onChange={(e) => set('columns', Number(e.target.value) as 2 | 3 | 4)}><option value="2">2 columns</option><option value="3">3 columns</option><option value="4">4 columns</option></NativeSelect></label></fieldset>
@@ -498,6 +516,8 @@ function SectionCard({ section, index, total, pageSlug, isProjectsCatalogSection
         <div className={`${FORM_GRID_CLASS} pb-section-grid mt-1.25`}>
           <label className={FIELD_CLASS}><span>Section content type</span><NativeSelect value={type} disabled={Boolean(section.homeComponent)} onChange={(e) => { const nextType = e.target.value as Section['type']; const next = blankSection(nextType, heading ?? blankBi()); next.visible = section.visible !== false; next.buttonConfig = button; onChange(next) }}>{(section.homeComponent ? [type] : SECTION_TYPES).map((t) => <option key={t} value={t}>{t}</option>)}</NativeSelect></label>
           <label className={FIELD_CLASS}><span>Section visibility</span><NativeSelect value={section.visible === false ? 'hidden' : 'visible'} onChange={(e) => commonChange('visible', e.target.value === 'visible')}><option value="visible">Show on site</option><option value="hidden">Hide on site</option></NativeSelect></label>
+          {pageSlug === '/about-us' && section.type === 'richText' && <label className={FIELD_CLASS}><span>Text content source</span><NativeSelect value={section.dataSource ?? 'manual'} onChange={(e) => commonChange('dataSource', e.target.value as 'manual' | 'portfolio-about')}><option value="manual">Use Page Builder text</option><option value="portfolio-about">Synchronize from Portfolio settings</option></NativeSelect><small className="admin-small-note">Manual is the default. Portfolio updates replace this section only when synchronization is explicitly selected.</small></label>}
+          {pageSlug === '/carrer-job' && section.type === 'noticeList' && <label className={FIELD_CLASS}><span>Job content source</span><NativeSelect value={section.dataSource ?? 'manual'} onChange={(e) => commonChange('dataSource', e.target.value as 'manual' | 'published-feed')}><option value="manual">Use manually edited notices</option><option value="published-feed">Synchronize published Job records</option></NativeSelect><small className="admin-small-note">The live Job collection replaces this section only when synchronization is selected.</small></label>}
           {section.homeComponent !== 'hero' && heading && <div className="cms-span-2 col-span-2 max-[700px]:col-auto"><BilingualInputs label="Heading" value={heading} onChange={(v) => commonChange('heading', v)} /></div>}
           {section.homeComponent !== 'hero' && eyebrow && <div className="cms-span-2 col-span-2 max-[700px]:col-auto"><BilingualInputs label="Eyebrow / label" value={eyebrow} onChange={(v) => commonChange('eyebrow', v)} /></div>}
           {section.homeComponent !== 'hero' && body && !collectionManaged && section.type !== 'contentFeed' && <div className="cms-span-2 col-span-2 max-[700px]:col-auto"><BilingualInputs label="Body / description" value={body} multiline onChange={setBodyBoth} /></div>}
@@ -539,15 +559,12 @@ function SectionCard({ section, index, total, pageSlug, isProjectsCatalogSection
 function SectionCollectionEditor({ section, pageSlug, isProjectsCatalogSection = false, onChange }: { section: PageSection; pageSlug: string; isProjectsCatalogSection?: boolean; onChange: (section: PageSection) => void }) {
   const sectionData = section as PageSection & { collectionKind?: string; heading?: Bilingual; dataSource?: string }
   const headingText = `${sectionData.heading?.en || ''} ${sectionData.heading?.bn || ''}`.toLowerCase()
-  const isCanonicalProjectsCollection = pageSlug === '/projects' && (
+  const isCanonicalProjectsCollection = pageSlug === '/projects' && sectionData.dataSource !== 'manual' && (
     isProjectsCatalogSection
     || isProjectsCollectionMarker(section)
-    || (sectionData.dataSource !== 'manual' && /projects?|প্রকল্প/.test(headingText))
+    || /projects?|প্রকল্প/.test(headingText)
   )
   const defaultConfig = { enabled: section.type === 'contentFeed' || isCanonicalProjectsCollection, component: ((section.type === 'contentFeed' ? section.components?.[0] : undefined) ?? 'project') as ContentComponent, maxItems: 12, layout: section.type === 'carousel' ? 'carousel' as const : section.type === 'gallery' ? 'masonry' as const : 'grid' as const, columns: 3 as const, gap: 24, viewportItems: 3, showSearch: true, showCategoryFilter: true, showYearFilter: true }
-  // The canonical Projects page always reads its published CMS catalogue. This
-  // repairs older saved sections whose `contentCollection.enabled` flag remained
-  // false and consequently left both the editor list and public `items` empty.
   const config = {
     ...defaultConfig,
     ...(section.contentCollection ?? {}),
@@ -557,51 +574,96 @@ function SectionCollectionEditor({ section, pageSlug, isProjectsCatalogSection =
   const [items, setItems] = useState<ContentRecord[]>([])
   const [loading, setLoading] = useState(false)
   const [editing, setEditing] = useState<ContentRecord | null | 'new'>(null)
+  const [collectionQuery, setCollectionQuery] = useState('')
   const refresh = useCallback(() => {
-    if (!config.enabled) return Promise.resolve()
+    if (!config.enabled) {
+      setItems([])
+      return Promise.resolve()
+    }
     setLoading(true)
+    // This is a picker for the site's entire content catalogue, not only records
+    // already assigned to the current page. Inclusion is stored per section below.
     return listContent(config.component)
-      .then((all) => {
-        const contentPage = FIXED_CONTENT_PARENT[config.component] || pageSlug
-        setItems(isCanonicalProjectsCollection
-          ? all
-          : all.filter((item) => String(FIXED_CONTENT_PARENT[item.component] || item.values.routeParent || '') === contentPage))
-      })
+      .then((all) => setItems(all))
       .catch((cause: unknown) => toast.error(cause instanceof Error ? cause.message : 'Unable to load this section collection.'))
       .finally(() => setLoading(false))
-  }, [config.enabled, config.component, pageSlug, isCanonicalProjectsCollection])
-  const setConfig = (patch: Partial<typeof config>) => onChange({ ...section, contentCollection: { ...config, ...patch } })
+  }, [config.enabled, config.component])
+  useEffect(() => { void refresh() }, [refresh])
+  const setConfig = (patch: Partial<typeof config>) => {
+    const nextConfig = { ...config, ...patch }
+    if (section.type === 'contentFeed') {
+      onChange({ ...section, components: [nextConfig.component], contentCollection: nextConfig })
+      return
+    }
+    onChange({ ...section, contentCollection: nextConfig })
+  }
   const selectableComponents = Object.keys(COMPONENTS) as ContentComponent[]
-  const contentPage = FIXED_CONTENT_PARENT[config.component] || pageSlug
+  const contentPage = FIXED_CONTENT_PARENT[config.component] || (pageSlug === '/' ? DEFAULT_CONTENT_PARENT[config.component] : pageSlug) || '/'
   const layoutOptions = layoutsForSection(section.type)
   const selectedLayout = layoutOptions.includes(config.layout) ? config.layout : layoutOptions[0]
   const singleRecordSection = section.type === 'cta' || section.type === 'donation'
   const heading = (section as JsonObject).heading as Bilingual | undefined
+  const selectedIds = new Set<number>(Array.isArray(config.selectedRecordIds)
+    ? config.selectedRecordIds
+    : items.filter((item) => {
+        if (item.status !== 'published') return false
+        const assignedPage = FIXED_CONTENT_PARENT[item.component] || item.values.routeParent || DEFAULT_CONTENT_PARENT[item.component] || '/'
+        return isCanonicalProjectsCollection || assignedPage === pageSlug
+      }).map((item) => item.id))
+  const visibleItems = items.filter((item) => {
+    const query = collectionQuery.trim().toLocaleLowerCase()
+    if (!query) return true
+    return [item.values.title_en, item.values.title_bn, item.slug, item.values.summary_en, item.values.summary_bn]
+      .some((value) => String(value || '').toLocaleLowerCase().includes(query))
+  })
+  const toggleRecord = (recordId: number, included: boolean) => {
+    const next = new Set(selectedIds)
+    if (included) next.add(recordId)
+    else next.delete(recordId)
+    setConfig({ selectedRecordIds: [...next] })
+  }
+  const selectedCount = items.filter((item) => selectedIds.has(item.id)).length
   return <fieldset className={ARRAY_FIELDSET_CLASS}>
     <legend>Site content collection</legend>
-    <p className="admin-small-note">A section defines a database-backed collection. Records created here also appear in Site Content. Records created in Site Content appear here when their destination page and content type match.</p>
+    <p className="admin-small-note">Choose a content type, then include or hide individual records in this section. This selection belongs only to this page section; it does not publish, unpublish or delete the underlying Site Content record.</p>
     <div className={FORM_GRID_CLASS}>
       {isCanonicalProjectsCollection
         ? <div className={FIELD_CLASS}><span>Connect Site Content</span><p className="admin-small-note">Enabled automatically for the canonical Projects page. Published Project records supply this section&apos;s cards and uploaded images.</p></div>
         : <label className={FIELD_CLASS}><span>Connect Site Content</span><NativeSelect value={config.enabled ? 'yes' : 'no'} onChange={(event) => setConfig({ enabled: event.target.value === 'yes' })}><option value="yes">Enabled — database collection</option><option value="no">Disabled — manually managed section</option></NativeSelect></label>}
       {config.enabled && <>
-        <label className={FIELD_CLASS}><span>Content type</span><NativeSelect value={config.component} onChange={(event) => setConfig({ component: event.target.value as ContentComponent })}>{selectableComponents.map((component) => <option key={component} value={component}>{COMPONENTS[component].plural}</option>)}</NativeSelect></label>
+        <label className={FIELD_CLASS}><span>Content type</span><NativeSelect value={config.component} onChange={(event) => setConfig({ component: event.target.value as ContentComponent, selectedRecordIds: [] })}>{selectableComponents.map((component) => <option key={component} value={component}>{COMPONENTS[component].plural}</option>)}</NativeSelect></label>
         <label className={FIELD_CLASS}><span>Maximum records</span><Input type="number" min="1" max="100" value={String(singleRecordSection ? 1 : config.maxItems)} disabled={singleRecordSection} onChange={(event) => setConfig({ maxItems: Math.max(1, Math.min(100, Number(event.target.value) || 1)) })} />{singleRecordSection && <small className="admin-small-note">This section uses one record as its call-to-action content.</small>}</label>
         <label className={FIELD_CLASS}><span>Arrangement</span><NativeSelect value={selectedLayout} onChange={(event) => setConfig({ layout: event.target.value as typeof config.layout })}>{layoutOptions.map((layout) => <option key={layout} value={layout}>{layout === 'grid' ? 'Grid' : layout === 'carousel' ? 'Carousel / scroller' : layout === 'masonry' ? 'Masonry gallery' : 'List'}</option>)}</NativeSelect></label>
         {(selectedLayout === 'grid' || selectedLayout === 'masonry') && <label className={FIELD_CLASS}><span>Desktop columns</span><NativeSelect value={String(config.columns)} onChange={(event) => setConfig({ columns: Number(event.target.value) as 2 | 3 | 4 })}><option value="2">2</option><option value="3">3</option><option value="4">4</option></NativeSelect></label>}
         <label className={FIELD_CLASS}><span>Gap (px)</span><Input type="number" min="0" max="64" value={String(config.gap)} onChange={(event) => setConfig({ gap: Math.max(0, Math.min(64, Number(event.target.value) || 0)) })} /></label>
-        {selectedLayout === 'carousel' && <label className={FIELD_CLASS}><span>Cards visible in viewport</span><Input type="number" min="1" max="12" value={String(config.viewportItems)} onChange={(event) => setConfig({ viewportItems: Math.max(1, Math.min(12, Number(event.target.value) || 1)) })} /></label>}
+        {selectedLayout === 'carousel' && <label className={FIELD_CLASS}><span>Cards visible in viewport</span><Input type="number" min="1" max="12" value={String(config.viewportItems)} onChange={(event) => setConfig({ viewportItems: Math.max(1, Math.min(12, Number(event.target.value) || 1)) })} /> </label>}
       </>}
+      {config.enabled && (config.component === 'notice' || config.component === 'job') && <p className="admin-small-note">Notice and job feeds use two columns on medium and larger screens, and one column on smaller screens.</p>}
       {config.enabled && section.type === 'contentFeed' && <fieldset className={`${ARRAY_FIELDSET_CLASS} mt-2 grid gap-2`}><legend>Public feed filters</legend><p className="admin-small-note">Choose which visitor controls appear above this content feed. Hiding a filter also disables that filter from affecting results.</p>{([['showSearch', 'Keyword search'], ['showCategoryFilter', 'Category / status filter'], ['showYearFilter', 'Year filter']] as const).map(([key, label]) => <label key={key} className="flex items-center justify-between gap-3 rounded-md border border-border bg-card px-3 py-2 text-sm"><span>{label}</span><NativeSelect className="max-w-32" value={config[key] === false ? 'no' : 'yes'} onChange={(event) => setConfig({ [key]: event.target.value === 'yes' })}><option value="yes">Show</option><option value="no">Hide</option></NativeSelect></label>)}</fieldset>}
     </div>
-    {config.enabled && (config.component === 'job' || config.component === 'notice') && (
-      <p className="admin-small-note">Notice and job feeds use two columns on medium and larger screens, and one column on smaller screens.</p>
-    )}
     {config.enabled && <div className="cms-collection-manager grid gap-2.5 mt-3 p-3.5 border border-border rounded-md bg-muted [&_code]:text-xs">
-      <div className="cms-collection-manager-head flex justify-between items-center gap-3 flex-wrap [&>div]:grid [&>div]:gap-0.75 [&_small]:text-muted-foreground [&_small]:text-xs max-[600px]:items-stretch max-[600px]:*:data-[slot=button]:w-full"><div><strong>{COMPONENTS[config.component].plural}</strong><small>{items.length} {isCanonicalProjectsCollection ? 'record(s) in the Projects catalogue' : <>record(s) assigned to <code>{contentPage}</code></>}{heading?.en ? ` · ${heading.en}` : ''}</small></div><Button size="sm" onClick={() => setEditing('new')}><Plus size={14} /> Add content</Button></div>
-      {loading ? <p className="admin-small-note">Loading collection…</p> : items.length ? <div className="cms-collection-items grid gap-2">{items.map((item) => <div key={item.id} className="cms-collection-item [&_small]:text-muted-foreground [&_small]:text-xs flex items-center justify-between gap-3 px-3 py-2 border border-border rounded-md bg-card [&>div]:grid [&>div]:flex-1 [&>div]:min-w-0 [&>div]:gap-0.75 [&_strong]:overflow-hidden [&_strong]:text-ellipsis [&_strong]:whitespace-nowrap max-[600px]:items-start">{item.values.image ? <Image className="cms-collection-thumb block w-14 shrink-0 h-10 object-cover rounded-md border border-border bg-muted" src={normalizeMediaSrc(item.values.image)} alt={item.values.title_en || item.slug} width={200} height={150} loading="lazy" /> : <span className="cms-collection-thumb block w-14 shrink-0 h-10 object-cover rounded-md border border-border bg-muted cms-collection-thumb--empty place-items-center text-muted-foreground text-xs" aria-hidden="true">No image</span>}<div><strong>{item.values.title_en || item.slug}</strong><small>{item.slug} · {item.status}{item.values.image ? ' · image attached' : ' · no image selected'}</small></div><Button size="sm" variant="outline" onClick={() => setEditing(item)}>Edit</Button></div>)}</div> : <p className="admin-small-note">{isCanonicalProjectsCollection ? 'No project records yet. Add one here or publish a Project from Site Content.' : `No records assigned yet. Add one here or create it in Site Content and set its “Publish under page” destination to ${contentPage}.`}</p>}
+      <div className="cms-collection-manager-head flex justify-between items-center gap-3 flex-wrap [&>div]:grid [&>div]:gap-0.75 [&_small]:text-muted-foreground [&_small]:text-xs max-[600px]:items-stretch max-[600px]:*:data-[slot=button]:w-full"><div><strong>Available {COMPONENTS[config.component].plural}</strong><small>{items.length} available · {selectedCount} included in this section{heading?.en ? ` · ${heading.en}` : ''}</small></div><Button size="sm" onClick={() => setEditing('new')}><Plus size={14} /> Add content</Button></div>
+      <label className={FIELD_CLASS}><span>Search available {COMPONENTS[config.component].plural.toLowerCase()}</span><Input type="search" value={collectionQuery} onChange={(event) => setCollectionQuery(event.target.value)} placeholder="Search title, slug or summary…" /></label>
+      {loading ? <p className="admin-small-note">Loading site content…</p> : visibleItems.length ? <div className="cms-collection-items grid gap-2">{visibleItems.map((item) => <div key={item.id} className="cms-collection-item flex items-center gap-3 px-3 py-2 border border-border rounded-md bg-card max-[600px]:items-start">
+        <label className="flex min-w-0 flex-1 items-center gap-2.5 text-sm">
+          <Checkbox checked={selectedIds.has(item.id)} disabled={item.status !== 'published'} onChange={(event) => toggleRecord(item.id, event.target.checked)} aria-label={`${selectedIds.has(item.id) ? 'Hide' : 'Include'} ${item.values.title_en || item.slug} in this section`} />
+          {item.values.image ? <Image className="cms-collection-thumb block w-14 shrink-0 h-10 object-cover rounded-md border border-border bg-muted" src={normalizeMediaSrc(item.values.image)} alt={item.values.title_en || item.slug} width={200} height={150} loading="lazy" /> : <span className="cms-collection-thumb block w-14 shrink-0 h-10 rounded-md border border-border bg-muted cms-collection-thumb--empty place-items-center text-muted-foreground text-xs" aria-hidden="true">No image</span>}
+          <span className="grid min-w-0 gap-0.5"><strong className="overflow-hidden text-ellipsis whitespace-nowrap">{item.values.title_en || item.slug}</strong><small className="text-muted-foreground text-xs">{item.slug} · {item.status}{item.values.routeParent ? ` · ${item.values.routeParent}` : ''}{item.status !== 'published' ? ' · publish to make available on the public feed' : ''}</small></span>
+        </label>
+        <Button size="sm" variant="outline" onClick={() => setEditing(item)}>Edit</Button>
+      </div>)}</div> : <p className="admin-small-note">No matching {COMPONENTS[config.component].plural.toLowerCase()} found. Add one here or create it in Site Content.</p>}
       <a className={buttonClassName('ghost', 'sm')} href={`/admin/dashboard/site-content?component=${config.component}&page=${encodeURIComponent(contentPage)}`}>Open all Site Content ↗</a>
-      {editing !== null && <ContentEditor key={`${config.component}-${editing === 'new' ? 'new' : editing.id}`} component={config.component} record={editing === 'new' ? null : editing} defaultRouteParent={contentPage} presentation="modal" onSaved={() => { setEditing(null); void refresh(); toast.success('Section content saved.') }} onDeleted={() => { setEditing(null); void refresh() }} onClose={() => setEditing(null)} />}
+      {editing !== null && <ContentEditor key={`${config.component}-${editing === 'new' ? 'new' : editing.id}`} component={config.component} record={editing === 'new' ? null : editing} defaultRouteParent={contentPage} presentation="modal" onSaved={(saved) => {
+        // New published content created from this section's collection manager is
+        // selected in this section immediately. Existing records keep their
+        // explicit include/hide state when they are edited.
+        if (editing === 'new' && saved.status === 'published') {
+          setConfig({ selectedRecordIds: [...new Set([...selectedIds, saved.id])] })
+        }
+        setEditing(null)
+        void refresh()
+        toast.success('Section content saved.')
+      }} onDeleted={() => { setEditing(null); void refresh() }} onClose={() => setEditing(null)} />}
     </div>}
   </fieldset>
 }
@@ -925,6 +987,30 @@ export default function PageBuilderPage() {
       next.eyebrow = { en: 'Our impact', bn: 'আমাদের প্রভাব' }
       next.heading = { en: 'What We Do', bn: 'আমরা যা করি' }
     }
+    if (key === 'growth' && next.type === 'stats') {
+      next.dataSource = 'manual'
+      next.eyebrow = GROWTH_INTRO.eyebrow
+      next.heading = GROWTH_INTRO.title
+      next.items = COUNTERS.map((counter) => ({ value: String(counter.value), label: counter.label, icon: counter.icon }))
+    }
+    if (key === 'missionVisionValues' && next.type === 'cards') {
+      next.dataSource = 'manual'
+      next.eyebrow = STORY_INTRO.eyebrow
+      next.heading = STORY_INTRO.title
+      next.items = STORY.map((step) => ({ title: step.kicker, body: step.body, chips: step.chips, illustration: step.id }))
+    }
+    if (key === 'locations' && next.type === 'richText') {
+      next.dataSource = 'manual'
+      next.eyebrow = FOOTPRINT_INTRO.eyebrow
+      next.heading = FOOTPRINT_INTRO.title
+      next.body = [FOOTPRINT_INTRO.lead]
+    }
+    if (key === 'developmentAreas' && next.type === 'cards') {
+      next.dataSource = 'manual'
+      next.eyebrow = AREAS_INTRO.eyebrow
+      next.heading = AREAS_INTRO.title
+      next.items = AREAS.map((area) => ({ title: area.title, body: area.body, href: area.href, icon: area.icon, illustration: area.icon, ...(area.chips ? { chips: area.chips } : {}) }))
+    }
     if (next.type === 'carousel' && (key === 'news' || key === 'stories')) {
       next.collectionKind = 'news'
       next.dataSource = 'published-news'
@@ -1203,39 +1289,19 @@ export default function PageBuilderPage() {
                     />
                   ) : undefined}
                   actions={
-                    <div className="flex flex-col w-full">
-                      {slug === '/' ? 
-                      <div className="grid grid-cols-2 gap-4">
-                        <Select height="36px" optionDisplay="dropdown" aria-label="Landing composition" value={newLandingComponent} onChange={(e) => setNewLandingComponent(e.target.value as LandingComponentKey)}>
-                          {LANDING_COMPONENT_OPTIONS.map((option) => 
-                          <option key={option.key} value={option.key}>
-                            {option.label}
-                          </option>)}
-                        </Select>
-                        <Button variant="outline" onClick={() => addLandingSection(newLandingComponent)}>
-                          <Plus size={14} /> Add landing composition
-                        </Button>
-                      </div> : 
-                      <div className="grid grid-cols-4 gap-4">
-                        <Select height="36px" optionDisplay="dropdown" aria-label="Page section type" value={newSectionType} onChange={(e) => setNewSectionType(e.target.value as Section['type'])}>
-                          {SECTION_TYPES.map((type) => 
-                          <option key={type} value={type}>
-                            {type}
-                          </option>)}
-                        </Select>
-                        <Button variant="outline" onClick={addPageSection}>
-                          <Plus size={14} /> Add section
-                        </Button>
-                        <Select height="36px" optionDisplay="dropdown" aria-label="Reusable landing composition" value={newLandingComponent} onChange={(e) => setNewLandingComponent(e.target.value as LandingComponentKey)}>
-                          {LANDING_COMPONENT_OPTIONS.map((option) => 
-                          <option key={option.key} value={option.key}>
-                            {option.label}
-                          </option>)}
-                        </Select>
-                        <Button variant="outline" onClick={() => addLandingSection(newLandingComponent)}>
-                          <Plus size={14} /> Add landing UI
-                        </Button>
-                      </div>}
+                    <div className="grid w-full grid-cols-2 gap-3 xl:grid-cols-4">
+                      <Select height="36px" optionDisplay="dropdown" aria-label="Page section type" value={newSectionType} onChange={(e) => setNewSectionType(e.target.value as Section['type'])}>
+                        {SECTION_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}
+                      </Select>
+                      <Button variant="outline" onClick={addPageSection}>
+                        <Plus size={14} /> Add section
+                      </Button>
+                      <Select height="36px" optionDisplay="dropdown" aria-label={slug === '/' ? 'Landing composition' : 'Reusable landing composition'} value={newLandingComponent} onChange={(e) => setNewLandingComponent(e.target.value as LandingComponentKey)}>
+                        {LANDING_COMPONENT_OPTIONS.map((option) => <option key={option.key} value={option.key}>{option.label}</option>)}
+                      </Select>
+                      <Button variant="outline" onClick={() => addLandingSection(newLandingComponent)}>
+                        <Plus size={14} /> {slug === '/' ? 'Add landing composition' : 'Add landing UI'}
+                      </Button>
                     </div>
                   }
                 />

@@ -28,7 +28,7 @@ export type SectionButtonConfig = {
   secondaryAction?: 'route' | 'external' | 'anchor'
 }
 export type Section =
-  | { type: 'richText'; eyebrow?: Bilingual; heading?: Bilingual; body: Bilingual[]; image?: MediaItem; reverse?: boolean }
+  | { type: 'richText'; eyebrow?: Bilingual; heading?: Bilingual; body: Bilingual[]; image?: MediaItem; reverse?: boolean; dataSource?: 'manual' | 'portfolio-about' }
   | { type: 'stats'; eyebrow?: Bilingual; heading?: Bilingual; introBody?: Bilingual; illustrationYear?: string; items: { value: string; label: Bilingual; note?: Bilingual; icon?: IconName | 'home'; illustration?: IllustrationName; image?: MediaItem }[] }
   | { type: 'cards'; eyebrow?: Bilingual; heading?: Bilingual; variant?: 'default' | 'impact'; dataSource?: 'manual' | 'published-feed'; items: { title: Bilingual; body?: Bilingual; icon?: IconName | 'sprout' | 'store'; image?: MediaItem; illustration?: IllustrationName; href?: string; tag?: Bilingual; chips?: Bilingual[] }[]; columns?: 2 | 3 | 4 }
   | { type: 'gallery'; heading?: Bilingual; items: MediaItem[]; columns?: 2 | 3 | 4 }
@@ -69,13 +69,15 @@ export type ContentCollectionConfig = {
   columns: 2 | 3 | 4
   gap: number
   viewportItems: number
+  /** Explicit CMS record IDs included in this section. An empty array means intentionally empty. */
+  selectedRecordIds?: number[]
   /** Visitor-facing controls for database content feeds. Omitted flags inherit visible defaults. */
   showSearch?: boolean
   showCategoryFilter?: boolean
   showYearFilter?: boolean
 }
 export type CmsTypography = { fontFamily?: 'inherit' | 'system' | 'arial' | 'georgia' | 'times' | 'inter' | 'roboto' | 'noto-sans-bengali'; fontWeight?: 300 | 400 | 500 | 600 | 700 | 800 | 900; fontSize?: number; color?: string; letterSpacing?: number; lineHeight?: number; dark?: Omit<CmsTypography, 'dark'> }
-export type PageSection = Section & { visible?: boolean; buttonConfig?: SectionButtonConfig; homeComponent?: LandingComponentKey; sectionId?: string; contentCollection?: ContentCollectionConfig; typography?: CmsTypography }
+export type PageSection = Section & { visible?: boolean; dataSource?: 'manual' | 'published-feed' | 'published-news' | 'published-success-stories' | 'portfolio-about'; buttonConfig?: SectionButtonConfig; homeComponent?: LandingComponentKey; sectionId?: string; contentCollection?: ContentCollectionConfig; typography?: CmsTypography }
 
 export type PageData = {
   slug: string

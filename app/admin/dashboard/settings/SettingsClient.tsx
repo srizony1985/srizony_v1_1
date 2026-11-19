@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import {
   Activity, AlertTriangle, Archive, Copy, Eye, EyeOff, FileJson,
   FileSpreadsheet, KeyRound, LockKeyhole, Plus, RefreshCw, RotateCcw, ShieldCheck,
-  Trash2, Upload, UserPlus, Users, X, Type, Check,
+  Trash2, Upload, UserPlus, Users, X, Check,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
@@ -962,7 +962,7 @@ const SCOPE_DESCRIPTIONS: Record<ThemeTypographyScope, string> = {
   header: 'Brand and navigation',
   content: 'Pages and sections',
   footer: 'Footer area',
-  cms: 'CMS shell, navigation, tables and controls',
+  cms: 'CMS shell, nav, tables and controls',
 }
 
 function ThemeTypographyView({ role }: { role: Role }) {
@@ -1048,7 +1048,6 @@ function ThemeTypographyView({ role }: { role: Role }) {
           minHeight="360px"
           headerContent={
             <>
-              <p className="admin-small-note">Global defaults and four optional scopes — Header, Content, Footer and Admin interface — can be tuned independently. Each scope inherits Global until you save an override.</p>
               <AdminToolbar
                 tabs={
                   <div className="settings-theme-scope-picker grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5" role="group" aria-label="Typography scope">
@@ -1112,31 +1111,24 @@ function ThemeTypographyView({ role }: { role: Role }) {
           {notice && <div className={SUCCESS_BOX} role="status"><div className="border-3 rounded-lg p-1"><Check size={20} /></div>{notice}</div>}
           {readOnly && <div className={WARNING_BOX} role="status"><AlertTriangle size={16} /><span>Typography is loaded from a Google Drive snapshot and is read-only until Neon is available. Your changes cannot be committed to the primary database right now.</span></div>}
           {error && <div className={ERROR_BOX} role="alert">{error}</div>}
-          <div className="settings-theme-typography-grid grid grid-cols-4 gap-2 max-[1100px]:grid-cols-2 max-[620px]:grid-cols-1">
+          <div className={`settings-theme-typography-grid grid ${scope !== 'header' && scope !== 'footer' ? "grid-cols-2" : ""} max-[620px]:grid-cols-1 p-2 rounded-full`}>
+            {scope !== 'header' && scope !== 'footer' && 
             <div className={CONTROL_GROUP}>
-              <h3>Font families</h3>
-              <label className={FIELD}><span>Body font</span>
-                <NativeSelect value={activeTypography.bodyFont} onChange={(event) => update('bodyFont', event.target.value as ThemeTypographyPreferences['bodyFont'])} disabled={locked}>{fontOptions}</NativeSelect>
-              </label>
-              <label className={FIELD}><span>Heading / display font</span>
-                <NativeSelect value={activeTypography.displayFont} onChange={(event) => update('displayFont', event.target.value as ThemeTypographyPreferences['displayFont'])} disabled={locked}>{fontOptions}</NativeSelect>
-              </label>
-            </div>
+              <> 
+                <h3>Public text components</h3>
+                <p className="admin-small-note">Control independent text roles used by the public header, pages, cards, forms, and footer. Scopes inherit Global unless overridden.</p>
+                {([['bodyScale', 'Body text'], ['h1Scale', 'Page title (H1)'], ['h2Scale', 'Section heading (H2)'], ['h3Scale', 'Card / subheading (H3)'], ['leadScale', 'Lead / intro text'], ['eyebrowScale', 'Eyebrow / overline'], ['cardTitleScale', 'Card title'], ['cardBodyScale', 'Card description'], ['buttonScale', 'Buttons and action links'], ['breadcrumbScale', 'Breadcrumbs'], ['metaScale', 'Dates and metadata'], ['labelScale', 'Form and field labels']] as const).map(([key, label]) => <label key={key} className={RANGE}><span>{label} <strong>{activeTypography[key].toFixed(2)}×</strong></span><Input type="range" min="0.75" max="1.5" step="0.05" value={activeTypography[key]} onChange={(event) => update(key, Number(event.target.value))} disabled={locked} /></label>)}
+                <label className={FIELD}><span>Button font weight</span><NativeSelect value={activeTypography.buttonWeight} onChange={(event) => update('buttonWeight', Number(event.target.value))} disabled={locked}>{[400, 500, 600, 700, 800].map((n) => <option key={n} value={n}>{n}</option>)}</NativeSelect></label>
+              </>
+              {(scope === 'global' ) && <label className={RANGE}><span>Brand name <strong>{activeTypography.brandScale.toFixed(2)}×</strong></span><Input type="range" min="0.75" max="1.5" step="0.05" value={activeTypography.brandScale} onChange={(event) => update('brandScale', Number(event.target.value))} disabled={locked} /></label>}
+              {(scope === 'global' ) && <>
+                <label className={RANGE}><span>Footer headings <strong>{activeTypography.footerHeadingScale.toFixed(2)}×</strong></span><Input type="range" min="0.75" max="1.5" step="0.05" value={activeTypography.footerHeadingScale} onChange={(event) => update('footerHeadingScale', Number(event.target.value))} disabled={locked} /></label>
+              </>}
+            </div>}
+
 
             <div className={CONTROL_GROUP}>
-              <h3>Text scale and weight</h3>
-              <label className={RANGE}><span>Base font size <strong>{activeTypography.baseSize}px</strong></span><Input type="range" min="13" max="20" step="1" value={activeTypography.baseSize} onChange={(event) => update('baseSize', Number(event.target.value))} disabled={locked} /></label>
-              <label className={FIELD}><span>Body font weight</span>
-                <NativeSelect value={activeTypography.bodyWeight} onChange={(event) => update('bodyWeight', Number(event.target.value))} disabled={locked}>{[300, 400, 500, 600, 700].map((n) => <option key={n} value={n}>{n}</option>)}</NativeSelect>
-              </label>
-              <label className={FIELD}><span>Heading font weight</span>
-                <NativeSelect value={activeTypography.headingWeight} onChange={(event) => update('headingWeight', Number(event.target.value))} disabled={locked}>{[500, 600, 700, 800, 900].map((n) => <option key={n} value={n}>{n}</option>)}</NativeSelect>
-              </label>
-              <label className={RANGE}><span>Heading scale <strong>{activeTypography.headingScale.toFixed(2)}×</strong></span><Input type="range" min="0.85" max="1.25" step="0.05" value={activeTypography.headingScale} onChange={(event) => update('headingScale', Number(event.target.value))} disabled={locked} /></label>
-            </div>
-
-            <div className={CONTROL_GROUP}>
-              <h3>Spacing and navigation</h3>
+              <h3>Font, Scaling & Color</h3>
               <label className={RANGE}><span>Body line height <strong>{activeTypography.lineHeight.toFixed(2)}</strong></span><Input type="range" min="1.2" max="2" step="0.05" value={activeTypography.lineHeight} onChange={(event) => update('lineHeight', Number(event.target.value))} disabled={locked} /></label>
               <label className={RANGE}><span>Letter spacing <strong>{activeTypography.letterSpacing.toFixed(3)}em</strong></span><Input type="range" min="-0.06" max="0.1" step="0.005" value={activeTypography.letterSpacing} onChange={(event) => update('letterSpacing', Number(event.target.value))} disabled={locked} /></label>
               {(scope === 'global' || scope === 'header') && <>
@@ -1152,20 +1144,20 @@ function ThemeTypographyView({ role }: { role: Role }) {
               </div>
               <p className="admin-small-note">Text and navigation colours are automatically adjusted to maintain contrast in light and dark mode.</p>
               <Button type="button" variant="link" className="settings-theme-reset-colors h-auto justify-self-start p-0 text-xs font-semibold" onClick={() => { update('bodyColor', ''); update('headingColor', ''); update('navColor', '') }} disabled={locked}>Use inherited colours</Button>
-            </div>
-
-            <div className={CONTROL_GROUP}>
-              <h3>Public text components</h3>
-              <p className="admin-small-note">Control independent text roles used by the public header, pages, cards, forms, and footer. Scopes inherit Global unless overridden.</p>
-              {scope !== 'header' && scope !== 'footer' && <>
-                {([['bodyScale', 'Body text'], ['h1Scale', 'Page title (H1)'], ['h2Scale', 'Section heading (H2)'], ['h3Scale', 'Card / subheading (H3)'], ['leadScale', 'Lead / intro text'], ['eyebrowScale', 'Eyebrow / overline'], ['cardTitleScale', 'Card title'], ['cardBodyScale', 'Card description'], ['buttonScale', 'Buttons and action links'], ['breadcrumbScale', 'Breadcrumbs'], ['metaScale', 'Dates and metadata'], ['labelScale', 'Form and field labels']] as const).map(([key, label]) => <label key={key} className={RANGE}><span>{label} <strong>{activeTypography[key].toFixed(2)}×</strong></span><Input type="range" min="0.75" max="1.5" step="0.05" value={activeTypography[key]} onChange={(event) => update(key, Number(event.target.value))} disabled={locked} /></label>)}
-                <label className={FIELD}><span>Button font weight</span><NativeSelect value={activeTypography.buttonWeight} onChange={(event) => update('buttonWeight', Number(event.target.value))} disabled={locked}>{[400, 500, 600, 700, 800].map((n) => <option key={n} value={n}>{n}</option>)}</NativeSelect></label>
-              </>}
-              {(scope === 'global' || scope === 'header') && <label className={RANGE}><span>Brand name <strong>{activeTypography.brandScale.toFixed(2)}×</strong></span><Input type="range" min="0.75" max="1.5" step="0.05" value={activeTypography.brandScale} onChange={(event) => update('brandScale', Number(event.target.value))} disabled={locked} /></label>}
-              {(scope === 'global' || scope === 'footer') && <>
-                <label className={RANGE}><span>Footer headings <strong>{activeTypography.footerHeadingScale.toFixed(2)}×</strong></span><Input type="range" min="0.75" max="1.5" step="0.05" value={activeTypography.footerHeadingScale} onChange={(event) => update('footerHeadingScale', Number(event.target.value))} disabled={locked} /></label>
-                <label className={RANGE}><span>Footer links <strong>{activeTypography.footerLinkScale.toFixed(2)}×</strong></span><Input type="range" min="0.75" max="1.5" step="0.05" value={activeTypography.footerLinkScale} onChange={(event) => update('footerLinkScale', Number(event.target.value))} disabled={locked} /></label>
-              </>}
+              <label className={FIELD}><span>Body font</span>
+                <NativeSelect value={activeTypography.bodyFont} onChange={(event) => update('bodyFont', event.target.value as ThemeTypographyPreferences['bodyFont'])} disabled={locked}>{fontOptions}</NativeSelect>
+              </label>
+              <label className={FIELD}><span>Heading / display font</span>
+                <NativeSelect value={activeTypography.displayFont} onChange={(event) => update('displayFont', event.target.value as ThemeTypographyPreferences['displayFont'])} disabled={locked}>{fontOptions}</NativeSelect>
+              </label>
+              <label className={RANGE}><span>Base font size <strong>{activeTypography.baseSize}px</strong></span><Input type="range" min="13" max="20" step="1" value={activeTypography.baseSize} onChange={(event) => update('baseSize', Number(event.target.value))} disabled={locked} /></label>
+              <label className={FIELD}><span>Body font weight</span>
+                <NativeSelect value={activeTypography.bodyWeight} onChange={(event) => update('bodyWeight', Number(event.target.value))} disabled={locked}>{[300, 400, 500, 600, 700].map((n) => <option key={n} value={n}>{n}</option>)}</NativeSelect>
+              </label>
+              <label className={FIELD}><span>Heading font weight</span>
+                <NativeSelect value={activeTypography.headingWeight} onChange={(event) => update('headingWeight', Number(event.target.value))} disabled={locked}>{[500, 600, 700, 800, 900].map((n) => <option key={n} value={n}>{n}</option>)}</NativeSelect>
+              </label>
+              <label className={RANGE}><span>Heading scale <strong>{activeTypography.headingScale.toFixed(2)}×</strong></span><Input type="range" min="0.85" max="1.25" step="0.05" value={activeTypography.headingScale} onChange={(event) => update('headingScale', Number(event.target.value))} disabled={locked} /></label>
             </div>
           </div>
 

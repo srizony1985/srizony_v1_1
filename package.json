@@ -44,7 +44,9 @@
     "db:remove:ui-demo": "node scripts/remove-ui-demo.mjs",
     "api:seed:ui-demo": "node scripts/upload-ui-demo-api.mjs",
     "api:remove:ui-demo": "node scripts/remove-ui-demo-api.mjs",
-    "test:ui-demo": "node --test tests/ui-demo-content.test.mjs"
+    "test:ui-demo": "node --test tests/ui-demo-content.test.mjs",
+    "db:reset-and-seed": "node scripts/db-reset.mjs --seed",
+    "db:reset-and-restore-local": "node scripts/db-reset.mjs --seed --restore-local"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1146.0",

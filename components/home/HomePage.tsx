@@ -2,21 +2,17 @@
 
 import type { PageData } from '@/types/entityType'
 import Container from '@/components/containers/Container'
-import LandingSectionRenderer from '@/components/home/LandingSectionRenderer'
-import { isLandingComponentKey } from '@/components/home/LandingSectionRenderer'
+import SectionRenderer from '@/components/pages/SectionRenderer'
 
 /**
- * Home is an intentionally separate presentation layer: only registered landing
- * compositions can render here. Page-only sections are rejected, even if their
- * underlying section type is otherwise valid on a normal slug page.
+ * Homepage composition remains specialised where a section declares a
+ * homeComponent, but normal Page Builder sections are also first-class content.
  */
 export default function HomePage({ page }: { page: PageData }) {
+  const visibleSections = page.sections.filter((section) => section.visible !== false)
   return (
     <Container variant="home" className={`sf-home sf-home--layout-${page.layout ?? 'wide'}`}>
-      {page.sections.map((section, index) => {
-        if (section.visible === false || !isLandingComponentKey(section.homeComponent)) return null
-        return <LandingSectionRenderer key={`${section.homeComponent}-${index}`} page={page} section={section} />
-      })}
+      <SectionRenderer sections={visibleSections} page={page} />
     </Container>
   )
 }

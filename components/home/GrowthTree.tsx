@@ -1,4 +1,5 @@
 'use client'
+import { GROWTH_INTRO } from '@/data/homeContent'
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
@@ -396,8 +397,8 @@ export default function GrowthTree({ lang, page }: { lang: Lang;  page: PageData
     const [preview, setPreview] = useState<number | null>(null) // hover / focus only
     const total = milestones.length
     const section = page.sections.find((item): item is GrowthSectionData => item.type === 'stats' && (item.homeComponent === 'growth' || normalizeHeading(item.heading?.en) === 'growing together'))
-    const eyebrow = section?.eyebrow
-    const heading = section?.heading
+    const eyebrow = section?.eyebrow ?? GROWTH_INTRO.eyebrow
+    const heading = section?.heading ?? GROWTH_INTRO.title
 
     useEffect(() => {
         let mounted = true
@@ -562,7 +563,7 @@ export default function GrowthTree({ lang, page }: { lang: Lang;  page: PageData
     const cur = milestones[shown] ?? milestones[0] ?? MILESTONES[0]
     const hasDetail = Boolean(cur.title || cur.summary || cur.achievements?.length || cur.stats?.length || cur.photo)
 
-    if (!section || section.visible === false || !heading || !eyebrow) return null;
+    if (!section || section.visible === false) return null;
 
     return (
         <div className="sf-tree" ref={wrapRef} style={{ '--n': total } as CSSProperties}>

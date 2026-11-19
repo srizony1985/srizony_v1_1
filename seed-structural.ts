@@ -226,182 +226,23 @@ async function migrateLegacyImageSources() {
   }
 }
 
-function sectionKey(section: SeedRecord): string {
-  const headingRecord = typeof section?.heading === 'object' && section.heading !== null && !Array.isArray(section.heading)
-    ? section.heading as SeedRecord
-    : null
-  const heading = String(headingRecord?.en || '').trim().toLowerCase()
-  if (section?.type === 'timeline' && heading === 'our journey') return 'journey'
-  if (section?.type === 'richText' && heading.includes('development with dignity')) return 'journey'
-  if (section?.type === 'richText' && heading.includes('legacy of srizony foundation')) return 'legacy'
-  if (section?.type === 'diagram' && section?.variant === 'sdg') return 'sdg'
-  if (section?.type === 'carousel' && (section?.homeComponent === 'successStories' || (section?.collectionKind === 'success-stories' && heading.includes('success stories')))) return 'success-stories'
-  if (section?.type === 'cards' && section?.variant === 'impact') return 'who-we-are'
-  if (section?.type === 'cards' && (heading === 'srizony enterprises' || (Array.isArray(section?.items) && section.items.some((item: SeedRecord) => String(item?.href || '').startsWith('/enterprise-development/'))))) return 'enterprises'
-  if (section?.type === 'carousel' && (section?.homeComponent === 'stories' || heading.includes('news') || section?.collectionKind === 'news' || (Array.isArray(section?.items) && section.items.some((item: SeedRecord) => String(item?.href || '').startsWith('/news/') || String(item?.href || '').startsWith('/what-we-do/news/'))))) return 'field-news'
-  return `${String(section?.type || 'unknown')}:${heading}`
-}
 
-function mergeUniqueItems(existing: SeedRecord[], baseline: SeedRecord[], minimum: number): SeedRecord[] {
-  const identity = (item: SeedRecord) => {
-    const title = typeof item?.title === 'object' && item.title !== null && !Array.isArray(item.title)
-      ? item.title as SeedRecord
-      : null
-    return String(item?.href || item?.slug || title?.en || title?.bn || '').trim().toLowerCase()
-  }
-  // Ignore empty shells; they should not count toward the minimum number of usable cards.
-  const result: SeedRecord[] = []
-  const known = new Set<string>()
-  for (const item of (Array.isArray(existing) ? existing : [])) {
-    const key = identity(item)
-    if (!key || known.has(key)) continue
-    result.push(item)
-    known.add(key)
-  }
-  for (const item of baseline) {
-    if (result.length >= minimum) break
-    const key = identity(item)
-    if (key && known.has(key)) continue
-    result.push(item)
-    if (key) known.add(key)
-  }
-  return result
-}
-
-/** Repair only structural gaps and old local image URLs; never replace CMS-edited prose or titles. */
-function repairSeededPage(existingRaw: SeedRecord, baselineRaw: SeedRecord, slug: string): SeedRecord {
-  const current = normalizePageImages(existingRaw && typeof existingRaw === 'object' ? existingRaw : {}) as SeedRecord
+/**
+ * Preserve an existing CMS page as-authored during a non-destructive seed.
+ * A missing legacy `sections` property can be restored for old snapshots, but an
+ * explicit empty array, deleted section, or empty items/body array is intentional.
+ * The seeder must never merge baseline sections or cards back into a saved page.
+ */
+function repairSeededPage(existingRaw: SeedRecord, baselineRaw: SeedRecord): SeedRecord {
   const baseline = normalizePageImages(baselineRaw) as SeedRecord
-  if (!current || typeof current !== 'object') return baseline
-  // When an older snapshot has lost its section array, restore only that structure
-  // while preserving any page metadata/title the CMS already saved.
-  if (!Array.isArray(current.sections)) return { ...baseline, ...current, sections: baseline.sections || [] }
-  if (slug === '/') {
-    const sections = [...current.sections]
-    const requiredKeys = new Set(['legacy', 'journey', 'sdg', 'who-we-are', 'enterprises', 'field-news', 'success-stories'])
-    const required = (Array.isArray(baseline.sections) ? baseline.sections : []).filter((section: SeedRecord) => requiredKeys.has(sectionKey(section)))
-    for (const seedSection of required) {
-      const key = sectionKey(seedSection)
-      const index = sections.findIndex((section: SeedRecord) => sectionKey(section) === key)
-      if (index < 0) {
-        const donateIndex = key === 'success-stories'
-          ? sections.findIndex((section: SeedRecord) => section?.homeComponent === 'donate' || (section?.type === 'cta' && String((section?.heading as SeedRecord | undefined)?.en || '').trim().toLowerCase() === 'support srizony'))
-          : -1
-        sections.splice(donateIndex >= 0 ? donateIndex : sections.length, 0, seedSection)
-        continue
-      }
-      const present: SeedRecord = sections[index]
-      if (key === 'journey') {
-        // Replace old “Development with Dignity” prose with the four complete Journey milestones.
-        // Remove any second legacy Journey block so the homepage has exactly one timeline heading.
-        const before = sections.slice(0, index).filter((item: SeedRecord) => sectionKey(item) !== 'journey')
-        const after = sections.slice(index + 1).filter((item: SeedRecord) => sectionKey(item) !== 'journey')
-        sections.splice(0, sections.length, ...before, seedSection, ...after)
-      } else if (key === 'legacy') {
-        const usableBody = Array.isArray(present.body) && present.body.some((paragraph: SeedRecord) => String(paragraph?.en || paragraph?.bn || '').trim())
-        const usableHeading = String((present.heading as SeedRecord | undefined)?.en || (present.heading as SeedRecord | undefined)?.bn || '').trim()
-        const usableImage = present.image && typeof present.image === 'object' && !Array.isArray(present.image)
-          && typeof (present.image as SeedRecord).src === 'string'
-          && String((present.image as SeedRecord).src).trim()
-        sections[index] = {
-          ...present,
-          heading: usableHeading ? present.heading : seedSection.heading,
-          body: usableBody ? present.body : seedSection.body,
-          image: usableImage ? present.image : seedSection.image,
-        }
-      } else if (key === 'sdg') {
-        const usableHeading = String((present.heading as SeedRecord | undefined)?.en || (present.heading as SeedRecord | undefined)?.bn || '').trim()
-        sections[index] = { ...present, heading: usableHeading ? present.heading : seedSection.heading }
-      } else if (key === 'who-we-are') {
-        const items = Array.isArray(present.items) ? present.items : []
-        const usableHeading = String((present.heading as SeedRecord | undefined)?.en || (present.heading as SeedRecord | undefined)?.bn || '').trim()
-        sections[index] = {
-          ...present,
-          heading: usableHeading ? present.heading : seedSection.heading,
-          items: mergeUniqueItems(items, seedSection.items || [], Math.max(2, Math.min(6, (seedSection.items || []).length))),
-        }
-      } else if (key === 'enterprises') {
-        const usableHeading = String((present.heading as SeedRecord | undefined)?.en || (present.heading as SeedRecord | undefined)?.bn || '').trim()
-        sections[index] = {
-          ...present,
-          heading: usableHeading ? present.heading : seedSection.heading,
-          columns: present.columns || seedSection.columns || 4,
-          items: mergeUniqueItems(Array.isArray(present.items) ? present.items : [], seedSection.items || [], Math.min(8, (seedSection.items || []).length)),
-        }
-      } else if (key === 'field-news') {
-        const usableHeading = String((present.heading as SeedRecord | undefined)?.en || (present.heading as SeedRecord | undefined)?.bn || '').trim()
-        sections[index] = {
-          ...present,
-          heading: usableHeading ? present.heading : seedSection.heading,
-          homeComponent: 'news',
-          presentation: 'scroller',
-          collectionKind: 'news',
-          dataSource: 'published-news',
-          items: Array.isArray(present.items) ? present.items : (seedSection.items || []),
-        }
-      } else if (key === 'success-stories') {
-        const usableHeading = String((present.heading as SeedRecord | undefined)?.en || (present.heading as SeedRecord | undefined)?.bn || '').trim()
-        sections[index] = {
-          ...seedSection,
-          ...present,
-          heading: usableHeading ? present.heading : seedSection.heading,
-          homeComponent: 'successStories',
-          presentation: 'collection',
-          collectionKind: 'success-stories',
-          dataSource: 'published-success-stories',
-          items: Array.isArray(present.items) ? present.items : [],
-          buttonConfig: present.buttonConfig || seedSection.buttonConfig,
-        }
-      }
-    }
-    // Semantic landing sections must not duplicate after previous migrations.
-    const seen = new Set<string>()
-    const deduplicated = sections.filter((section: SeedRecord) => {
-      const key = sectionKey(section)
-      if (!requiredKeys.has(key)) return true
-      if (seen.has(key)) return false
-      seen.add(key)
-      return true
-    })
-    return { ...baseline, ...current, sections: deduplicated }
+  if (!existingRaw || typeof existingRaw !== 'object' || Array.isArray(existingRaw)) return baseline
+
+  const current = normalizePageImages(existingRaw) as SeedRecord
+  if (!Array.isArray(current.sections)) {
+    return { ...baseline, ...current, sections: Array.isArray(baseline.sections) ? baseline.sections : [] }
   }
-  if (slug === '/enterprise-development') {
-    const base = (Array.isArray(baseline.sections) ? baseline.sections : []).find((section: SeedRecord) => sectionKey(section) === 'enterprises')
-    if (base) {
-      const sections = [...current.sections]
-      const index = sections.findIndex((section: SeedRecord) => sectionKey(section) === 'enterprises')
-      if (index < 0) sections.push(base)
-      else {
-        const present = sections[index]
-        const usableHeading = String(present.heading?.en || present.heading?.bn || '').trim()
-        sections[index] = {
-          ...present,
-          heading: usableHeading ? present.heading : base.heading,
-          items: mergeUniqueItems(Array.isArray(present.items) ? present.items : [], base.items || [], 8),
-        }
-      }
-      return { ...current, sections }
-    }
-  }
-  if (slug === '/social-development') {
-    const base = (Array.isArray(baseline.sections) ? baseline.sections : []).find((section: SeedRecord) => sectionKey(section) === 'field-news')
-    if (base) {
-      const sections = [...current.sections]
-      const index = sections.findIndex((section: SeedRecord) => sectionKey(section) === 'field-news')
-      if (index < 0) sections.push(base)
-      else {
-        const present = sections[index]
-        const usableHeading = String(present.heading?.en || present.heading?.bn || '').trim()
-        sections[index] = {
-          ...present,
-          heading: usableHeading ? present.heading : base.heading,
-          items: mergeUniqueItems(Array.isArray(present.items) ? present.items : [], base.items || [], Math.min(6, (base.items || []).length)),
-        }
-      }
-      return { ...current, sections }
-    }
-  }
-  return current
+
+  return { ...baseline, ...current, sections: current.sections }
 }
 
 /**
@@ -493,13 +334,12 @@ async function seedPage(page: PageData, mediaCache: Map<string, number>) {
   if (existing.rows[0] && !RESET_SEED) {
     const row = existing.rows[0] as SeedRecord
     const parsed = typeof row.render_cache === 'string' ? JSON.parse(row.render_cache) : row.render_cache
-    const slug = typeof page.slug === 'string' ? page.slug : ''
-    const repaired = repairSeededPage(parsed, page, slug)
+    const repaired = repairSeededPage(parsed, page)
     const before = JSON.stringify(parsed ?? null)
     const after = JSON.stringify(repaired ?? null)
     if (before !== after) {
       await database!.execute(sql`UPDATE pages SET render_cache = ${after}::jsonb, updated_at = now() WHERE id = ${Number(row.id)}`)
-      console.log(`Repaired missing seed content / external images without replacing CMS prose: ${page.slug}`)
+      console.log(`Normalized legacy image references / restored a missing legacy sections property without restoring deleted CMS sections: ${page.slug}`)
     }
     return Number(row.id)
   }

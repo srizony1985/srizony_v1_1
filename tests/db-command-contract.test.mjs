@@ -15,8 +15,20 @@ test('reset requires explicit destructive confirmation and production opt-in', a
   const source = await readFile(new URL('../scripts/db-reset.mjs', import.meta.url), 'utf8')
   assert.match(source, /--confirm-reset/)
   assert.match(source, /ALLOW_PRODUCTION_DB_RESET/)
+  assert.match(source, /DISPOSABLE_TEST_DATABASE/)
+  assert.match(source, /pg_class c/)
   assert.match(source, /DROP SCHEMA IF EXISTS public CASCADE/)
-  assert.match(source, /DROP TABLE IF EXISTS drizzle\.__drizzle_migrations/)
+  assert.match(source, /DROP SCHEMA IF EXISTS drizzle CASCADE/)
+  assert.match(source, /n\.nspname = 'neon_auth'/)
+  for (const table of ['account', 'invitation', 'jwks', 'member', 'organization', 'project_config', 'session', 'user', 'verification']) {
+    assert.match(source, new RegExp(`'${table}'`))
+  }
+  assert.match(source, /--confirm-target/)
+  assert.match(pkg.scripts['db:reset-and-seed'], /db-reset\.mjs --seed/)
+  assert.match(pkg.scripts['db:reset-and-restore-local'], /--restore-local/)
+  assert.match(source, /--restore-local/)
+  assert.match(source, /ALLOW_PRODUCTION_JSON_RESTORE/)
+  assert.match(source, /BACKUP_DATABASE_URL: ''/)
 })
 test('JSON restore validates site and does not execute snapshot DDL', async () => {
   const source = await readFile(new URL('../scripts/restore-google-drive-json.mjs', import.meta.url), 'utf8')

@@ -126,9 +126,17 @@ export async function POST(req: Request) {
       300,
     )
 
+    // Next.js/Turbopack development HMR uses eval. It is explicitly allowed
+    // by the development-only report policy, so suppress that expected noise.
+    // Never apply this exception in production or to any other blocked resource.
+    const expectedDevelopmentEval = process.env.NODE_ENV === 'development'
+      && directive.startsWith('script-src')
+      && blocked === 'eval'
+      && /^https?:\/\/localhost(?::\d+)?\//i.test(document)
+
     // Enable detailed logging explicitly when troubleshooting:
     // CSP_REPORT_LOG=true
-    if (process.env.CSP_REPORT_LOG === 'true') {
+    if (process.env.CSP_REPORT_LOG === 'true' && !expectedDevelopmentEval) {
       console.warn('[CSP Report] Violation:', {
         directive,
         blocked,

@@ -121,3 +121,13 @@ test('CI runs dependency audit, lint, types, functional tests and production bui
   assert.ok(read('.github/workflows/codeql.yml').includes('javascript-typescript'))
   assert.ok(read('.github/dependabot.yml').includes('package-ecosystem: npm'))
 })
+
+test('development CSP allows Next.js/Turbopack eval only in development', () => {
+  const config = read('next.config.ts')
+  const report = read('app/api/security/csp-report/route.ts')
+  assert.match(config, /process\.env\.NODE_ENV !== 'production' \? \["'unsafe-eval'"\] : \[\]/)
+  assert.match(config, /Content-Security-Policy-Report-Only', value: csp/)
+  assert.match(report, /expectedDevelopmentEval/)
+  assert.match(report, /process\.env\.NODE_ENV === 'development'/)
+  assert.match(config, /production CSP never includes unsafe-eval/i)
+})

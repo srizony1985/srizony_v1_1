@@ -5,11 +5,12 @@ import { isLandingComponentKey, validatePageComponentLayers } from '../lib/cms/c
 
 const section = (type: string, extra: ExternalRecord = {}) => ({ type, ...extra })
 
-test('landing routes accept only registered landing compositions', () => {
+test('homepage accepts standard Page Builder sections and registered landing compositions', () => {
   assert.equal(validatePageComponentLayers('/', [section('stats', { homeComponent: 'growth' })]), null)
-  assert.match(String(validatePageComponentLayers('/', [section('richText')])), /registered landing component/)
+  assert.equal(validatePageComponentLayers('/', [section('richText'), section('contentFeed'), section('cards')]), null)
   assert.equal(validatePageComponentLayers('/', [section('cards', { homeComponent: 'impactCards', variant: 'impact' })]), null)
   assert.match(String(validatePageComponentLayers('/', [section('cards', { homeComponent: 'growth' })])), /requires the “stats” section type/)
+  assert.match(String(validatePageComponentLayers('/', [section('unknown')])), /unsupported page component/)
 })
 
 test('normal slug pages accept sectional components and reusable landing compositions', () => {

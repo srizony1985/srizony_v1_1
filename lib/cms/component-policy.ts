@@ -37,8 +37,9 @@ export function isLandingComponentKey(value: ExternalValue): value is LandingCom
 }
 
 /**
- * A normal page can use normal sections and may opt into a landing composition.
- * The home page can only contain registered landing compositions.
+ * Any page, including the homepage, may use normal Page Builder sections.
+ * A section opts into a specialised landing composition only by setting a
+ * registered homeComponent whose discriminator matches its section type.
  */
 export function validatePageComponentLayers(slug: string, sections: ExternalValue): string | null {
   if (!Array.isArray(sections)) return 'Page sections must be an array.'
@@ -47,19 +48,14 @@ export function validatePageComponentLayers(slug: string, sections: ExternalValu
       return `Section ${index + 1} has an invalid content type.`
     }
     const section = value as PageSection
-    const key = (section as PageSection).homeComponent
-    if (slug === '/') {
-      if (!isLandingComponentKey(key)) return `Landing section ${index + 1} must use a registered landing component.`
-      if (LANDING_COMPONENT_TYPE[key] !== section.type) return `Landing component “${key}” requires the “${LANDING_COMPONENT_TYPE[key]}” section type.`
-      continue
-    }
+    const key = section.homeComponent
+    // Keep the Section discriminator constrained to the normal page renderer's registry.
+    const validTypes: Section['type'][] = ['richText', 'stats', 'cards', 'gallery', 'timeline', 'diagram', 'table', 'video', 'cta', 'noticeList', 'contact', 'donation', 'carousel', 'contentFeed', 'reports']
+    if (!validTypes.includes(section.type)) return `Section ${index + 1} uses an unsupported page component.`
     if (key !== undefined && key !== null) {
       if (!isLandingComponentKey(key)) return `Section ${index + 1} uses an unknown landing component.`
       if (LANDING_COMPONENT_TYPE[key] !== section.type) return `Landing component “${key}” requires the “${LANDING_COMPONENT_TYPE[key]}” section type.`
     }
-    // Keep the Section discriminator constrained to the normal page renderer's registry.
-    const validTypes: Section['type'][] = ['richText', 'stats', 'cards', 'gallery', 'timeline', 'diagram', 'table', 'video', 'cta', 'noticeList', 'contact', 'donation', 'carousel', 'contentFeed', 'reports']
-    if (!validTypes.includes(section.type)) return `Section ${index + 1} uses an unsupported page component.`
   }
   return null
 }
