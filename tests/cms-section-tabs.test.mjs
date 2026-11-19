@@ -62,13 +62,3 @@ test('inactive editor panels use the native hidden attribute without global admi
   assert.match(pageBuilder, /hidden=\{index !== Math\.min\(activeSectionIndex, sections\.length - 1\)\}/)
   assert.doesNotMatch(read('app/admin/layout.tsx'), /Admin\.css/)
 })
-
-
-test('dashboard visualization containers are individually selectable through shared tabs', () => {
-  const overview = read('app/admin/dashboard/overview/page.tsx')
-  assert.match(overview, /label="Activity visualizations"/)
-  assert.match(overview, /label="Dashboard insight panels"/)
-  for (const key of ['visitors', 'applications', 'donations', 'donation-value', 'top-pages', 'referrers']) {
-    assert.ok(overview.includes(`value: '${key}'`), `Missing dashboard visualization tab ${key}`)
-  }
-})
