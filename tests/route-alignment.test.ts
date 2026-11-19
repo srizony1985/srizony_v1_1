@@ -42,8 +42,8 @@ test('the bundled page catalogue only exports navigation pages and content detai
 test('the seed removes page rows that are not in the visible navigation tree', () => {
   const seed = read('seed-structural.ts')
   assert.match(seed, /async function ensureAndPruneMenuPages\(\)/)
-  assert.match(seed, /if \(!paths\.has\(slug\)\)/)
-  assert.match(seed, /DELETE FROM pages WHERE slug = \$\{String\(row\.slug\)\}/)
+  assert.match(seed, /if \(storedSlug !== slug \|\| !paths\.has\(slug\)\)/)
+  assert.match(seed, /DELETE FROM pages WHERE slug = \$\{storedSlug\}/)
   assert.match(seed, /await ensureAndPruneMenuPages\(\)/)
 })
 

@@ -293,8 +293,8 @@ const Branch = memo(function Branch({ n, bp, thick, ripe, past, current }: Branc
                         strokeWidth={stable(width * thick * (0.4 + 0.6 * Math.sqrt(bp)))}
                         style={drawStyle(bp)}
                     />
-                    <g className="sf-tree-foliage" style={{ opacity: 1, transition: 'none' }}>
-                        <g className="sf-sway" style={{ transformOrigin: `${sx}px ${sy}px`, animationDelay: `-${(i * 0.83) % 7}s` }}>
+                    <g className="sf-tree-foliage sf-tree-foliage--grown">
+                        <g className="sf-sway" style={{ '--sf-tree-transform-origin': `${sx}px ${sy}px`, '--sf-tree-animation-delay': `-${(i * 0.83) % 7}s` } as CSSProperties}>
                             {twigs.map((tw, q) => {
                                 const tp = clamp01((bp - tw.t) * 3)
                                 if (tp <= 0.001) return null
@@ -373,7 +373,10 @@ const Bud = memo(function Bud({ n, ns, past, current, label, aria, r, fs, onPrev
 })
 
 const GROWTH_CSS = `
-.sf-sway{animation:sf-sway 7s ease-in-out infinite}
+.sf-tree-foliage--grown{opacity:1;transition:none}
+.sf-tree-root,.sf-tree-bark-detail{opacity:var(--sf-tree-opacity,1)}
+.sf-tree-noninteractive{pointer-events:none}
+.sf-sway{transform-origin:var(--sf-tree-transform-origin,center);animation:sf-sway 7s ease-in-out infinite;animation-delay:var(--sf-tree-animation-delay,0s)}
 @keyframes sf-sway{0%,100%{transform:rotate(-1deg)}50%{transform:rotate(1deg)}}
 @media (prefers-reduced-motion:reduce){.sf-sway{animation:none}}
 `
@@ -590,7 +593,7 @@ export default function GrowthTree({ lang, page }: { lang: Lang;  page: PageData
                             className="sf-tree-halo"
                         />
                         <line x1="0" x2={W} y1={base + 10} y2={base + 10} className="sf-tree-ground" />
-                        <path d={tree.mound} fill="rgba(80,58,38,.4)" style={{ pointerEvents: 'none' }} />
+                        <path d={tree.mound} fill="rgba(80,58,38,.4)" className="sf-tree-noninteractive" />
                         {tree.grass.map((b, q) => (
                             <ellipse
                                 key={q}
@@ -611,25 +614,26 @@ export default function GrowthTree({ lang, page }: { lang: Lang;  page: PageData
                                     pathLength={1}
                                     className="sf-tree-root"
                                     strokeWidth={stable(lerp(1.1, 3.4, g) * k)}
-                                    style={{ ...drawStyle(snap(rootGrow(q), 0.01)), opacity: rootGrow(q) > 0.001 ? 1 : 0 }}
+                                    style={{ ...drawStyle(snap(rootGrow(q), 0.01)), '--sf-tree-opacity': rootGrow(q) > 0.001 ? 1 : 0 } as CSSProperties}
                                 />
                             ))}
                         </g>
 
                         <path d={trunk.d} className="sf-tree-trunk" />
-                        <path d={trunk.d} fill="url(#sf-tree-bark)" style={{ pointerEvents: 'none' }} />
+                        <path d={trunk.d} fill="url(#sf-tree-bark)" className="sf-tree-noninteractive" />
                         <g
                             fill="none"
                             stroke="rgba(0,0,0,.28)"
                             strokeWidth="1"
                             strokeLinecap="round"
-                            style={{ pointerEvents: 'none', opacity: clamp01((widthFactor - 0.4) / 0.5) }}
+                            className="sf-tree-bark-detail"
+                            style={{ '--sf-tree-opacity': clamp01((widthFactor - 0.4) / 0.5) } as CSSProperties}
                         >
                             {trunk.bark.map((d, q) => <path key={q} d={d} />)}
                         </g>
 
                         {cotyledon > 0.02 && (
-                            <g style={{ pointerEvents: 'none' }}>
+                            <g className="sf-tree-noninteractive">
                                 {[-1, 1].map(s => (
                                     <ellipse
                                         key={s}

@@ -158,7 +158,7 @@ export default function GrowthTreeView({ role }: { role: Role }) {
 
   return (
     <div className="admin-page-stack">
-      <AdminWorkspaceGrid layout="split" columns="minmax(0, 0.8fr) minmax(0, 1.2fr)" ariaLabel="Homepage growth tree editor">
+      <AdminWorkspaceGrid layout="split" columns="minmax(0, 1.2fr) minmax(0, 0.9fr)" ariaLabel="Homepage growth tree editor">
         <AdminDataContainer
           label="Growth-tree branch editor"
           title={<span className="flex items-center gap-2"><TreePine size={17} /> Homepage growth tree</span>}

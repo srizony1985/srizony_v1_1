@@ -285,7 +285,7 @@ test('district map uses a distinct theme-aware palette for colorful working loca
   const css = read('app/globals.css')
   assert.match(map, /function districtPaletteIndex\(name: string\)/)
   assert.match(map, /fillColor: selected \? accent : feature \? cssVar\(`--sf-fp-district-\$\{districtPaletteIndex\(featureDistrictName\(feature\)\) \+ 1\}`\)/)
-  assert.match(css, /--sf-fp-district-1:\\s*#72c7c4/)
+  assert.match(css, /--sf-fp-district-1:\s*#72c7c4/)
   assert.match(css, /--sf-fp-district-8:\s*#9b5821/)
 })
 

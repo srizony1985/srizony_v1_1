@@ -208,7 +208,7 @@ export default function SectionContent({ section, page }: { section: Section; pa
 
     case 'contentFeed': {
       const feedComponent = section.components?.[0] ?? ''
-      const fixedTwoColumnFeed = feedComponent
+      const fixedTwoColumnFeed = feedComponent === 'notice' || feedComponent === 'job'
       const desktopColumns = fixedTwoColumnFeed ? 2 : section.columns ?? 3
       const tabletColumns = fixedTwoColumnFeed ? 2 : Math.min(section.columns ?? 3, 2)
       const feedLayoutClass = fixedTwoColumnFeed ? '' : collection ? `sf-grid--cms-${collection.layout}` : ''

@@ -64,5 +64,6 @@ test('growth-tree CMS editor is discoverable from Settings and uses shared works
   assert.match(siteConfig, /<AdminWorkspaceGrid layout="single"/)
   assert.match(siteConfig, /<AdminDataContainer/)
   assert.match(settings, /<AdminWorkspaceGrid layout="single" ariaLabel="CMS reporting and data exports"/)
-  assert.match(settings, /<AdminDataContainer\s+label="CMS reporting workspace"/)
+  assert.match(settings, /<AdminDataContainer\s+label=\{`\$\{REPORTS\[table\]\.title\} table viewport`\}/)
+  assert.match(settings, /ariaLabel="CMS reporting and data exports"/)
 })

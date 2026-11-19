@@ -1,12 +1,8 @@
 import './scripts/load-env'
-import type { ExternalValue } from './types/json'
+import type { ExternalRecord, ExternalValue } from './types/json'
+import type { ContentEntry, NavItem, PageData } from './types/entityType'
+import type { ContentDetailSeed } from './data/contentDetails'
 
-// This one-off migration consumes legacy CMS records with component-specific nested
-// shapes. The dataset is validated by validateContentDetailsDataset() before writes;
-// keep the loose compatibility adapter local to the seed script rather than weakening
-// the application-wide JSON types.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type SeedRecord = any
 import { sql } from 'drizzle-orm'
 import { db } from '@/lib/db'
 import { ensureCmsSchema } from '@/lib/cms/ensureSchema'
@@ -15,12 +11,16 @@ import { DEFAULT_WEBSITE_ESSENTIALS } from '@/lib/websiteEssentials'
 import { COMPONENTS, CONTENT_COLLECTION_ROUTES, DEFAULT_CONTENT_PARENT } from '@/lib/cms/components'
 import { canonicalizeCmsRoute } from '@/lib/cms/routes'
 
+// This legacy migration is being narrowed against the shared JSON boundary type.
+type SeedRecord = ExternalRecord
+
+function isSeedRecord(value: unknown): value is SeedRecord {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
 const database = db
 if (!database) { throw new Error('DATABASE_URL is not configured. Set DATABASE_URL in .env.local before running database commands.') }
 const RESET_SEED = process.argv.includes('--reset')
-
-
-const bilingual = (v: SeedRecord) => ({ en: String(v?.en ?? ''), bn: String(v?.bn ?? '') })
 
 function normalizeSeedDate(value: ExternalValue): string {
   const raw = String(value ?? '').trim()
@@ -61,8 +61,8 @@ function contextForRecord(value: SeedRecord, inherited: ImageContext = {}): Imag
   return { slug, kind }
 }
 
-function normalizePageImages(value: any, inherited: ImageContext = {}): any {
-  const context = contextForRecord(value, inherited)
+function normalizePageImages(value: unknown, inherited: ImageContext = {}): unknown {
+  const context = contextForRecord(value as SeedRecord, inherited)
   if (typeof value === 'string') {
     if (!value.startsWith('/images/') || /logo-sf\./i.test(value)) return value
     // Prefer the content record's slug over generic legacy filenames such as project1.svg.
@@ -74,7 +74,7 @@ function normalizePageImages(value: any, inherited: ImageContext = {}): any {
   return value
 }
 
-function normalizeLegacySeedCopy(value: any): any {
+function normalizeLegacySeedCopy(value: ExternalValue): ExternalValue {
   if (Array.isArray(value)) return value.map(normalizeLegacySeedCopy)
   if (!value || typeof value !== 'object') return value
   const next: SeedRecord = {}
@@ -113,7 +113,7 @@ function normalizeLegacySeedCopy(value: any): any {
       next.bn = 'অফিসিয়াল তথ্য পাওয়া গেলে যাচাইকৃত পুরস্কার ও প্রাতিষ্ঠানিক মাইলস্টোন এখানে প্রকাশ করা হবে।'
     }
   }
-  if (next.label && typeof next.label === 'object' && next.label.en === 'Districts reached') {
+  if (next.label && typeof next.label === 'object' && !Array.isArray(next.label) && (next.label as SeedRecord).en === 'Districts reached') {
     next.value = '16'
     next.label = { en: 'Districts', bn: 'জেলা' }
   }
@@ -126,7 +126,7 @@ function fillMissingDefaults(defaults: SeedRecord, current: SeedRecord): SeedRec
     const result: SeedRecord = current && typeof current === 'object' && !Array.isArray(current) ? { ...current } : {}
     for (const [key, value] of Object.entries(defaults)) {
       if (!(key in result) || result[key] === undefined || result[key] === null) result[key] = value
-      else if (value && typeof value === 'object' && !Array.isArray(value) && result[key] && typeof result[key] === 'object' && !Array.isArray(result[key])) result[key] = fillMissingDefaults(value, result[key])
+      else if (value && typeof value === 'object' && !Array.isArray(value) && result[key] && typeof result[key] === 'object' && !Array.isArray(result[key])) result[key] = fillMissingDefaults(value as SeedRecord, result[key] as SeedRecord)
     }
     return result
   }
@@ -143,36 +143,53 @@ async function seedGlobalState(defaults: SeedRecord) {
   const row = result.rows[0] as SeedRecord
   const current = typeof row.value === 'string' ? JSON.parse(row.value) : row.value
   // Fill missing configuration fields and externalize old image paths, but keep every value already edited in the CMS.
-  const next = normalizePageImages(fillMissingDefaults(defaults, current))
+  const next = normalizePageImages(fillMissingDefaults(defaults, current)) as SeedRecord
   // Required visual slots must remain usable even if an earlier CMS edit saved an empty/partial array.
   // Existing entries stay first and unchanged; missing slots are appended from the seed into PostgreSQL.
-  if (next.homeHero && defaults.homeHero) {
-    const currentSlides = Array.isArray(next.homeHero.slides) ? next.homeHero.slides : []
-    const baselineSlides = Array.isArray(defaults.homeHero.slides) ? defaults.homeHero.slides : []
+  const nextHomeHero = next.homeHero && typeof next.homeHero === 'object' && !Array.isArray(next.homeHero) ? next.homeHero as SeedRecord : null
+  const defaultHomeHero = defaults.homeHero && typeof defaults.homeHero === 'object' && !Array.isArray(defaults.homeHero) ? defaults.homeHero as SeedRecord : null
+  if (nextHomeHero && defaultHomeHero) {
+    const currentSlides = Array.isArray(nextHomeHero.slides) ? nextHomeHero.slides : []
+    const baselineSlides = Array.isArray(defaultHomeHero.slides) ? defaultHomeHero.slides : []
     const obsoleteIds = new Set(['community-development', 'women-and-livelihoods', 'health-and-education'])
-    const customSlides = currentSlides.filter((item: SeedRecord) => !obsoleteIds.has(String(item?.id || '')) && !/development with dignity/i.test(String(item?.title?.en || '')))
+    const customSlides = currentSlides.filter((item: SeedRecord) => !obsoleteIds.has(String(item?.id || '')) && !/development with dignity/i.test(String((item?.title as SeedRecord | undefined)?.en || '')))
     const byId = new Map(customSlides.map((item: SeedRecord) => [String(item?.id || ''), item]))
     const wordCount = (value: ExternalValue) => String(value || '').split(/\s+/).filter((token) => /[\p{L}\p{N}]/u.test(token)).length
     const projectSlides = baselineSlides.map((base: SeedRecord) => {
-      const existing: SeedRecord = byId.get(String(base?.id || ''))
-      return existing ? { ...base, ...existing, image: base.image, href: base.href, title: existing.title?.en && wordCount(existing.title.en) <= 4 && wordCount(existing.title.bn) <= 4 ? existing.title : base.title, description: existing.description?.en ? existing.description : base.description } : base
+      const existing: SeedRecord | undefined = byId.get(String(base?.id || ''))
+      if (!existing) return base
+      const existingTitle = existing.title && typeof existing.title === 'object' && !Array.isArray(existing.title) ? existing.title as SeedRecord : null
+      const existingDescription = existing.description && typeof existing.description === 'object' && !Array.isArray(existing.description) ? existing.description as SeedRecord : null
+      return {
+        ...base,
+        ...existing,
+        image: base.image,
+        href: base.href,
+        title: typeof existingTitle?.en === 'string' && wordCount(existingTitle.en) <= 4 && wordCount(existingTitle.bn) <= 4 ? existingTitle : base.title,
+        description: existingDescription?.en ? existingDescription : base.description,
+      }
     })
     const projectIds = new Set(baselineSlides.map((item: SeedRecord) => String(item?.id || '')))
     // The hero rail is a curated set of unique-picture slides; older project slides (24-slide rail) are retired. Custom CMS slides stay.
-    next.homeHero.slides = [...projectSlides, ...customSlides.filter((item: SeedRecord) => !projectIds.has(String(item?.id || '')) && !/^project-/.test(String(item?.id || '')))]
+    nextHomeHero.slides = [...projectSlides, ...customSlides.filter((item: SeedRecord) => !projectIds.has(String(item?.id || '')) && !/^project-/.test(String(item?.id || '')))]
 
     for (const [key, minimum] of [['stats', 3]] as const) {
-      const currentItems = Array.isArray(next.homeHero[key]) ? [...next.homeHero[key]] : []
-      const baseItems = Array.isArray(defaults.homeHero[key]) ? defaults.homeHero[key] : []
-      const known = new Set(currentItems.map((item: SeedRecord) => String(item?.id || item?.href || item?.label?.en || '')))
+      const currentItems = Array.isArray(nextHomeHero[key]) ? [...nextHomeHero[key]] : []
+      const baseItems = Array.isArray(defaultHomeHero[key]) ? defaultHomeHero[key] : []
+      const itemId = (item: SeedRecord) => {
+        const label = item?.label
+        const labelEn = label && typeof label === 'object' && !Array.isArray(label) ? (label as SeedRecord).en : ''
+        return String(item?.id || item?.href || labelEn || '')
+      }
+      const known = new Set(currentItems.map(itemId))
       for (const item of baseItems) {
         if (currentItems.length >= minimum) break
-        const id = String((item as SeedRecord)?.id || (item as SeedRecord)?.href || (item as SeedRecord)?.label?.en || '')
+        const id = itemId(item as SeedRecord)
         if (!id || known.has(id)) continue
         currentItems.push(item)
         known.add(id)
       }
-      next.homeHero[key] = currentItems
+      nextHomeHero[key] = currentItems
     }
   }
   if (JSON.stringify(current) !== JSON.stringify(next)) {
@@ -210,20 +227,28 @@ async function migrateLegacyImageSources() {
 }
 
 function sectionKey(section: SeedRecord): string {
-  const heading = String(section?.heading?.en || '').trim().toLowerCase()
+  const headingRecord = typeof section?.heading === 'object' && section.heading !== null && !Array.isArray(section.heading)
+    ? section.heading as SeedRecord
+    : null
+  const heading = String(headingRecord?.en || '').trim().toLowerCase()
   if (section?.type === 'timeline' && heading === 'our journey') return 'journey'
   if (section?.type === 'richText' && heading.includes('development with dignity')) return 'journey'
   if (section?.type === 'richText' && heading.includes('legacy of srizony foundation')) return 'legacy'
   if (section?.type === 'diagram' && section?.variant === 'sdg') return 'sdg'
   if (section?.type === 'carousel' && (section?.homeComponent === 'successStories' || (section?.collectionKind === 'success-stories' && heading.includes('success stories')))) return 'success-stories'
   if (section?.type === 'cards' && section?.variant === 'impact') return 'who-we-are'
-  if (section?.type === 'cards' && (heading === 'srizony enterprises' || (section?.items || []).some((item: SeedRecord) => String(item?.href || '').startsWith('/enterprise-development/')))) return 'enterprises'
-  if (section?.type === 'carousel' && (section?.homeComponent === 'stories' || heading.includes('news') || section?.collectionKind === 'news' || (section?.items || []).some((item: SeedRecord) => String(item?.href || '').startsWith('/news/') || String(item?.href || '').startsWith('/what-we-do/news/')))) return 'field-news'
+  if (section?.type === 'cards' && (heading === 'srizony enterprises' || (Array.isArray(section?.items) && section.items.some((item: SeedRecord) => String(item?.href || '').startsWith('/enterprise-development/'))))) return 'enterprises'
+  if (section?.type === 'carousel' && (section?.homeComponent === 'stories' || heading.includes('news') || section?.collectionKind === 'news' || (Array.isArray(section?.items) && section.items.some((item: SeedRecord) => String(item?.href || '').startsWith('/news/') || String(item?.href || '').startsWith('/what-we-do/news/'))))) return 'field-news'
   return `${String(section?.type || 'unknown')}:${heading}`
 }
 
 function mergeUniqueItems(existing: SeedRecord[], baseline: SeedRecord[], minimum: number): SeedRecord[] {
-  const identity = (item: SeedRecord) => String(item?.href || item?.slug || item?.title?.en || item?.title?.bn || '').trim().toLowerCase()
+  const identity = (item: SeedRecord) => {
+    const title = typeof item?.title === 'object' && item.title !== null && !Array.isArray(item.title)
+      ? item.title as SeedRecord
+      : null
+    return String(item?.href || item?.slug || title?.en || title?.bn || '').trim().toLowerCase()
+  }
   // Ignore empty shells; they should not count toward the minimum number of usable cards.
   const result: SeedRecord[] = []
   const known = new Set<string>()
@@ -245,8 +270,8 @@ function mergeUniqueItems(existing: SeedRecord[], baseline: SeedRecord[], minimu
 
 /** Repair only structural gaps and old local image URLs; never replace CMS-edited prose or titles. */
 function repairSeededPage(existingRaw: SeedRecord, baselineRaw: SeedRecord, slug: string): SeedRecord {
-  const current = normalizePageImages(existingRaw && typeof existingRaw === 'object' ? existingRaw : {})
-  const baseline = normalizePageImages(baselineRaw)
+  const current = normalizePageImages(existingRaw && typeof existingRaw === 'object' ? existingRaw : {}) as SeedRecord
+  const baseline = normalizePageImages(baselineRaw) as SeedRecord
   if (!current || typeof current !== 'object') return baseline
   // When an older snapshot has lost its section array, restore only that structure
   // while preserving any page metadata/title the CMS already saved.
@@ -254,13 +279,13 @@ function repairSeededPage(existingRaw: SeedRecord, baselineRaw: SeedRecord, slug
   if (slug === '/') {
     const sections = [...current.sections]
     const requiredKeys = new Set(['legacy', 'journey', 'sdg', 'who-we-are', 'enterprises', 'field-news', 'success-stories'])
-    const required = (baseline.sections || []).filter((section: SeedRecord) => requiredKeys.has(sectionKey(section)))
+    const required = (Array.isArray(baseline.sections) ? baseline.sections : []).filter((section: SeedRecord) => requiredKeys.has(sectionKey(section)))
     for (const seedSection of required) {
       const key = sectionKey(seedSection)
       const index = sections.findIndex((section: SeedRecord) => sectionKey(section) === key)
       if (index < 0) {
         const donateIndex = key === 'success-stories'
-          ? sections.findIndex((section: SeedRecord) => section?.homeComponent === 'donate' || (section?.type === 'cta' && String(section?.heading?.en || '').trim().toLowerCase() === 'support srizony'))
+          ? sections.findIndex((section: SeedRecord) => section?.homeComponent === 'donate' || (section?.type === 'cta' && String((section?.heading as SeedRecord | undefined)?.en || '').trim().toLowerCase() === 'support srizony'))
           : -1
         sections.splice(donateIndex >= 0 ? donateIndex : sections.length, 0, seedSection)
         continue
@@ -274,26 +299,29 @@ function repairSeededPage(existingRaw: SeedRecord, baselineRaw: SeedRecord, slug
         sections.splice(0, sections.length, ...before, seedSection, ...after)
       } else if (key === 'legacy') {
         const usableBody = Array.isArray(present.body) && present.body.some((paragraph: SeedRecord) => String(paragraph?.en || paragraph?.bn || '').trim())
-        const usableHeading = String(present.heading?.en || present.heading?.bn || '').trim()
+        const usableHeading = String((present.heading as SeedRecord | undefined)?.en || (present.heading as SeedRecord | undefined)?.bn || '').trim()
+        const usableImage = present.image && typeof present.image === 'object' && !Array.isArray(present.image)
+          && typeof (present.image as SeedRecord).src === 'string'
+          && String((present.image as SeedRecord).src).trim()
         sections[index] = {
           ...present,
           heading: usableHeading ? present.heading : seedSection.heading,
           body: usableBody ? present.body : seedSection.body,
-          image: present.image?.src ? present.image : seedSection.image,
+          image: usableImage ? present.image : seedSection.image,
         }
       } else if (key === 'sdg') {
-        const usableHeading = String(present.heading?.en || present.heading?.bn || '').trim()
+        const usableHeading = String((present.heading as SeedRecord | undefined)?.en || (present.heading as SeedRecord | undefined)?.bn || '').trim()
         sections[index] = { ...present, heading: usableHeading ? present.heading : seedSection.heading }
       } else if (key === 'who-we-are') {
         const items = Array.isArray(present.items) ? present.items : []
-        const usableHeading = String(present.heading?.en || present.heading?.bn || '').trim()
+        const usableHeading = String((present.heading as SeedRecord | undefined)?.en || (present.heading as SeedRecord | undefined)?.bn || '').trim()
         sections[index] = {
           ...present,
           heading: usableHeading ? present.heading : seedSection.heading,
           items: mergeUniqueItems(items, seedSection.items || [], Math.max(2, Math.min(6, (seedSection.items || []).length))),
         }
       } else if (key === 'enterprises') {
-        const usableHeading = String(present.heading?.en || present.heading?.bn || '').trim()
+        const usableHeading = String((present.heading as SeedRecord | undefined)?.en || (present.heading as SeedRecord | undefined)?.bn || '').trim()
         sections[index] = {
           ...present,
           heading: usableHeading ? present.heading : seedSection.heading,
@@ -301,7 +329,7 @@ function repairSeededPage(existingRaw: SeedRecord, baselineRaw: SeedRecord, slug
           items: mergeUniqueItems(Array.isArray(present.items) ? present.items : [], seedSection.items || [], Math.min(8, (seedSection.items || []).length)),
         }
       } else if (key === 'field-news') {
-        const usableHeading = String(present.heading?.en || present.heading?.bn || '').trim()
+        const usableHeading = String((present.heading as SeedRecord | undefined)?.en || (present.heading as SeedRecord | undefined)?.bn || '').trim()
         sections[index] = {
           ...present,
           heading: usableHeading ? present.heading : seedSection.heading,
@@ -312,7 +340,7 @@ function repairSeededPage(existingRaw: SeedRecord, baselineRaw: SeedRecord, slug
           items: Array.isArray(present.items) ? present.items : (seedSection.items || []),
         }
       } else if (key === 'success-stories') {
-        const usableHeading = String(present.heading?.en || present.heading?.bn || '').trim()
+        const usableHeading = String((present.heading as SeedRecord | undefined)?.en || (present.heading as SeedRecord | undefined)?.bn || '').trim()
         sections[index] = {
           ...seedSection,
           ...present,
@@ -338,7 +366,7 @@ function repairSeededPage(existingRaw: SeedRecord, baselineRaw: SeedRecord, slug
     return { ...baseline, ...current, sections: deduplicated }
   }
   if (slug === '/enterprise-development') {
-    const base = (baseline.sections || []).find((section: SeedRecord) => sectionKey(section) === 'enterprises')
+    const base = (Array.isArray(baseline.sections) ? baseline.sections : []).find((section: SeedRecord) => sectionKey(section) === 'enterprises')
     if (base) {
       const sections = [...current.sections]
       const index = sections.findIndex((section: SeedRecord) => sectionKey(section) === 'enterprises')
@@ -356,7 +384,7 @@ function repairSeededPage(existingRaw: SeedRecord, baselineRaw: SeedRecord, slug
     }
   }
   if (slug === '/social-development') {
-    const base = (baseline.sections || []).find((section: SeedRecord) => sectionKey(section) === 'field-news')
+    const base = (Array.isArray(baseline.sections) ? baseline.sections : []).find((section: SeedRecord) => sectionKey(section) === 'field-news')
     if (base) {
       const sections = [...current.sections]
       const index = sections.findIndex((section: SeedRecord) => sectionKey(section) === 'field-news')
@@ -398,7 +426,7 @@ async function detectContentRelatedMode() {
       AND table_name = 'content_entry_related'
       AND column_name IN ('related_slug', 'related_entry_id')
   `)
-  const columns = new Set(result.rows.map((row: SeedRecord) => String(row.column_name)))
+  const columns = new Set(result.rows.map((row: Record<string, unknown>) => String(row.column_name)))
   if (columns.has('related_slug')) {
     contentRelatedMode = 'slug'
     return
@@ -418,13 +446,25 @@ async function detectContentRelatedMode() {
   contentRelatedMode = 'slug'
 }
 
-async function insertMedia(media: SeedRecord, cache: Map<string, number>): Promise<number | null> {
-  if (!media?.src) return null
-  const normalizedMedia = { ...media, src: normalizePageImages(media.src) }
-  const key = `${normalizedMedia.src}|${normalizedMedia.hoverSrc ?? ''}|${normalizedMedia.alt?.en ?? ''}|${normalizedMedia.alt?.bn ?? ''}`
+async function insertMedia(media: ExternalValue, cache: Map<string, number>): Promise<number | null> {
+  if (!media || typeof media !== 'object' || Array.isArray(media)) return null
+  const record = media as SeedRecord
+  if (!record.src) return null
+  const normalizedSrc = normalizePageImages(record.src)
+  const normalizedHoverSrc = typeof record.hoverSrc === 'string'
+    ? normalizePageImages(record.hoverSrc)
+    : null
+  const alt = record.alt && typeof record.alt === 'object' && !Array.isArray(record.alt)
+    ? record.alt as SeedRecord
+    : null
+  const caption = record.caption && typeof record.caption === 'object' && !Array.isArray(record.caption)
+    ? record.caption as SeedRecord
+    : null
+  const kind = typeof record.kind === 'string' ? record.kind : 'image'
+  const key = `${String(normalizedSrc)}|${typeof normalizedHoverSrc === 'string' ? normalizedHoverSrc : ''}|${String(alt?.en ?? '')}|${String(alt?.bn ?? '')}`
   const cached = cache.get(key)
   if (cached) return cached
-  const existing = await database!.execute(sql`SELECT id FROM media_items WHERE src = ${String(normalizedMedia.src)} ORDER BY id LIMIT 1`)
+  const existing = await database!.execute(sql`SELECT id FROM media_items WHERE src = ${String(normalizedSrc)} ORDER BY id LIMIT 1`)
   if (existing.rows[0]) {
     const id = Number((existing.rows[0] as SeedRecord).id)
     cache.set(key, id)
@@ -433,13 +473,13 @@ async function insertMedia(media: SeedRecord, cache: Map<string, number>): Promi
   const result = await database!.execute(sql`
     INSERT INTO media_items (src, alt_en, alt_bn, caption_en, caption_bn, kind, hover_src)
     VALUES (
-      ${String(normalizedMedia.src)},
-      ${String(normalizedMedia.alt?.en ?? '')},
-      ${String(normalizedMedia.alt?.bn ?? '')},
-      ${normalizedMedia.caption?.en ?? null},
-      ${normalizedMedia.caption?.bn ?? null},
-      ${normalizedMedia.kind ?? 'image'},
-      ${normalizedMedia.hoverSrc ? normalizePageImages(normalizedMedia.hoverSrc) : null}
+      ${String(normalizedSrc)},
+      ${String(alt?.en ?? '')},
+      ${String(alt?.bn ?? '')},
+      ${caption?.en ?? null},
+      ${caption?.bn ?? null},
+      ${kind},
+      ${typeof normalizedHoverSrc === 'string' ? normalizedHoverSrc : null}
     )
     RETURNING id
   `)
@@ -448,12 +488,13 @@ async function insertMedia(media: SeedRecord, cache: Map<string, number>): Promi
   return id
 }
 
-async function seedPage(page: SeedRecord, mediaCache: Map<string, number>) {
+async function seedPage(page: PageData, mediaCache: Map<string, number>) {
   const existing = await database!.execute(sql`SELECT id, render_cache FROM pages WHERE slug = ${page.slug} LIMIT 1`)
   if (existing.rows[0] && !RESET_SEED) {
     const row = existing.rows[0] as SeedRecord
     const parsed = typeof row.render_cache === 'string' ? JSON.parse(row.render_cache) : row.render_cache
-    const repaired = repairSeededPage(parsed, page, page.slug)
+    const slug = typeof page.slug === 'string' ? page.slug : ''
+    const repaired = repairSeededPage(parsed, page, slug)
     const before = JSON.stringify(parsed ?? null)
     const after = JSON.stringify(repaired ?? null)
     if (before !== after) {
@@ -462,31 +503,31 @@ async function seedPage(page: SeedRecord, mediaCache: Map<string, number>) {
     }
     return Number(row.id)
   }
-  const seededPage = normalizePageImages(page)
+  const seededPage = normalizePageImages(page) as PageData
   const heroId = await insertMedia(seededPage.heroImage ? { src: seededPage.heroImage, alt: seededPage.title } : null, mediaCache)
   const pageResult = await database!.execute(sql`
     INSERT INTO pages
       (slug,title_en,title_bn,subtitle_en,subtitle_bn,hero_image_id,hero_tone,meta_description_en,meta_description_bn,render_cache,status,sort_order)
     VALUES
-      (${seededPage.slug},${seededPage.title.en},${seededPage.title.bn},${seededPage.subtitle?.en ?? null},${seededPage.subtitle?.bn ?? null},
-       ${heroId},${seededPage.heroTone ?? null},${seededPage.metaDescription?.en ?? null},${seededPage.metaDescription?.bn ?? null},${JSON.stringify(seededPage)}::jsonb,'published',0)
+      (${seededPage.slug},${(seededPage.title as SeedRecord | undefined)?.en ?? null},${(seededPage.title as SeedRecord | undefined)?.bn ?? null},${(seededPage.subtitle as SeedRecord | undefined)?.en ?? null},${(seededPage.subtitle as SeedRecord | undefined)?.bn ?? null},
+      ${heroId},${seededPage.heroTone ?? null},${(seededPage.metaDescription as SeedRecord | undefined)?.en ?? null},${(seededPage.metaDescription as SeedRecord | undefined)?.bn ?? null},${JSON.stringify(seededPage)}::jsonb,'published',0)
     ON CONFLICT (slug) DO NOTHING
     RETURNING id
   `)
   const pageId = Number((pageResult.rows[0] as SeedRecord).id)
 
-  for (let i=0; i<(seededPage.sections ?? []).length; i++) {
-    const section = seededPage.sections[i]
+  const sections = Array.isArray(seededPage.sections) ? seededPage.sections : []
+  for (let i=0; i<sections.length; i++) {
+    const section = sections[i]
     const sectionResult = await database!.execute(sql`
       INSERT INTO sections (page_id,section_type,sort_order) VALUES (${pageId},${section.type},${i}) RETURNING id
     `)
     const sectionId = Number((sectionResult.rows[0] as SeedRecord).id)
-    const b=(v: SeedRecord)=>bilingual(v)
-
     if(section.type==='richText'){
-      const imageId=await insertMedia(section.image,mediaCache)
+      const imageId=await insertMedia(section.image ?? null,mediaCache)
+      const bodyRecords = Array.isArray(section.body) ? section.body as Array<{ en?: unknown; bn?: unknown }> : null
       await database!.execute(sql`INSERT INTO rich_text_sections(section_id,eyebrow_en,eyebrow_bn,heading_en,heading_bn,body_en,body_bn,image_id,reverse)
-        VALUES(${sectionId},${section.eyebrow?.en??null},${section.eyebrow?.bn??null},${section.heading?.en??null},${section.heading?.bn??null},${textArray(section.body?.map((x: SeedRecord)=>x.en))},${textArray(section.body?.map((x: SeedRecord)=>x.bn))},${imageId},${section.reverse??false})`)
+        VALUES(${sectionId},${section.eyebrow?.en??null},${section.eyebrow?.bn??null},${section.heading?.en??null},${section.heading?.bn??null},${textArray(bodyRecords?.map((x)=>String(x?.en ?? '')))},${textArray(bodyRecords?.map((x)=>String(x?.bn ?? '')))},${imageId},${section.reverse??false})`)
     } else if(section.type==='stats'){
       await database!.execute(sql`INSERT INTO stats_sections(section_id) VALUES(${sectionId})`)
       for(let j=0;j<(section.items??[]).length;j++){const x=section.items[j];await database!.execute(sql`INSERT INTO stat_items(section_id,value,label_en,label_bn,note_en,note_bn,sort_order) VALUES(${sectionId},${x.value},${x.label.en},${x.label.bn},${x.note?.en??null},${x.note?.bn??null},${j})`)}
@@ -514,7 +555,8 @@ async function seedPage(page: SeedRecord, mediaCache: Map<string, number>) {
       for(let j=0;j<(section.items??[]).length;j++){const x=section.items[j];await database!.execute(sql`INSERT INTO notice_items(section_id,date_value,title_en,title_bn,body_en,body_bn,href,sort_order) VALUES(${sectionId},${x.date},${x.title.en},${x.title.bn},${x.body?.en??null},${x.body?.bn??null},${x.href??null},${j})`)}
     } else if(section.type==='contact'){
       await database!.execute(sql`INSERT INTO contact_sections(section_id,heading_en,heading_bn,address_en,address_bn,phones,emails,map_label_en,map_label_bn) VALUES(${sectionId},${section.heading?.en??null},${section.heading?.bn??null},${section.address.en},${section.address.bn},${textArray(section.phones)},${textArray(section.emails)},${section.mapLabel?.en??null},${section.mapLabel?.bn??null})`)
-      for(let j=0;j<(section.locations??[]).length;j++){const x=section.locations[j];await database!.execute(sql`INSERT INTO contact_locations(section_id,name_en,name_bn,address_en,address_bn,map_query,phone,email,kind,sort_order) VALUES(${sectionId},${x.name.en},${x.name.bn},${x.address.en},${x.address.bn},${x.mapQuery},${x.phone??null},${x.email??null},${x.kind??null},${j})`)}
+      const locations = section.locations ?? []
+      for(let j=0;j<locations.length;j++){const x=locations[j];await database!.execute(sql`INSERT INTO contact_locations(section_id,name_en,name_bn,address_en,address_bn,map_query,phone,email,kind,sort_order) VALUES(${sectionId},${x.name.en},${x.name.bn},${x.address.en},${x.address.bn},${x.mapQuery},${x.phone??null},${x.email??null},${x.kind??null},${j})`)}
     } else if(section.type==='donation'){
       await database!.execute(sql`INSERT INTO donation_sections(section_id,heading_en,heading_bn,body_en,body_bn) VALUES(${sectionId},${section.heading?.en??null},${section.heading?.bn??null},${section.body?.en??null},${section.body?.bn??null})`)
     } else if(section.type==='carousel'){
@@ -528,9 +570,17 @@ async function seedPage(page: SeedRecord, mediaCache: Map<string, number>) {
 function systemDataForSeed(){
   return {
     ...systemData,
-    donationInfo: donationInfo.map(({ icon: _icon, ...item }) => ({ ...item, icon: item.id })),
-    SDGsteps: SDGsteps.map(({ Icon: _Icon, ...step }) => step),
-    paymentInfo: donationInfo.map(({ icon: _icon, ...item }) => item),
+    donationInfo: donationInfo.map(item => ({ ...item, icon: item.id })),
+    SDGsteps: SDGsteps.map(step => {
+      const { Icon, ...data } = step
+      void Icon
+      return data
+    }),
+    paymentInfo: donationInfo.map(item => {
+      const { icon, ...payment } = item
+      void icon
+      return payment
+    }),
   }
 }
 
@@ -738,7 +788,7 @@ async function seedCmsContentItems() {
   // Content is seeded by component + slug, but public detail slugs are scoped to the
   // selected parent route. Avoid `ON CONFLICT(component, slug)` because route-scoped
   // uniqueness is now enforced by cms_content_items_route_slug_uq.
-  for (const entry of contentDetails as SeedRecord[]) {
+  for (const entry of contentDetails as ContentDetailSeed[]) {
     const component = String(entry.component)
     const slug = String(entry.slug)
     const attributes = {
@@ -749,7 +799,7 @@ async function seedCmsContentItems() {
     const existing = (await database!.execute(sql`
       SELECT id, attributes, image_src FROM cms_content_items WHERE component = ${component} AND slug = ${slug} LIMIT 1
     `)).rows[0] as SeedRecord
-    const existingAttributes = existing?.attributes && typeof existing.attributes === 'object' ? existing.attributes : {}
+    const existingAttributes = isSeedRecord(existing?.attributes) ? existing.attributes : {}
     // Once marked as a seeded catalogue record, later seed runs deliberately preserve
     // administrator edits (including route parent and visibility). Backfill only missing /
     // unmanaged project artwork from the original local asset paths; never overwrite an image
@@ -794,7 +844,7 @@ async function seedCmsContentItems() {
   }
 
   // Keep support for separately-authored career entries from the legacy catalogue.
-  for (const entry of contentEntries as SeedRecord[]) {
+  for (const entry of contentEntries as Array<ContentEntry & { deadline?: string; sortOrder?: number }>) {
     if (String(entry.category) !== 'career') continue
     const slug = String(entry.slug)
     const existingCareer = await database!.execute(sql`SELECT id FROM cms_content_items WHERE component = 'job' AND slug = ${slug} LIMIT 1`)
@@ -813,10 +863,10 @@ async function seedCmsContentItems() {
   }
 }
 
-function normalizeRouteValues(value: SeedRecord): SeedRecord {
+function normalizeRouteValues(value: ExternalValue): ExternalValue {
   if (typeof value === 'string') return value.startsWith('/') ? canonicalizeCmsRoute(value) : value
   if (Array.isArray(value)) return value.map(normalizeRouteValues)
-  if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key, child]) => [key.startsWith('/') ? canonicalizeCmsRoute(key) : key, normalizeRouteValues(child)]))
+  if (isSeedRecord(value)) return Object.fromEntries(Object.entries(value).map(([key, child]) => [key.startsWith('/') ? canonicalizeCmsRoute(key) : key, normalizeRouteValues(child)]))
   return value
 }
 
@@ -830,7 +880,7 @@ const hiddenNavigationLabels = new Set([
 ])
 const normalizeNavigationLabel = (value: ExternalValue) => String(value ?? '').trim().toLocaleLowerCase().replace(/[\s_-]+/g, ' ')
 
-function walkNavigation(items: SeedRecord[], paths: Set<string>, labels = new Map<string, { en: string; bn: string }>(), parentHidden = false) {
+function walkNavigation(items: NavItem[], paths: Set<string>, labels = new Map<string, { en: string; bn: string }>(), parentHidden = false) {
   for (const item of items || []) {
     const href = typeof item.href === 'string' ? item.href : ''
     const rawPath = href.split(/[?#]/, 1)[0].replace(/\/+$/, '').toLocaleLowerCase() || '/'
@@ -864,19 +914,20 @@ async function migrateLegacyRoutes() {
     const oldSlug = String(row.slug)
     const nextSlug = canonicalizeCmsRoute(oldSlug)
     const normalizedCache = row.render_cache ? normalizeRouteValues(row.render_cache) : null
-    if (normalizedCache && typeof normalizedCache === 'object') normalizedCache.slug = nextSlug
+    if (isSeedRecord(normalizedCache)) normalizedCache.slug = nextSlug
     if (oldSlug !== nextSlug) {
       const target = rowBySlug.get(nextSlug)
       if (target) {
         if (normalizedCache) {
-          const targetCache = target.render_cache && typeof target.render_cache === 'object' ? target.render_cache as SeedRecord : {}
-          const sourceCache = normalizedCache as SeedRecord
+          const targetCache = isSeedRecord(target.render_cache) ? target.render_cache : {}
+          const sourceCache = isSeedRecord(normalizedCache) ? normalizedCache : {}
           const targetSections = Array.isArray(targetCache.sections) ? [...targetCache.sections] : []
           const sourceSections = Array.isArray(sourceCache.sections) ? sourceCache.sections : []
           const collectionComponent = nextSlug === '/news' ? 'news' : nextSlug === '/success-stories' ? 'success-story' : undefined
           const isCollectionSection = (section: SeedRecord) => {
             if (!collectionComponent) return false
-            const configured = section?.contentCollection?.component
+            const collection = isSeedRecord(section.contentCollection) ? section.contentCollection : {}
+            const configured = collection.component
             const feed = Array.isArray(section?.components) ? section.components[0] : undefined
             const kind = section?.collectionKind
             return configured === collectionComponent || feed === collectionComponent
@@ -886,7 +937,7 @@ async function migrateLegacyRoutes() {
           const missingCollectionSections = sourceSections.filter((section: SeedRecord) => isCollectionSection(section) && !targetSections.some((current: SeedRecord) => isCollectionSection(current)))
           if (!target.render_cache || missingCollectionSections.length) {
             const isBlankPlaceholder = (section: SeedRecord) => section?.type === 'richText'
-              && !section?.image?.src
+              && !(isSeedRecord(section.image) && section.image.src)
               && Array.isArray(section?.body)
               && section.body.every((paragraph: SeedRecord) => !String(paragraph?.en || paragraph?.bn || '').trim())
             const onlyBlankPlaceholders = targetSections.length > 0 && targetSections.every(isBlankPlaceholder)
@@ -923,8 +974,9 @@ async function migrateLegacyRoutes() {
   // of public URLs. A duplicate route is hidden and assigned a private archive key;
   // no published content is allowed to claim the same canonical URL twice.
   const contentRows = (await database!.execute(sql`SELECT id, component, slug, status, attributes FROM cms_content_items ORDER BY id`)).rows as SeedRecord[]
-  const normalized = contentRows.map((row) => {
-    const attrs = row.attributes && typeof row.attributes === 'object' ? { ...row.attributes } : {}
+  type NormalizedContentRow = SeedRecord & { attrs: SeedRecord; canonicalParent: string; canonicalSlug: string }
+  const normalized: NormalizedContentRow[] = contentRows.map((row) => {
+    const attrs: SeedRecord = isSeedRecord(row.attributes) ? { ...row.attributes } : {}
     const component = String(row.component || '') as keyof typeof DEFAULT_CONTENT_PARENT
     const rawParent = typeof attrs.routeParent === 'string' && attrs.routeParent ? attrs.routeParent : (DEFAULT_CONTENT_PARENT[component] || '/')
     attrs.routeParent = canonicalizeCmsRoute(String(rawParent))
@@ -940,7 +992,7 @@ async function migrateLegacyRoutes() {
     }
     return { ...row, attrs, canonicalParent: String(attrs.routeParent), canonicalSlug: String(row.slug || '') }
   })
-  const groups = new Map<string, SeedRecord[]>()
+  const groups = new Map<string, NormalizedContentRow[]>()
   for (const row of normalized) {
     const key = `${row.canonicalParent}\u0000${row.canonicalSlug}`
     const group = groups.get(key) || []
@@ -1164,7 +1216,7 @@ async function main() {
 
   const contentEntryIds = new Map<string, number>()
   const pendingRelated: Array<{ contentEntryId: number; relatedSlug: string; sortOrder: number }> = []
-  for (const entry of contentEntries as SeedRecord[]) {
+  for (const entry of contentEntries as ContentEntry[]) {
     const existing = await database!.execute(sql`SELECT id FROM content_entries WHERE slug = ${entry.slug} LIMIT 1`)
     if (existing.rows[0]) {
       contentEntryIds.set(entry.slug, Number((existing.rows[0] as SeedRecord).id))
@@ -1175,8 +1227,10 @@ async function main() {
     const id = Number((r.rows[0] as SeedRecord).id)
     contentEntryIds.set(entry.slug, id)
     for (let i = 0; i < (entry.body || []).length; i++) await database!.execute(sql`INSERT INTO content_entry_bodies(content_entry_id,body_en,body_bn,sort_order) VALUES(${id},${entry.body[i].en},${entry.body[i].bn},${i})`)
-    for (let i = 0; i < (entry.tags || []).length; i++) await database!.execute(sql`INSERT INTO content_entry_tags(content_entry_id,tag_en,tag_bn,sort_order) VALUES(${id},${entry.tags[i].en},${entry.tags[i].bn},${i})`)
-    for (let i = 0; i < (entry.related || []).length; i++) pendingRelated.push({ contentEntryId: id, relatedSlug: String(entry.related[i]), sortOrder: i })
+    const tags = entry.tags ?? []
+    for (let i = 0; i < tags.length; i++) await database!.execute(sql`INSERT INTO content_entry_tags(content_entry_id,tag_en,tag_bn,sort_order) VALUES(${id},${tags[i].en},${tags[i].bn},${i})`)
+    const relatedSlugs = entry.related ?? []
+    for (let i = 0; i < relatedSlugs.length; i++) pendingRelated.push({ contentEntryId: id, relatedSlug: String(relatedSlugs[i]), sortOrder: i })
     for (const [i, gallery] of (entry.gallery || []).entries()) {
       const galleryId = await insertMedia(gallery, mediaCache)
       if (galleryId) await database!.execute(sql`INSERT INTO content_entry_gallery(content_entry_id,media_id,sort_order) SELECT ${id},${galleryId},${i} WHERE NOT EXISTS (SELECT 1 FROM content_entry_gallery WHERE content_entry_id = ${id} AND media_id = ${galleryId})`)
@@ -1221,7 +1275,7 @@ async function enforceLandingRootHierarchy() {
   await database!.execute(sql`UPDATE nav_items SET parent_id = NULL, sort_order = 0 WHERE id = ${landingId}`)
 }
 
-async function seedNav(item: SeedRecord, groupId: number, parentId: number | null, sort: number): Promise<number> {
+async function seedNav(item: NavItem, groupId: number, parentId: number | null, sort: number): Promise<number> {
   const menuType = item.menuType === 'folder' ? 'folder' : item.menuType === 'external' ? 'external' : 'page'
   const href = menuType === 'folder' ? '' : String(item.href || '')
   const fields = 'id,parent_id,sort_order,label_en,label_bn,featured,href,menu_type'
@@ -1244,7 +1298,8 @@ async function seedNav(item: SeedRecord, groupId: number, parentId: number | nul
     const inserted = await database!.execute(sql`INSERT INTO nav_items(group_id,parent_id,label_en,label_bn,href,featured,sort_order,menu_type) VALUES(${groupId},${parentId},${item.label.en},${item.label.bn},${href},${item.featured??false},${sort},${menuType}) RETURNING id`)
     id = Number((inserted.rows[0] as SeedRecord).id)
   }
-  for (let i = 0; i < (item.children ?? []).length; i++) await seedNav(item.children[i], groupId, id, i)
+  const children = item.children ?? []
+  for (let i = 0; i < children.length; i++) await seedNav(children[i], groupId, id, i)
   return id
 }
 

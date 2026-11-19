@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Activity,
   BarChart3,
@@ -186,8 +186,8 @@ function Metric({
 
 export default function OverviewPage() {
   const [days, setDays] = useState<7 | 30 | 90>(30)
-  const [activeChart] = useState<'visitors' | 'applications' | 'donations'>('visitors')
-  const [activeInsight] = useState<'donation-value' | 'top-pages' | 'referrers'>('donation-value')
+  const [activeChart, setActiveChart] = useState<'visitors' | 'applications' | 'donations'>('visitors')
+  const [activeInsight, setActiveInsight] = useState<'donation-value' | 'top-pages' | 'referrers'>('donation-value')
   const [data, setData] = useState<DashboardResponse | null>(null)
   const [donations, setDonations] = useState<Donation[]>([])
   const [loading, setLoading] = useState(true)
@@ -195,7 +195,9 @@ export default function OverviewPage() {
   const [error, setError] = useState('')
   const [donationError, setDonationError] = useState('')
   const [actualExecutionMs, setActualExecutionMs] = useState<number | null>(null)
+  const requestIdRef = useRef(0)
   const loadDashboard = useCallback(async (showRefresh = false) => {
+    const requestId = ++requestIdRef.current
     if (showRefresh) setRefreshing(true)
     else setLoading(true)
     setError('')
@@ -207,6 +209,7 @@ export default function OverviewPage() {
         getDashboard<DashboardResponse>(days),
         getRecentDonations(),
       ])
+      if (requestId !== requestIdRef.current) return
 
       if (dashboardResult.status === 'rejected') throw dashboardResult.reason
       setData(dashboardResult.value)
@@ -218,26 +221,25 @@ export default function OverviewPage() {
         setDonationError(donationsResult.reason instanceof Error ? donationsResult.reason.message : 'Unable to load donations.')
       }
     } catch (cause: unknown) {
+      if (requestId !== requestIdRef.current) return
       setError(cause instanceof Error ? cause.message : 'Unable to load dashboard data.')
     } finally {
-      setActualExecutionMs(getExecutionDuration(startedAt, performance.now()))
-      setLoading(false)
-      setRefreshing(false)
+      if (requestId === requestIdRef.current) {
+        setActualExecutionMs(getExecutionDuration(startedAt, performance.now()))
+        setLoading(false)
+        setRefreshing(false)
+      }
     }
   }, [days])
 
   useEffect(() => {
     let cancelled = false
-
-    const refreshDashboard = async () => {
-      if (cancelled) return
-      await loadDashboard()
-    }
-
-    void refreshDashboard()
-
+    void Promise.resolve().then(() => {
+      if (!cancelled) return loadDashboard()
+    })
     return () => {
       cancelled = true
+      requestIdRef.current += 1
     }
   }, [loadDashboard])
 

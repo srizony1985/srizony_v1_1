@@ -329,13 +329,14 @@ export default function AdminLoginPage() {
                     aria-invalid={!!errors.password}
                     aria-describedby={[errors.password ? 'admin-password-error' : '', caps ? 'admin-caps-hint' : ''].filter(Boolean).join(' ') || undefined}
                   />
-                  <button
+                  <Button
+                    variant="ghost" size="icon"
                     type="button" onClick={() => setShow((v) => !v)}
                     aria-label={show ? 'Hide password' : 'Show password'} aria-pressed={show}
                     className="absolute right-2 grid size-8 place-items-center rounded-md text-white/55 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-2 focus-visible:outline-[#ff4d5e]"
                   >
                     {show ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}
-                  </button>
+                  </Button>
                 </div>
                 {errors.password && <small id="admin-password-error" className={errorClass} role="alert">{errors.password}</small>}
                 {caps && <small id="admin-caps-hint" className="block text-sm text-amber-300/90">Caps Lock is on.</small>}

@@ -6,6 +6,7 @@ import type { ColorMode, Lang, ShapeName, ThemeName } from '@/types/entityType'
 import type { PublicSiteSnapshot } from '@/types/site'
 import { buildThemeCssVariables, parseThemeTokenOverrides, THEME_COLOR_TOKEN_KEYS, type RuntimeThemeMap } from '@/lib/themeRuntime'
 import { getNavigationSnapshot, getPageSnapshot, getSessionProfile, getSiteSnapshot } from '@/lib/api/public'
+import { useSharedThemeMode } from '@/lib/useSharedThemeMode'
 
 type SiteProfile = {
   id: number
@@ -92,9 +93,7 @@ export default function SiteProvider({
     initialPreferences?.shape || 'soft',
   )
 
-  const [mode, setModeState] = useState<ColorMode>(
-    initialPreferences?.mode || 'dark',
-  )
+  const { mode, setMode } = useSharedThemeMode(initialPreferences?.mode || 'dark')
 
   const [tokens, setTokensState] = useState<Record<string, string>>(
     () => parseThemeTokenOverrides(initialPreferences?.tokens || {}),
@@ -118,18 +117,12 @@ export default function SiteProvider({
     }
   }, [initialSite])
 
-  /**
-   * Keep the public palette defaults consistent. The server-rendered cookie is
-   * the single source of truth for light/dark mode, so stale localStorage data
-   * must never overwrite the mode selected by the user after hydration.
-   */
+  /** Keep the fixed public design defaults consistent across route changes. */
   useEffect(() => {
     try {
       window.localStorage.setItem('sf-theme', 'midnight')
       window.localStorage.setItem('sf-shape', 'soft')
       window.localStorage.removeItem('sf-theme-tokens')
-      // Keep the old client preference key in sync for older app integrations.
-      window.localStorage.setItem('sf-mode', mode)
     } catch {
       // Storage can be unavailable in privacy modes; the active session still works.
     }
@@ -137,10 +130,6 @@ export default function SiteProvider({
     document.cookie = 'sf-theme=midnight;path=/;max-age=31536000;samesite=lax'
     document.cookie = 'sf-shape=soft;path=/;max-age=31536000;samesite=lax'
     document.cookie = 'sf-theme-tokens=;path=/;max-age=0;samesite=lax'
-    document.cookie = `sf-mode=${mode};path=/;max-age=31536000;samesite=lax`
-
-    // Intentionally only runs on mount. The initial mode comes from the server cookie.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   /**
@@ -414,27 +403,6 @@ export default function SiteProvider({
     )};path=/;max-age=31536000;samesite=lax`
 
     document.documentElement.dataset.shape = value
-  }, [])
-
-  const setMode = useCallback((value: ColorMode) => {
-    setModeState(value)
-
-    // Update the root immediately so CSS selectors and color-scheme respond in
-    // the same interaction, without waiting for the next React effect.
-    document.documentElement.dataset.mode = value
-    syncPublicThemeColor(value, true)
-
-    try {
-      window.localStorage.setItem('sf-mode', value)
-    } catch {
-      // The cookie remains the persistence source when browser storage is blocked.
-    }
-
-    try {
-      document.cookie = `sf-mode=${value};path=/;max-age=31536000;samesite=lax`
-    } catch {
-      // The active page still switches mode even when cookies are unavailable.
-    }
   }, [])
 
   /**

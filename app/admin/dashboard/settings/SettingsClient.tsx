@@ -1393,7 +1393,7 @@ function ReportingView() {
             onSelectionChange={(ids) => setSelected(new Set(ids.map(Number).filter(Number.isFinite)))}
             exportable
             selectedExportable
-            fileName='vistors.csv'
+            fileName={`${table}.csv`}
             sortable
             emptyMessage="No records match this filter."
             tableClassName="settings-report-table"

@@ -2,7 +2,7 @@
 
 import Image, { type ImageProps } from 'next/image'
 import { ImageOff } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { normalizeMediaSrc } from '@/lib/mediaUrl'
 
 export type SafeImageProps = Omit<ImageProps, 'alt' | 'src'> & {
@@ -15,14 +15,11 @@ export type SafeImageProps = Omit<ImageProps, 'alt' | 'src'> & {
 export default function SafeImage({ alt, fallbackTitle, fallbackSrc, src, onError, ...props }: SafeImageProps) {
   const title = fallbackTitle || alt || 'Community image'
   const candidates = useMemo(() => [...new Set([normalizeMediaSrc(src), normalizeMediaSrc(fallbackSrc)].filter((value): value is string => Boolean(value?.trim())))], [src, fallbackSrc])
-  const [candidateIndex, setCandidateIndex] = useState(0)
-  const [failed, setFailed] = useState(false)
-
-  // Reset the fallback chain when a card is reused for new CMS content.
-  useEffect(() => {
-    setCandidateIndex(0)
-    setFailed(false)
-  }, [src, fallbackSrc])
+  const sourceKey = JSON.stringify(candidates)
+  const [imageState, setImageState] = useState<{ sourceKey: string; candidateIndex: number; failed: boolean } | null>(null)
+  const currentState = imageState?.sourceKey === sourceKey ? imageState : null
+  const candidateIndex = currentState?.candidateIndex ?? 0
+  const failed = currentState?.failed ?? false
 
   const currentSrc = candidates[Math.min(candidateIndex, Math.max(candidates.length - 1, 0))]
 
@@ -36,7 +33,11 @@ export default function SafeImage({ alt, fallbackTitle, fallbackSrc, src, onErro
   // listed in next.config.ts. Serve external URLs directly so Next's image
   // optimizer cannot reject valid content from an unlisted host.
   return <Image {...props} src={currentSrc} alt={alt} unoptimized={isRemote} onError={(event) => {
-    if (candidateIndex < candidates.length - 1) setCandidateIndex((i) => i + 1)
-    else { setFailed(true); onError?.(event) }
+    if (candidateIndex < candidates.length - 1) {
+      setImageState({ sourceKey, candidateIndex: candidateIndex + 1, failed: false })
+    } else {
+      setImageState({ sourceKey, candidateIndex, failed: true })
+      onError?.(event)
+    }
   }}/>
 }

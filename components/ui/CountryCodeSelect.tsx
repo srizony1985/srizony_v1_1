@@ -5,6 +5,7 @@ import {
   useId,
   useRef,
   useState,
+  useSyncExternalStore,
     type KeyboardEvent,
 } from 'react'
 import type { CSSVariableProperties } from '@/types/css'
@@ -32,11 +33,14 @@ type Pos = {
 }
 
 const EMPTY_POS: Pos = { left: 0, width: 260, top: 0, maxH: 248, flip: false }
+const subscribeToNothing = () => () => undefined
+const getClientMounted = () => true
+const getServerMounted = () => false
 
 export default function CountryCodeSelect({ options, value, onChange, ariaLabel, invalid }: Props) {
   const [open, setOpen] = useState(false)
   const [active, setActive] = useState(0)
-  const [mounted, setMounted] = useState(false)
+  const mounted = useSyncExternalStore(subscribeToNothing, getClientMounted, getServerMounted)
   const [pos, setPos] = useState<Pos>(EMPTY_POS)
 
   const triggerRef = useRef<HTMLButtonElement>(null)
@@ -48,9 +52,6 @@ export default function CountryCodeSelect({ options, value, onChange, ariaLabel,
 
   const selectedIndex = Math.max(0, options.findIndex((o) => o.country === value))
   const selected = options[selectedIndex]
-
-  // portal target only exists on the client
-  useEffect(() => setMounted(true), [])
 
   /**
    * The panel is rendered in a portal on <body> with position: fixed, so no

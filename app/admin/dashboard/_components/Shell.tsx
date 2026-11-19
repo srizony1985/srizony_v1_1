@@ -302,7 +302,7 @@ function ShellContent({ userEmail, children }: { userEmail?: string; children: R
               <Input
                 id="cms-navigation-search"
                 type="search"
-                className="admin-theme-search-input h-9 border-input bg-card pl-9 pr-8 text-primary placeholder:text-muted-foreground"
+                className="admin-theme-search-input h-9 border-input bg-card pl-9 pr-8 text-foreground placeholder:text-muted-foreground"
                 value={navigationQuery}
                 onChange={(event) => setNavigationQuery(event.target.value)}
                 placeholder="Search menu…"

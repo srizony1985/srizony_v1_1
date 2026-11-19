@@ -1,8 +1,9 @@
 'use client'
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
 import ToastProvider from '@/components/ui/ToastProvider'
 import { getThemeTypography } from '@/lib/api/adminTheme'
+import { useSharedThemeMode } from '@/lib/useSharedThemeMode'
 import {
   DEFAULT_THEME_TYPOGRAPHY_SETTINGS,
   THEME_FONT_FAMILIES,
@@ -13,7 +14,7 @@ import {
 export type AdminMode = 'light' | 'dark'
 
 type AdminThemeContextValue = { mode: AdminMode; setMode: (mode: AdminMode) => void }
-const AdminThemeContext = createContext<AdminThemeContextValue>({ mode: 'light', setMode: () => undefined })
+const AdminThemeContext = createContext<AdminThemeContextValue>({ mode: 'dark', setMode: () => undefined })
 
 export function useAdminTheme() {
   return useContext(AdminThemeContext)
@@ -47,18 +48,9 @@ function createCmsTypographyStyle(settings: ThemeTypographyScopedSettings): CmsT
   }
 }
 
-export default function AdminThemeShell({ children, initialMode = 'light' }: { children: ReactNode; initialMode?: AdminMode }) {
-  const [mode, setModeState] = useState<AdminMode>(initialMode)
+export default function AdminThemeShell({ children, initialMode = 'dark' }: { children: ReactNode; initialMode?: AdminMode }) {
+  const { mode, setMode } = useSharedThemeMode(initialMode)
   const [typography, setTypography] = useState<ThemeTypographyScopedSettings>(DEFAULT_THEME_TYPOGRAPHY_SETTINGS)
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('sf-admin-mode', mode)
-      document.cookie = `sf-admin-mode=${mode}; Path=/; Max-Age=31536000; SameSite=Lax`
-    } catch {
-      // The server-rendered cookie remains the source of the initial preference.
-    }
-  }, [mode])
 
   useEffect(() => {
     let active = true
@@ -80,7 +72,6 @@ export default function AdminThemeShell({ children, initialMode = 'light' }: { c
     }
   }, [])
 
-  const setMode = useCallback((nextMode: AdminMode) => setModeState(nextMode), [])
   const contextValue = useMemo(() => ({ mode, setMode }), [mode, setMode])
   const typographyStyle = useMemo(() => createCmsTypographyStyle(typography), [typography])
 

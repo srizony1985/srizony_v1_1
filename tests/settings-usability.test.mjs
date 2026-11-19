@@ -47,8 +47,11 @@ test('Reporting uses the shared table selection model and preserves selected/all
   assert.match(table, /<Checkbox\s+checked=\{allSelected\}\s+indeterminate=\{someSelected\}/)
   assert.match(table, /aria-label="Select all visible rows"/)
   assert.match(table, /aria-label=\{`Select row \${id}`\}/)
-  assert.match(client, /exportRows\(selectedRows, 'selected'\)/)
-  assert.match(client, /exportRows\(data \?\? \[\], 'all'\)/)
+  assert.match(client, /selectedExportable/)
+  assert.match(client, /exportable/)
+  assert.match(table, /exportCsv\('selected'\)/)
+  assert.match(table, /exportCsv\('all'\)/)
+  assert.match(table, /anchor\.download = scope === 'selected'/)
 })
 
 test('Settings screens are built from the shared shadcn primitives', () => {

@@ -12,6 +12,7 @@ import { getPublicSiteSnapshot } from '@/lib/site'
 import { getActiveCmsSite, resolveCmsSiteIdentity } from '@/lib/cms/site-config'
 import { serializeJsonForHtmlScript } from '@/lib/securityPrimitives.mjs'
 import type { SiteIdentity } from '@/types/site'
+import { normalizeSharedThemeMode, SHARED_THEME_MODE_COOKIE } from '@/lib/sharedThemeMode'
 
 // SITE_FALLBACKS is intentionally declared `as const`; copy its readonly
 // keyword tuple into the mutable runtime SiteIdentity contract.
@@ -81,8 +82,9 @@ export async function generateMetadata(): Promise<Metadata> {
 
 // Browser chrome follows the saved mode (dark by default) using the --sf-bg tokens, instead of an invalid 'transparent' theme colour.
 export async function generateViewport(): Promise<Viewport> {
-  const savedMode = (await cookies()).get('sf-mode')?.value
-  const mode: ColorMode = savedMode === 'light' ? 'light' : 'dark'
+  const mode: ColorMode = normalizeSharedThemeMode(
+    (await cookies()).get(SHARED_THEME_MODE_COOKIE)?.value,
+  )
   return { themeColor: mode === 'light' ? '#f4f7fa' : '#0b1117', colorScheme: mode, width: 'device-width', initialScale: 1 }
 }
 
@@ -108,9 +110,10 @@ export default async function RootLayout({children}:{children:ReactNode}){
   }
   // Public design defaults: Midnight palette, dark mode, and soft geometry.
   // The dark-mode switch can persist an explicit light-mode preference.
-  const savedMode = cookieStore.get('sf-mode')?.value
   const theme = 'midnight'
-  const mode: ColorMode = savedMode === 'light' ? 'light' : 'dark'
+  const mode: ColorMode = normalizeSharedThemeMode(
+    cookieStore.get(SHARED_THEME_MODE_COOKIE)?.value,
+  )
   const shape = 'soft'
   const tokenOverrides: Record<string, string> = {}
 
