@@ -20,6 +20,8 @@ test('CMS user creation validates email and the API password requirements before
   assert.match(client, /setFormError\('Enter a valid email address\.'/)
   assert.match(client, /setFormError\('Use at least 10 characters, including one letter and one number\.'/)
   assert.match(client, /onSubmit=\{\(event\) => void add\(event\)\}/)
+  assert.match(client, /id="cms-user-create-form"/)
+  assert.match(client, /type="submit" form="cms-user-create-form"/)
 })
 
 test('CMS user list has search, role and status filters with labelled account actions', () => {

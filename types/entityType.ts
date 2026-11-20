@@ -66,6 +66,10 @@ export type ContentCollectionConfig = {
   component: ContentComponent
   maxItems: number
   layout: 'grid' | 'carousel' | 'masonry' | 'list'
+  /** Mobile-only arrangement; auto retains the site's responsive defaults. */
+  mobileLayout?: 'auto' | 'grid' | 'carousel' | 'list'
+  /** Number of columns used when the mobile arrangement is grid. */
+  mobileColumns?: 1 | 2
   columns: 2 | 3 | 4
   gap: number
   viewportItems: number

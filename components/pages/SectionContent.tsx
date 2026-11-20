@@ -49,13 +49,13 @@ export default function SectionContent({ section, page }: { section: Section; pa
       </section>
 
     case 'stats':
-      return <section className="sf-block"><Stats items={section.items} lang={lang} animated showIcons={section.items.some((item) => Boolean(item.icon || item.illustration || item.image?.src))} className={collection ? `cms-stats-collection ${collection.layout === 'list' ? 'sf-grid--cms-list' : ''}` : ''} dataColumns={collection?.columns} style={collection ? { '--sf-grid-columns': collection.columns, '--sf-grid-collection-gap': collectionGap } as CSSProperties : undefined} /></section>
+      return <section className="sf-block"><Stats items={section.items} lang={lang} animated showIcons={section.items.some((item) => Boolean(item.icon || item.illustration || item.image?.src))} className={collection ? `cms-stats-collection ${collection.layout === 'list' ? 'sf-grid--cms-list' : ''}` : ''} dataColumns={collection?.columns} dataMobileLayout={collection?.mobileLayout === 'grid' || collection?.mobileLayout === 'list' ? collection.mobileLayout : undefined} style={collection ? { '--sf-grid-columns': collection.columns, '--sf-grid-columns-mobile': collection.mobileColumns ?? 1, '--sf-grid-collection-gap': collectionGap } as CSSProperties : undefined} /></section>
 
     case 'cards': {
       const profiles = section.items.length > 0 && section.items.every((item) => item.image && item.tag)
       return <section className="sf-block">
         <SectionHeading eyebrow={section.eyebrow} heading={section.heading} lang={lang} />
-        <div className={`sf-grid ${profiles ? 'sf-grid--people' : ''} ${section.variant === 'impact' ? 'sf-grid--impact' : ''} ${collection ? `sf-grid--cms-${collection.layout}` : ''}`} data-columns={collection?.columns ?? section.columns ?? 3} style={{ '--sf-grid-columns': collection?.columns ?? section.columns ?? 3, '--sf-grid-columns-tablet': Math.min(collection?.columns ?? section.columns ?? 3, 2), '--sf-grid-columns-mobile': 1, '--sf-grid-visible-count': collection?.viewportItems ?? collection?.columns ?? section.columns ?? 3, '--sf-grid-collection-gap': collectionGap ?? 'var(--sf-collection-gap)', '--sf-grid-carousel-card-width': collectionCardWidth ?? 'var(--sf-collection-card-width)',  } as CSSProperties}>
+        <div className={`sf-grid ${profiles ? 'sf-grid--people' : ''} ${section.variant === 'impact' ? 'sf-grid--impact' : ''} ${collection ? `sf-grid--cms-${collection.layout}` : ''}`} data-columns={collection?.columns ?? section.columns ?? 3} data-mobile-layout={collection?.mobileLayout !== 'auto' ? collection?.mobileLayout : undefined} style={{ '--sf-grid-columns': collection?.columns ?? section.columns ?? 3, '--sf-grid-columns-tablet': Math.min(collection?.columns ?? section.columns ?? 3, 2), '--sf-grid-columns-mobile': collection?.mobileColumns ?? 1, '--sf-grid-visible-count': collection?.viewportItems ?? collection?.columns ?? section.columns ?? 3, '--sf-grid-collection-gap': collectionGap ?? 'var(--sf-collection-gap)', '--sf-grid-carousel-card-width': collectionCardWidth ?? 'var(--sf-collection-card-width)',  } as CSSProperties}>
           {section.items.map((item, index) => {
             const Icon = ICONS[item.icon ?? 'check']
             // Display media only when the editor explicitly supplied it.
@@ -84,7 +84,7 @@ export default function SectionContent({ section, page }: { section: Section; pa
     case 'gallery':
       return <section className="sf-block">
         <SectionHeading heading={section.heading} lang={lang} />
-        <div className={`sf-grid sf-grid--gallery ${collection ? `sf-grid--cms-${collection.layout}` : ''}`} style={{ '--sf-grid-columns': collection?.columns ?? section.columns ?? 3, '--sf-grid-columns-tablet': Math.min(collection?.columns ?? section.columns ?? 3, 2), '--sf-grid-columns-mobile': 1, '--sf-grid-visible-count': collection?.viewportItems ?? collection?.columns ?? section.columns ?? 3, '--sf-grid-collection-gap': collectionGap ?? 'var(--sf-collection-gap)', '--sf-grid-carousel-card-width': collectionCardWidth ?? 'var(--sf-collection-card-width)',  } as CSSProperties}>
+        <div className={`sf-grid sf-grid--gallery ${collection ? `sf-grid--cms-${collection.layout}` : ''}`} data-mobile-layout={collection?.mobileLayout !== 'auto' ? collection?.mobileLayout : undefined} style={{ '--sf-grid-columns': collection?.columns ?? section.columns ?? 3, '--sf-grid-columns-tablet': Math.min(collection?.columns ?? section.columns ?? 3, 2), '--sf-grid-columns-mobile': collection?.mobileColumns ?? 1, '--sf-grid-visible-count': collection?.viewportItems ?? collection?.columns ?? section.columns ?? 3, '--sf-grid-collection-gap': collectionGap ?? 'var(--sf-collection-gap)', '--sf-grid-carousel-card-width': collectionCardWidth ?? 'var(--sf-collection-card-width)',  } as CSSProperties}>
           {section.items.map((media, index) => <figure key={`${media.src}-${index}`} className="sf-gallery-item">
             <div className="sf-ratio sf-ratio--43"><SafeImage src={media.src} alt={media.alt[lang]} fill sizes="(max-width: 700px) 100vw, 33vw" className="sf-cover" /></div>
             {media.caption && <figcaption>{media.caption[lang]}</figcaption>}
@@ -178,7 +178,7 @@ export default function SectionContent({ section, page }: { section: Section; pa
 
     case 'carousel':
       return <section className="sf-block"><SectionHeading eyebrow={section.eyebrow} heading={section.heading} lead={section.body} lang={lang} />
-        <div className={collection?.layout === 'carousel' || section.presentation === 'scroller' ? 'sf-scroller' : `sf-grid ${collection ? `sf-grid--cms-${collection.layout}` : ''}`} style={{ '--sf-grid-columns': collection?.viewportItems ?? collection?.columns ?? 3, '--sf-grid-visible-count': collection?.viewportItems ?? collection?.columns ?? 3, '--sf-grid-collection-gap': collectionGap ?? 'var(--sf-collection-gap)', '--sf-grid-carousel-card-width': collectionCardWidth ?? 'var(--sf-collection-card-width)',  } as CSSProperties}>
+        <div className={collection?.layout === 'carousel' || section.presentation === 'scroller' ? 'sf-scroller' : `sf-grid ${collection ? `sf-grid--cms-${collection.layout}` : ''}`} data-mobile-layout={collection?.mobileLayout !== 'auto' ? collection?.mobileLayout : undefined} style={{ '--sf-grid-columns': collection?.viewportItems ?? collection?.columns ?? 3, '--sf-grid-columns-mobile': collection?.mobileColumns ?? 1, '--sf-grid-visible-count': collection?.viewportItems ?? collection?.columns ?? 3, '--sf-grid-collection-gap': collectionGap ?? 'var(--sf-collection-gap)', '--sf-grid-carousel-card-width': collectionCardWidth ?? 'var(--sf-collection-card-width)',  } as CSSProperties}>
           {section.items.map((item, index) => <AnimatedCard key={`${item.title.en}-${index}`} href={item.href} className="sf-news-card">
             {item.image?.src ? <div className="sf-card-media"><SafeImage src={item.image.src} alt={item.image.alt?.[lang] || item.title[lang]} fill sizes="(max-width: 700px) 85vw, 33vw" className="sf-cover" />
               {item.tag && <span className="sf-chip sf-chip--float">{item.tag[lang]}</span>}</div> : <span className="sf-card-icon" aria-hidden="true"><BookOpen size={24} /></span>}
@@ -223,6 +223,8 @@ export default function SectionContent({ section, page }: { section: Section; pa
           lang={lang}
           columns={feedColumns}
           tabletColumns={feedTabletColumns}
+          mobileColumns={collection?.mobileColumns ?? 1}
+          mobileLayout={collection?.mobileLayout ?? 'auto'}
           viewportItems={feedViewportItems}
           gap={feedGap}
           cardWidth={collectionCardWidth ?? 'var(--sf-collection-card-width)'}

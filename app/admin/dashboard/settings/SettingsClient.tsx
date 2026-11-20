@@ -315,7 +315,7 @@ function UsersView({ role }: { role: Role }) {
           }
           actions={
             <div className="flex items-end max-[520px]:**:data-[slot=button]:w-full max-[520px]:**:data-[slot=button]:justify-center **:data-[slot=button]:min-h-9 **:data-[slot=button]:whitespace-nowrap">
-              <Button type="submit" disabled={busy || !form.email.trim() || !form.password}>
+              <Button type="submit" form="cms-user-create-form" disabled={busy || !form.email.trim() || !form.password}>
                 <Plus size={15} /> {busy ? 'Creating user…' : 'Create user'}
               </Button>
             </div>
@@ -332,6 +332,7 @@ function UsersView({ role }: { role: Role }) {
           <Card className={cn(PANEL, 'settings-create-user border-s-2 border-s-primary')}>
             <CardContent>
               <form
+                id="cms-user-create-form"
                 className="settings-user-form grid grid-cols-1 items-end gap-3 [&_.cms-field]:min-w-0 [&_.cms-field>small]:text-sm [&_.cms-field>small]:leading-snug [&_.cms-field>small]:text-muted-foreground **:data-[slot=input]:min-h-9 **:data-[slot=input]:w-full **:data-[slot=native-select]:min-h-9 **:data-[slot=native-select]:w-full"
                 onSubmit={(event) => void add(event)}
                 noValidate

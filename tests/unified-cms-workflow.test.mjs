@@ -41,6 +41,7 @@ test('page sections define a reusable site-content collection and its presentati
   const site = read('lib/site.ts')
   assert.match(types, /ContentCollectionConfig/)
   for (const property of ['enabled', 'component', 'maxItems', 'layout', 'columns', 'gap', 'viewportItems']) assert.match(types, new RegExp(`${property}\\??:`))
+  for (const property of ['mobileLayout', 'mobileColumns']) assert.match(types, new RegExp(`${property}\\??:`))
   assert.match(builder, /<SectionCollectionEditor section=\{section\}/)
   assert.match(builder, /Add content/)
   assert.match(builder, /Maximum records/)

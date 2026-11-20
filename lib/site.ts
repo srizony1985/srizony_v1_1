@@ -412,6 +412,8 @@ async function savePage(database: NonNullable<typeof db>, slug: string, value: E
       component: isCanonicalProjectsCollection ? 'project' : component,
       maxItems: section.type === 'cta' || section.type === 'donation' ? 1 : Math.max(1, Math.min(100, Number(storedCollection?.maxItems) || 12)),
       layout,
+      mobileLayout: ['auto', 'grid', 'carousel', 'list'].includes(String(storedCollection?.mobileLayout)) ? storedCollection?.mobileLayout as 'auto' | 'grid' | 'carousel' | 'list' : 'auto',
+      mobileColumns: Number(storedCollection?.mobileColumns) === 2 ? 2 : 1,
       columns: [2, 3, 4].includes(Number(storedCollection?.columns)) ? Number(storedCollection?.columns) : Number(section.columns) && [2, 3, 4].includes(Number(section.columns)) ? Number(section.columns) : 3,
       gap: Math.max(0, Math.min(64, Number.isFinite(Number(storedCollection?.gap)) ? Number(storedCollection?.gap) : 24)),
       viewportItems: Math.max(1, Math.min(12, Number(storedCollection?.viewportItems) || 3)),

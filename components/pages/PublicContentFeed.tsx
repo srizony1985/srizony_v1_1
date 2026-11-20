@@ -13,6 +13,8 @@ type Props = {
   lang: Lang
   columns: number
   tabletColumns: number
+  mobileColumns: number
+  mobileLayout: 'auto' | 'grid' | 'carousel' | 'list'
   viewportItems: number
   gap: string
   cardWidth: string
@@ -41,7 +43,7 @@ function filterValue(item: FeedItem, lang: Lang) {
 }
 
 export default function PublicContentFeed({
-  items, component, lang, columns, tabletColumns, viewportItems, gap, cardWidth, layoutClass, emptyText,
+  items, component, lang, columns, tabletColumns, mobileColumns, mobileLayout, viewportItems, gap, cardWidth, layoutClass, emptyText,
   showSearch = true, showCategoryFilter = true, showYearFilter = true,
 }: Props) {
   const [search, setSearch] = useState('')
@@ -64,7 +66,7 @@ export default function PublicContentFeed({
   const style = {
     '--sf-grid-columns': columns,
     '--sf-grid-columns-tablet': tabletColumns,
-    '--sf-grid-columns-mobile': 1,
+    '--sf-grid-columns-mobile': mobileColumns,
     '--sf-grid-visible-count': viewportItems,
     '--sf-grid-collection-gap': gap,
     '--sf-grid-carousel-card-width': cardWidth,
@@ -99,7 +101,7 @@ export default function PublicContentFeed({
       </div>
       <p className="sf-public-feed-count" aria-live="polite">{copy(lang, `${visible.length} of ${items.length} items`, `${items.length}টির মধ্যে ${visible.length}টি`)}</p>
     </div>}
-    <div className={`sf-grid sf-feed-grid ${layoutClass}`} style={style}>
+    <div className={`sf-grid sf-feed-grid ${layoutClass}`} data-mobile-layout={mobileLayout !== 'auto' ? mobileLayout : undefined} style={style}>
       {visible.map((item, index) => <ContentFeedCard key={`${item.component}-${item.id}`} item={item} lang={lang} index={index} />)}
       {visible.length === 0 && <p className="sf-feed-empty">{hasFilters ? copy(lang, 'No results match these filters. Try a different keyword or clear your filters.', 'এই ফিল্টারে কোনো ফলাফল নেই। অন্য শব্দ ব্যবহার করুন অথবা ফিল্টার মুছে ফেলুন।') : emptyText}</p>}
     </div>

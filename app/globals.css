@@ -7634,3 +7634,215 @@ html[data-mode='dark'] .sf-main .cms-typography-scope {
     transition: none !important;
   }
 }
+
+
+/* CMS collection controls: keep primary actions visible and theme-aware. */
+.admin-theme-root .cms-collection-add-button {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 8px 12px;
+  border: 1px solid var(--primary);
+  border-radius: var(--radius);
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-weight: 700;
+  line-height: 1.2;
+  opacity: 1;
+  visibility: visible;
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--foreground) 12%, transparent);
+}
+.admin-theme-root .cms-collection-add-button:hover:not(:disabled) {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 88%, var(--foreground));
+  color: var(--primary-foreground);
+}
+.admin-theme-root .cms-collection-add-button:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--ring) 45%, transparent);
+  outline-offset: 2px;
+}
+
+/* Per-section mobile arrangements are stored by the Page Builder. Desktop and
+   tablet layouts remain unchanged; these overrides apply only at <=640px. */
+@media (max-width: 640px) {
+  .sf-main :is(.sf-grid, .sf-scroller)[data-mobile-layout="grid"] {
+    display: grid !important;
+    grid-auto-flow: row !important;
+    grid-auto-columns: auto !important;
+    grid-template-columns: repeat(var(--sf-grid-columns-mobile, 1), minmax(0, 1fr)) !important;
+    columns: initial !important;
+    overflow: visible !important;
+    scroll-snap-type: none !important;
+    padding-bottom: 0;
+  }
+  .sf-main :is(.sf-grid, .sf-scroller)[data-mobile-layout="list"] {
+    display: grid !important;
+    grid-auto-flow: row !important;
+    grid-auto-columns: auto !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    columns: initial !important;
+    overflow: visible !important;
+    scroll-snap-type: none !important;
+    padding-bottom: 0;
+  }
+  .sf-main :is(.sf-grid, .sf-scroller)[data-mobile-layout="carousel"] {
+    display: grid !important;
+    grid-auto-flow: column !important;
+    grid-template-columns: none !important;
+    grid-auto-columns: min(86%, 360px) !important;
+    columns: initial !important;
+    overflow-x: auto !important;
+    overflow-y: hidden;
+    overscroll-behavior-inline: contain;
+    scroll-snap-type: x mandatory !important;
+    padding-bottom: 12px;
+  }
+  .sf-main :is(.sf-stats-row, .sf-tiles).cms-stats-collection:not(.sf-grid--cms-list) {
+    grid-template-columns: repeat(var(--sf-grid-columns-mobile, 1), minmax(0, 1fr)) !important;
+  }
+  .sf-main :is(.sf-stats-row, .sf-tiles)[data-mobile-layout="grid"] {
+    grid-template-columns: repeat(var(--sf-grid-columns-mobile, 1), minmax(0, 1fr)) !important;
+  }
+  .sf-main :is(.sf-stats-row, .sf-tiles)[data-mobile-layout="list"] {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
+
+.admin-theme-root .cms-add-row {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid color-mix(in srgb, var(--primary) 62%, var(--border));
+  border-style: solid;
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--primary) 9%, var(--card));
+  color: var(--primary);
+  font-weight: 700;
+  line-height: 1.2;
+  opacity: 1;
+  visibility: visible;
+}
+.admin-theme-root .cms-add-row:hover:not(:disabled) {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 16%, var(--card));
+  color: var(--primary);
+}
+.admin-theme-root .cms-add-row:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--ring) 45%, transparent);
+  outline-offset: 2px;
+}
+
+/* Page Builder repeat-item actions: clearly grouped, labelled and theme-aware. */
+.admin-theme-root .cms-repeat-toggle {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  border: 0;
+  background: transparent;
+  color: var(--foreground);
+  text-align: left;
+}
+.admin-theme-root .cms-repeat-toggle:hover:not(:disabled) {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+.admin-theme-root .cms-repeat-toggle > svg {
+  flex: none;
+}
+.admin-theme-root .cms-repeat-actions {
+  display: inline-flex;
+  min-width: 0;
+  flex: none;
+  align-items: center;
+  gap: 5px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: max(6px, calc(var(--radius) * .65));
+  background: color-mix(in srgb, var(--muted) 72%, var(--card));
+  visibility: visible;
+}
+.admin-theme-root .cms-repeat-action {
+  display: inline-flex;
+  min-width: 68px;
+  min-height: 36px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: max(5px, calc(var(--radius) * .55));
+  background: var(--card);
+  color: var(--foreground);
+  font-size: .76rem;
+  font-weight: 650;
+  line-height: 1.15;
+  white-space: nowrap;
+  opacity: 1;
+  visibility: visible;
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--foreground) 9%, transparent);
+  cursor: pointer;
+}
+.admin-theme-root .cms-repeat-action > svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+.admin-theme-root .cms-repeat-action:hover:not(:disabled) {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 9%, var(--card));
+  color: var(--primary);
+}
+.admin-theme-root .cms-repeat-action:focus-visible,
+.admin-theme-root .cms-repeat-toggle:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--ring) 48%, transparent);
+  outline-offset: 2px;
+}
+.admin-theme-root .cms-repeat-action:disabled {
+  background: var(--muted);
+  color: var(--muted-foreground);
+  opacity: .62;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+.admin-theme-root .cms-repeat-action--danger {
+  border-color: color-mix(in srgb, var(--destructive) 42%, var(--border));
+  background: color-mix(in srgb, var(--destructive) 7%, var(--card));
+  color: var(--destructive);
+}
+.admin-theme-root .cms-repeat-action--danger:hover:not(:disabled) {
+  border-color: var(--destructive);
+  background: color-mix(in srgb, var(--destructive) 14%, var(--card));
+  color: var(--destructive);
+}
+
+@media (max-width: 700px) {
+  .admin-theme-root .cms-repeat-head {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .admin-theme-root .cms-repeat-actions:not(.cms-repeat-actions--single) {
+    display: grid;
+    width: 100%;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .admin-theme-root .cms-repeat-actions--single {
+    display: grid;
+    width: 100%;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .admin-theme-root .cms-repeat-action {
+    min-width: 0;
+    width: 100%;
+    min-height: 38px;
+    gap: 4px;
+    padding-inline: 4px;
+    font-size: .72rem;
+  }
+}
