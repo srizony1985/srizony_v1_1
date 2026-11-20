@@ -20,7 +20,13 @@ test('ContentFeed collection manager loads the full selected-type catalogue and 
   assert.match(types, /selectedRecordIds\?: number\[\]/)
   assert.match(builder, /listContent\(config\.component\)\s*\.then\(\(all\) => setItems\(all\)\)/)
   assert.doesNotMatch(builder, /all\.filter\(\(item\) => String\(FIXED_CONTENT_PARENT/)
-  assert.match(builder, /useEffect\(\(\) => \{ void refresh\(\) \}, \[refresh\]\)/)
+  // Initial catalogue loading is guarded and cancellable when the selected
+  // content type changes or the editor unmounts. refresh() is reserved for
+  // explicit post-save refreshes rather than being called by this effect.
+  assert.match(builder, /useEffect\(\(\) => \{\s*if \(!config\.enabled\) return\s*let cancelled = false\s*listContent\(config\.component\)/)
+  assert.match(builder, /if \(!cancelled\) setItems\(all\)/)
+  assert.match(builder, /return \(\) => \{\s*cancelled = true\s*\}/)
+  assert.match(builder, /const refresh = useCallback\(\(\) => \{[\s\S]*?return listContent\(config\.component\)/)
   assert.match(builder, /<Checkbox checked=\{selectedIds\.has\(item\.id\)\}/)
   assert.match(builder, /setConfig\(\{ selectedRecordIds: \[\.\.\.next\] \}\)/)
   assert.match(builder, /type="search" value=\{collectionQuery\}/)

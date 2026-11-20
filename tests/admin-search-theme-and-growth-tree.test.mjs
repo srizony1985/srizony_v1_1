@@ -56,7 +56,7 @@ test('growth-tree CMS editor is discoverable from Settings and uses shared works
 
   assert.match(settings, /view === 'growth' && <GrowthTreeView role=\{role\}/)
   assert.match(shell, /Homepage Growth Tree[\s\S]*?settings\?view=growth/)
-  assert.match(editor, /<AdminWorkspaceGrid layout="split" columns="minmax\(0, 1\.2fr\) minmax\(0, 0\.9fr\)"/)
+  assert.match(editor, /<AdminWorkspaceGrid layout="split" columns="minmax\(0, 0\.75fr\) minmax\(0, 1\.25fr\)"/)
   assert.match(editor, /<AdminDataContainer/)
   assert.match(editor, /<AdminTable/)
   assert.match(footer, /<AdminWorkspaceGrid layout="single"/)

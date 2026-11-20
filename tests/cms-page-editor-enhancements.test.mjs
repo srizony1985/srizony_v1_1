@@ -56,14 +56,21 @@ test('footer link creation opens a bounded single-link editor instead of an over
 
 test('public typography roles and Scarlet Labs CMS attribution are connected to the CMS', () => {
   const settings = read('app/admin/dashboard/settings/SettingsClient.tsx')
+  const typography = read('lib/themeTypography.ts')
   const runtime = read('lib/themeRuntime.ts')
   const css = read('app/globals.css')
   const login = read('app/admin/login/page.tsx')
   const footer = read('components/admin/cms/AdminAppShell.tsx')
-  for (const role of ['bodyScale', 'h1Scale', 'h2Scale', 'h3Scale', 'leadScale', 'eyebrowScale', 'cardTitleScale', 'cardBodyScale', 'buttonScale', 'breadcrumbScale', 'metaScale', 'labelScale', 'brandScale', 'footerHeadingScale', 'footerLinkScale']) {
+  // These roles have visible controls in the current Typography workspace.
+  for (const role of ['bodyScale', 'h1Scale', 'h2Scale', 'h3Scale', 'leadScale', 'eyebrowScale', 'cardTitleScale', 'cardBodyScale', 'buttonScale', 'breadcrumbScale', 'metaScale', 'labelScale', 'brandScale', 'footerHeadingScale']) {
     assert.ok(settings.includes(role), `missing CMS typography control ${role}`)
     assert.ok(runtime.includes(role), `missing runtime token mapping ${role}`)
   }
+  // Footer-link scale remains a supported persisted/runtime role; it is not a
+  // separately exposed control in the current settings UI.
+  assert.match(typography, /footerLinkScale: number/)
+  assert.match(typography, /footerLinkScale: boundedNumber/)
+  assert.match(runtime, /footer-link-scale/)
   assert.match(css, /\.sf-main :is\(h1, h2, h3, h4, h5, h6\)/)
   assert.match(css, /\.sf-footer :is\(h1,h2,h3,h4,h5,h6/)
   assert.match(login, /Content Management System/)

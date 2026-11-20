@@ -29,7 +29,10 @@ test('theme typography is exposed in CMS and drives font, scale, colour and navi
   const nav = read('app/globals.css')
   assert.match(settings, /ThemeTypographyView/)
   assert.match(settings, /Save typography/)
-  assert.match(settings, /Global defaults and four optional scopes/)
+  assert.ok(settings.includes("const SCOPES: ThemeTypographyScope[] = ['global', 'header', 'content', 'footer', 'cms']"))
+  assert.match(settings, /aria-label="Typography scope"/)
+  assert.match(settings, /SCOPES\.map\(\(item\) =>/)
+  for (const scope of ['global', 'header', 'content', 'footer', 'cms']) assert.ok(settings.includes(`'${scope}'`), `missing typography scope ${scope}`)
   assert.match(settings, /Body text colour/)
   assert.match(shell, /settings\?view=theme/)
   for (const token of ['--sf-font-body', '--sf-font-display', '--sf-fs-md', '--sf-fw-head', '--sf-typo-body-color', '--sf-typo-heading-color', '--sf-typo-nav-color', '--sf-nav-font-size']) {
